@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitS UI — Section 9</title>
+  <link rel="stylesheet" href="/aesthetic/index.css" />
+  <style>
+    /* Dev entry point — palette smoke test */
+    body {
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      max-width: 640px;
+      width: 100%;
+    }
+
+    .swatch {
+      height: 48px;
+      border: 1px solid var(--panel-border);
+      display: flex;
+      align-items: flex-end;
+      padding: 4px 6px;
+    }
+
+    .swatch span {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+    }
+
+    .section-title {
+      grid-column: 1 / -1;
+      font-family: var(--font-holo);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--panel-border-dim);
+      padding-bottom: 4px;
+      margin-top: 1rem;
+    }
+
+    .effect-demo {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .effect-box {
+      border: 1px solid var(--panel-border);
+      padding: 8px 12px;
+      font-family: var(--font-terminal);
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="palette-grid">
+
+    <div class="section-title">Palette</div>
+
+    <div class="swatch" style="background: var(--void)">
+      <span>--void</span></div>
+    <div class="swatch" style="background: var(--void-secondary)">
+      <span>--void-secondary</span></div>
+    <div class="swatch" style="background: var(--panel-bg)">
+      <span>--panel-bg</span></div>
+    <div class="swatch" style="background: var(--panel-bg-solid)">
+      <span>--panel-bg-solid</span></div>
+
+    <div class="swatch" style="background: var(--neon-cyan)">
+      <span style="color:#000">--neon-cyan</span></div>
+    <div class="swatch" style="background: var(--neon-green)">
+      <span style="color:#000">--neon-green</span></div>
+    <div class="swatch" style="background: var(--neon-magenta)">
+      <span style="color:#000">--neon-magenta</span></div>
+    <div class="swatch" style="background: var(--neon-amber)">
+      <span style="color:#000">--neon-amber</span></div>
+
+    <div class="section-title">Typography</div>
+
+    <div style="grid-column: 1/-1" class="holo-h1">SECTION 9 [九課]</div>
+    <div style="grid-column: 1/-1" class="holo-h2">Neural Interface Active</div>
+    <div style="grid-column: 1/-1" class="terminal-text">
+      SYNC: 98.4% &nbsp;|&nbsp; GHOST COEFFICIENT: 1.000 &nbsp;|&nbsp;
+      <span class="status-ok">● NOMINAL</span>
+    </div>
+
+    <div class="section-title">Effects</div>
+
+    <div class="effect-demo">
+      <div class="effect-box holographic neon-text panel-boot">
+        .holographic + .panel-boot
+      </div>
+      <div class="effect-box alert-pulse" style="color: var(--neon-magenta)">
+        .alert-pulse
+      </div>
+      <div class="effect-box">
+        <span class="status-blink" style="color: var(--neon-green)">●</span>
+        .status-blink
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+/* ============================================================
+   aesthetic/index.css
+   GitS UI — Aesthetic barrel import
+   Import this single file to get variables + effects + typography.
+   Order matters: variables must load before effects and typography.
+   ============================================================ */
+
+@import './variables/index.css';
+@import './effects/index.css';
+@import './typography/index.css';

@@ -1,0 +1,33 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+
+# Replay snapshots are gitignored by default — opt-in specific runs if needed
+replay/*/
+
+# Local env overrides
+.env
+.env.local
+
+# llama.cpp — vendored source tree and compiled binary
+vendor/
+bin/
+
+# Model files — never commit these (multi-GB)
+*.gguf
+*.bin
+*.ggml
+
+# Local tooling config/cache
+.claude/*
+!.claude/skills
+.orchestra/
+
+node_modules/
+.vite/
