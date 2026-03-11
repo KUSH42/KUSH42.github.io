@@ -268,6 +268,45 @@ Deep red primary. Intended for hostile-mode or antagonist-perspective interfaces
 
 ---
 
+### `matrixgreen` — **default** — dark green operative display
+
+Deep green-black void, warm teal primary accent, orange alert. Based on the Dr. Badger tritium interface reference (`drBadger_tritium3.webp`). Distinctive palette: the two-layer green (dark muted background vs bright warm teal accent) creates more depth than a single-hue green scheme.
+
+> **This is the `:root` default.** `gits` becomes `[data-theme="gits"]`. `setTheme('matrixgreen')` removes the `data-theme` attribute; `getTheme()` returns `'matrixgreen'` when the attribute is absent.
+
+| Variable | Value |
+|---|---|
+| `--void` | `#050e07` |
+| `--void-secondary` | `#0b1a0e` |
+| `--panel-bg` | `rgba(8, 20, 12, 0.88)` |
+| `--panel-bg-solid` | `#0b1a0e` |
+| `--panel-border` | `rgba(0, 190, 90, 0.25)` |
+| `--panel-border-active` | `rgba(0, 212, 176, 0.88)` |
+| `--panel-border-alert` | `rgba(255, 140, 0, 0.9)` |
+| `--panel-border-dim` | `rgba(0, 170, 80, 0.1)` |
+| `--neon-cyan` | `#00d4b0` |
+| `--neon-green` | `#00ff70` |
+| `--neon-magenta` | `#ff8c00` |
+| `--neon-amber` | `#b0ff44` |
+| `--text-primary` | `#00d4b0` |
+| `--text-secondary` | `rgba(0, 212, 176, 0.65)` |
+| `--text-dim` | `rgba(0, 212, 176, 0.35)` |
+| `--text-alert` | `#ff8c00` |
+| `--text-warning` | `#b0ff44` |
+| `--text-ok` | `#00ff70` |
+| `--row-highlight` | `#001a0d` |
+| `--row-hover` | `rgba(0, 212, 176, 0.06)` |
+| `--glow-cyan` | `0 0 8px #00d4b0, 0 0 20px rgba(0, 212, 176, 0.5)` |
+| `--glow-green` | `0 0 8px #00ff70, 0 0 20px rgba(0, 255, 112, 0.5)` |
+| `--glow-magenta` | `0 0 8px #ff8c00, 0 0 20px rgba(255, 140, 0, 0.5)` |
+| `--glow-amber` | `0 0 8px #b0ff44, 0 0 20px rgba(176, 255, 68, 0.5)` |
+| `--glow-text-cyan` | `0 0 5px #00d4b0, 0 0 10px #00d4b0, 0 0 20px #00d4b0` |
+| `--glow-text-green` | `0 0 5px #00ff70, 0 0 10px #00ff70, 0 0 20px #00ff70` |
+| `--glow-text-magenta` | `0 0 5px #ff8c00, 0 0 10px #ff8c00, 0 0 20px #ff8c00` |
+| `--glow-text-amber` | `0 0 5px #b0ff44, 0 0 10px #b0ff44, 0 0 20px #b0ff44` |
+
+---
+
 ## Glow Value Format
 
 Glows cannot use `var()` references inside `box-shadow` / `text-shadow` — the entire value must be a single custom property. Each theme defines all eight glow variables as complete literal values. Pattern:
@@ -310,21 +349,21 @@ All values are in the theme tables above.
 // Persists to localStorage if persist=true (default: true).
 setTheme(name: string, persist?: boolean): void
 
-// Get current theme name. Reads data-theme or returns 'gits'.
+// Get current theme name. Reads data-theme or returns 'matrixgreen'.
 getTheme(): string
 
 // Apply persisted theme on page load. Call once at startup.
 applyPersistedTheme(): void
 
 // List of all bundled theme names.
-THEMES: string[]  // ['gits', 'amber', 'phosphor', 'blood']
+THEMES: string[]  // ['matrixgreen', 'gits', 'amber', 'phosphor', 'blood']
 ```
 
 Theme switches are instant — no CSS transitions on the `[data-theme]` change itself. Individual component transitions (hover, etc.) remain active within a theme.
 
-### Special case: `setTheme('gits')`
+### Special case: `setTheme('matrixgreen')`
 
-The default theme is applied via `:root` (no attribute). There is no `[data-theme="gits"]` selector. Therefore `setTheme('gits')` **removes** the `data-theme` attribute entirely rather than writing `data-theme="gits"`. This returns the page to the `:root` default. `getTheme()` returns `'gits'` when the attribute is absent.
+The default theme is applied via `:root` (no attribute). There is no `[data-theme="matrixgreen"]` selector. Therefore `setTheme('matrixgreen')` **removes** the `data-theme` attribute entirely rather than writing `data-theme="matrixgreen"`. This returns the page to the `:root` default. `getTheme()` returns `'matrixgreen'` when the attribute is absent.
 
 ### Idempotency
 
@@ -351,7 +390,7 @@ Place **after** the stylesheet `<link>` tags in `<head>`. The CSS selectors must
 
 | Attribute | Element | Values | Purpose |
 |---|---|---|---|
-| `data-theme` | `<html>` | `gits\|amber\|phosphor\|blood` | active theme; written by `setTheme()` |
+| `data-theme` | `<html>` | `gits\|amber\|phosphor\|blood\|matrixgreen` | active theme; written by `setTheme()`; absent = matrixgreen (default) |
 
 ---
 
@@ -368,7 +407,7 @@ Place **after** the stylesheet `<link>` tags in `<head>`. The CSS selectors must
 Current file has all values in a single `:root` block. After implementation:
 
 1. `aesthetic/variables/base.css` contains the non-colour variables (layout constants, typography, structural constants) in `:root` — identical to current values, these never change.
-2. `aesthetic/variables/themes/gits.css` contains all colour/glow variables in `:root` — identical to current values.
+2. `aesthetic/variables/themes/matrixgreen.css` contains the default colour/glow variables in `:root`. `aesthetic/variables/themes/gits.css` contains the GitS palette under `[data-theme="gits"]`.
 3. `aesthetic/variables/index.css` becomes a barrel importing `base.css` then all theme files.
 4. The old `aesthetic/variables/index.css` is replaced. No other files change.
 
@@ -390,10 +429,10 @@ Current file has all values in a single `:root` block. After implementation:
 - [ ] Every theme file defines all variables in the Theme Variable Contract (above) — no gaps
 - [ ] All glow variables use literal hex values (no var() references inside glow definitions)
 - [ ] `[data-theme="x"]` attribute selector used (specificity 0,1,0) — must exceed `:root` (0,0,1) to override defaults; `html[data-theme]` (0,1,1) is forbidden
-- [ ] Default theme (`gits`) applied via `:root` — requires no `data-theme` attribute; no `[data-theme="gits"]` rule exists
-- [ ] `setTheme('gits')` removes the `data-theme` attribute; `getTheme()` returns `'gits'` when attribute is absent
+- [ ] Default theme (`matrixgreen`) applied via `:root` — requires no `data-theme` attribute; no `[data-theme="matrixgreen"]` rule exists
+- [ ] `setTheme('matrixgreen')` removes the `data-theme` attribute; `getTheme()` returns `'matrixgreen'` when attribute is absent
 - [ ] `applyPersistedTheme()` called in `<head>` after stylesheet link tags
-- [ ] `s9:theme-change` detail contains both `from` and `to` keys as exact theme name strings (e.g. `{ from: 'gits', to: 'amber' }`)
+- [ ] `s9:theme-change` detail contains both `from` and `to` keys as exact theme name strings (e.g. `{ from: 'matrixgreen', to: 'amber' }`)
 - [ ] `setTheme()` with same theme name twice is a no-op — attribute unchanged, event not fired
 - [ ] `setTheme()` with unknown name is a no-op; logs `console.warn` in development
 - [ ] `aesthetic/effects/index.css` scanlines (`.holographic::after`) updated to `color-mix(in srgb, var(--neon-cyan) 3%, transparent)`
