@@ -63,11 +63,13 @@
   ---------------------------------------------------------- */
   --topbar-height:    36px;
   --statusbar-height: 28px;
+  --footer-height:    24px;
   --sidebar-left:     280px;
   --sidebar-right:    260px;
   --panel-gap:        4px;
   --panel-padding:    12px;
   --header-height:    32px;
+  --header-gap:       8px;
 
   /* ----------------------------------------------------------
      Typography
