@@ -6,7 +6,7 @@
 |---|---|
 | **Name** | `PanelShell` |
 | **CSS Block** | `.s9-panel` |
-| **Status** | `approved` |
+| **Status** | `implemented` |
 | **Column** | `left` \| `right` \| `center` (all columns) |
 | **COMPONENTS.MD entry** | `yes` — entry already exists; update class API after approval |
 
@@ -111,7 +111,7 @@ Hover and focus are **CSS-only** — no JS required. Active and alert states are
 
 - [x] Scanlines (`.holographic::after`) — applied to `.s9-panel__body.holographic`
 - [x] CRT flicker on mount (`crt-flicker` keyframe) — applied to `.s9-panel` via `.s9-panel--booting`
-- [ ] Glitch on data update — N/A at shell level; child components own this
+- [x]Glitch on data update — N/A at shell level; child components own this
 - [x] Neon glow text — `__header-label` receives `color: var(--neon-cyan); text-shadow: var(--glow-text-cyan)` in `--active` state via direct property (not `.neon-text` utility class)
 - [x] Alert pulse (magenta, 1Hz) — applied to `.s9-panel--alert` border
 - [x] Hover glow (cyan box-shadow) — CSS `:hover` + `:focus-within`
@@ -361,18 +361,18 @@ Note: `.holographic` and `.panel-boot` keyframes are defined in `aesthetic/effec
 
 ## Quality Gates
 
-- [ ] Spec approved before any code written
-- [ ] Structure CSS in `structure/components/panel-shell.css` — zero color/effect properties
-- [ ] Aesthetic CSS in `aesthetic/components/panel-shell.css` — zero layout properties
-- [ ] Combined component in `components/panel-shell.css` imports both planes
-- [ ] Japanese label on every visible English label (enforced at call site; spec documents requirement)
-- [ ] `__header-status` element present in every instance
-- [ ] Hover and focus-within visual states implemented in CSS
-- [ ] `--active` and `--alert` modifier classes implemented
-- [ ] `mountPanel()` / `unmountPanel()` JS API implemented with matched add/remove listeners
-- [ ] `s9:panel-mount` and `s9:panel-alert` custom events implemented and bubble
-- [ ] `data-s9-id` and `data-s9-state` wired in JS API
-- [ ] `.s9-panel--booting` removed after `animationend` where `event.animationName === 'crt-flicker'`
-- [ ] `prefers-reduced-motion` handled — all animations suppressed
-- [ ] Visual test page exists at `tests/visual/panel-shell.html`
-- [ ] COMPONENTS.MD entry updated with final class API
+- [x]Spec approved before any code written
+- [x]Structure CSS in `structure/components/panel-shell.css` — zero color/effect properties
+- [x]Aesthetic CSS in `aesthetic/components/panel-shell.css` — zero layout properties
+- [x]Combined component in `components/panel-shell.css` imports both planes
+- [x]Japanese label on every visible English label (enforced at call site; spec documents requirement)
+- [x]`__header-status` element present in every instance
+- [x]Hover and focus-within visual states implemented in CSS
+- [x]`--active` and `--alert` modifier classes implemented
+- [x]`mountPanel()` / `unmountPanel()` JS API implemented with matched add/remove listeners
+- [x]`s9:panel-mount` and `s9:panel-alert` custom events implemented and bubble
+- [x]`data-s9-id` and `data-s9-state` wired in JS API
+- [x]`.s9-panel--booting` removed after `animationend` where `event.animationName === 'crt-flicker'`
+- [x]`prefers-reduced-motion` handled — all animations suppressed
+- [x]Visual test page exists at `tests/visual/panel-shell.html`
+- [x]COMPONENTS.MD entry updated with final class API

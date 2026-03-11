@@ -7,36 +7,57 @@ Each entry defines: purpose, CSS classes, content structure, interactivity, and 
 
 ## 1. `PanelShell` — Base Panel Container
 
-**Purpose:** Wraps every data panel. Provides border, header bar, holographic background, scanlines.
+**Status:** `implemented` · Spec: `specs/panel-shell.md`
+
+**Purpose:** Wraps every data panel. Provides border, header bar, holographic scanline body, and unified mount/alert/active state lifecycle for all child components.
 
 **CSS Classes:**
 ```
-.s9-panel               — base container
-.s9-panel--active       — selected/focused state (brighter border, left accent)
-.s9-panel--alert        — critical state (magenta border pulse)
-.s9-panel__header       — top label bar
-.s9-panel__header-label — primary English label
-.s9-panel__header-jp    — Japanese counterpart label
-.s9-panel__header-status — right-aligned status indicator
-.s9-panel__body         — content area
-.s9-panel__footer       — optional status strip
+.s9-panel                — root container
+.s9-panel__header        — top label bar (height: --header-height)
+.s9-panel__header-label  — primary English label (Orbitron, uppercase)
+.s9-panel__header-jp     — Japanese counterpart label (required)
+.s9-panel__header-status — right-aligned status indicator (aria-live="polite")
+.s9-panel__body          — scrollable content area (.holographic for scanlines)
+.s9-panel__footer        — optional bottom status strip (height: --footer-height)
+
+.s9-panel--active        — brighter border + left cyan accent bar on __header
+.s9-panel--alert         — magenta border + alert-pulse animation (1Hz)
+.s9-panel--booting       — transient: crt-flicker animation; removed on animationend
+.s9-panel--collapsed     — body + footer hidden; header only (CSS-only, no animation)
 ```
 
 **Required Content Structure:**
 ```html
-<div class="s9-panel">
+<div class="s9-panel" role="region" aria-label="PANEL NAME"
+     tabindex="0" data-s9-id="unique-id" data-s9-state="idle">
   <div class="s9-panel__header">
     <span class="s9-panel__header-label">PANEL NAME</span>
     <span class="s9-panel__header-jp">[日本語]</span>
-    <span class="s9-panel__header-status">● ONLINE</span>
+    <span class="s9-panel__header-status" aria-live="polite">● ONLINE</span>
   </div>
   <div class="s9-panel__body holographic">
-    <!-- data content -->
+    <!-- child component content -->
   </div>
 </div>
 ```
 
-**Effects:** Scanline overlay (`.holographic::after`), CRT flicker on mount (`.panel-boot`), hover border glow.
+**JS API:** `components/panel-shell.js`
+```js
+import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
+  from './components/panel-shell.js';
+```
+- `mountPanel(el)` — add `--booting`, fire `s9:panel-mount` after `crt-flicker`
+- `unmountPanel(el)` — abort listener via AbortController
+- `panelAlert(el, level, message)` — add `--alert`, update status, fire `s9:panel-alert`
+- `panelClearAlert(el)` — remove `--alert`, restore status
+- `panelSetActive(el, bool)` — toggle `--active`, sync `data-s9-state`
+
+**Custom Events (bubbles: true):**
+- `s9:panel-mount` → `{ id }`
+- `s9:panel-alert` → `{ id, level: 'warning'|'critical', message }`
+
+**Effects:** Scanline overlay (`.holographic::after`), CRT flicker on mount (`crt-flicker` keyframe via `--booting`), hover/focus-within border glow, alert-pulse animation.
 
 ---
 
