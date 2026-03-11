@@ -3,114 +3,612 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GitS UI — Section 9</title>
+  <title>SECTION 9 — OPERATIVE INTERFACE</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
+
   <link rel="stylesheet" href="/aesthetic/index.css" />
+  <link rel="stylesheet" href="/structure/layouts/s9-ov.css" />
+  <link rel="stylesheet" href="/structure/components/panel-shell.css" />
+  <link rel="stylesheet" href="/structure/components/data-stream.css" />
+  <link rel="stylesheet" href="/structure/components/neural-readout.css" />
+  <link rel="stylesheet" href="/structure/components/system-telemetry.css" />
+  <link rel="stylesheet" href="/structure/components/alert-banner.css" />
+  <link rel="stylesheet" href="/structure/components/sequence-log.css" />
+  <link rel="stylesheet" href="/structure/components/command-terminal.css" />
+  <link rel="stylesheet" href="/structure/components/network-matrix.css" />
+  <link rel="stylesheet" href="/structure/components/threat-map.css" />
+
   <style>
-    /* Dev entry point — palette smoke test */
-    body {
-      display: grid;
-      place-items: center;
-      min-height: 100vh;
-      padding: 2rem;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
 
-    .palette-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      max-width: 640px;
-      width: 100%;
+    /* ── Topbar content ─────────────────────────────── */
+    .s9-ov__topbar {
+      background: var(--panel-bg-solid);
+      border-bottom: 1px solid var(--panel-border);
     }
-
-    .swatch {
-      height: 48px;
-      border: 1px solid var(--panel-border);
+    .topbar__op {
+      font-family: var(--font-holo);
+      font-size: 0.65rem;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-text-cyan);
+      white-space: nowrap;
+    }
+    .topbar__op-jp {
+      font-family: var(--font-jp);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-left: 0.5rem;
+    }
+    .topbar__divider {
+      width: 1px;
+      height: 16px;
+      background: var(--panel-border);
+      flex-shrink: 0;
+    }
+    .topbar__tab {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-normal);
+      text-transform: uppercase;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 6px;
+      border: 1px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .topbar__tab--active {
+      color: var(--neon-cyan);
+      border-color: var(--panel-border-active);
+    }
+    .topbar__spacer { flex: 1; }
+    .topbar__clock {
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      letter-spacing: var(--letter-spacing-normal);
+      white-space: nowrap;
+    }
+    .topbar__status {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--neon-green);
       display: flex;
-      align-items: flex-end;
-      padding: 4px 6px;
+      align-items: center;
+      gap: 4px;
+    }
+    .topbar__status::before {
+      content: '●';
+      animation: status-blink 2s ease-in-out infinite;
     }
 
-    .swatch span {
+    /* ── Statusbar content ──────────────────────────── */
+    .s9-ov__statusbar {
+      background: var(--panel-bg-solid);
+      border-top: 1px solid var(--panel-border);
+    }
+    .statusbar__badge {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-normal);
+      text-transform: uppercase;
+    }
+    .statusbar__badge--ok { color: var(--neon-green); }
+    .statusbar__badge--alert { color: var(--text-alert); }
+    .statusbar__alert-count {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-secondary);
+    }
+    .statusbar__spacer { flex: 1; }
+    .statusbar__utc {
       font-family: var(--font-terminal);
       font-size: 0.6rem;
       color: var(--text-dim);
     }
-
-    .section-title {
-      grid-column: 1 / -1;
-      font-family: var(--font-holo);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.2em;
-      color: var(--text-secondary);
-      border-bottom: 1px solid var(--panel-border-dim);
-      padding-bottom: 4px;
-      margin-top: 1rem;
-    }
-
-    .effect-demo {
-      grid-column: 1 / -1;
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin-top: 1rem;
-    }
-
-    .effect-box {
-      border: 1px solid var(--panel-border);
-      padding: 8px 12px;
+    .statusbar__conn {
       font-family: var(--font-terminal);
-      font-size: 0.75rem;
+      font-size: 0.6rem;
+      color: var(--neon-green);
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
+    .statusbar__conn::before {
+      content: '◆';
+      font-size: 0.4rem;
+    }
+
+    /* ── Panel header labels ────────────────────────── */
+    .s9-panel__header-label {
+      font-family: var(--font-holo);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .s9-panel__header-jp {
+      font-family: var(--font-jp);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+    .s9-panel__header-status {
+      font-family: var(--font-terminal);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Center split: ThreatMap top, Terminal bottom ── */
+    .s9-ov__center {
+      display: flex;
+      flex-direction: column;
+      gap: var(--panel-gap);
+    }
+    .center__map { flex: 1; min-height: 0; position: relative; }
+    .center__terminal { height: 200px; flex-shrink: 0; }
+
+    /* ── Left / right flex grow helpers ────────────── */
+    .s9-ov__left .s9-panel:nth-child(1) { flex: 2; }
+    .s9-ov__left .s9-panel:nth-child(2) { flex: 1.5; }
+    .s9-ov__left .s9-panel:nth-child(3) { flex: 1; }
+    .s9-ov__right .s9-panel:nth-child(1) { flex: 1; }
+    .s9-ov__right .s9-panel:nth-child(2) { flex: 2; }
   </style>
 </head>
+
 <body>
-  <div class="palette-grid">
+<div class="s9-ov" data-alert-count="0" data-s9-state="active">
 
-    <div class="section-title">Palette</div>
+  <!-- ── TOPBAR ─────────────────────────────────────────────── -->
+  <header class="s9-ov__topbar">
+    <span class="topbar__op">OPERATION: GHOST BABEL<span class="topbar__op-jp">／ゴーストバベル</span></span>
+    <div class="topbar__divider"></div>
+    <span class="topbar__tab topbar__tab--active">OVERVIEW</span>
+    <span class="topbar__tab">TACTICAL</span>
+    <span class="topbar__tab">NETWORK</span>
+    <div class="topbar__spacer"></div>
+    <span class="topbar__clock" id="topbar-clock">UTC 00:00:00</span>
+    <div class="topbar__divider"></div>
+    <span class="topbar__status">OPERATIVE CONNECTED</span>
+  </header>
 
-    <div class="swatch" style="background: var(--void)">
-      <span>--void</span></div>
-    <div class="swatch" style="background: var(--void-secondary)">
-      <span>--void-secondary</span></div>
-    <div class="swatch" style="background: var(--panel-bg)">
-      <span>--panel-bg</span></div>
-    <div class="swatch" style="background: var(--panel-bg-solid)">
-      <span>--panel-bg-solid</span></div>
+  <!-- ── LEFT COLUMN ────────────────────────────────────────── -->
+  <aside class="s9-ov__left">
 
-    <div class="swatch" style="background: var(--neon-cyan)">
-      <span style="color:#000">--neon-cyan</span></div>
-    <div class="swatch" style="background: var(--neon-green)">
-      <span style="color:#000">--neon-green</span></div>
-    <div class="swatch" style="background: var(--neon-magenta)">
-      <span style="color:#000">--neon-magenta</span></div>
-    <div class="swatch" style="background: var(--neon-amber)">
-      <span style="color:#000">--neon-amber</span></div>
-
-    <div class="section-title">Typography</div>
-
-    <div style="grid-column: 1/-1" class="holo-h1">SECTION 9 [九課]</div>
-    <div style="grid-column: 1/-1" class="holo-h2">Neural Interface Active</div>
-    <div style="grid-column: 1/-1" class="terminal-text">
-      SYNC: 98.4% &nbsp;|&nbsp; GHOST COEFFICIENT: 1.000 &nbsp;|&nbsp;
-      <span class="status-ok">● NOMINAL</span>
-    </div>
-
-    <div class="section-title">Effects</div>
-
-    <div class="effect-demo">
-      <div class="effect-box holographic neon-text panel-boot">
-        .holographic + .panel-boot
+    <!-- DataStream -->
+    <div class="s9-panel" data-s9-id="data-stream-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">DATA STREAM</span>
+        <span class="s9-panel__header-jp">データストリーム</span>
+        <span class="s9-panel__header-status" id="stream-status">● LIVE</span>
       </div>
-      <div class="effect-box alert-pulse" style="color: var(--neon-magenta)">
-        .alert-pulse
-      </div>
-      <div class="effect-box">
-        <span class="status-blink" style="color: var(--neon-green)">●</span>
-        .status-blink
+      <div class="s9-panel__body" style="padding: 0;">
+        <div class="s9-stream" role="log" aria-label="Data stream" data-s9-id="stream-1">
+          <div class="s9-stream__body" tabindex="0" aria-label="Stream rows"></div>
+        </div>
       </div>
     </div>
 
-  </div>
+    <!-- NeuralReadout -->
+    <div class="s9-panel" data-s9-id="neural-readout-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">NEURAL READOUT</span>
+        <span class="s9-panel__header-jp">神経読取</span>
+        <span class="s9-panel__header-status">SYNC: <span id="neural-sync">0%</span></span>
+      </div>
+      <div class="s9-panel__body">
+        <div class="s9-neural" id="neural-01">
+          <div class="s9-neural__id">KUSANAGI.M</div>
+          <div class="s9-neural__ghost-line">
+            GHOST COEFFICIENT: <span id="ghost-val">98.4</span>%
+          </div>
+          <div class="s9-neural__stats">
+            <span class="s9-neural__stat-label">DESIGNATION</span>
+            <span class="s9-neural__stat-value">MAJOR</span>
+            <span class="s9-neural__stat-label">UNIT</span>
+            <span class="s9-neural__stat-value">SEC.9</span>
+            <span class="s9-neural__stat-label">CLEARANCE</span>
+            <span class="s9-neural__stat-value">ALPHA-7</span>
+            <span class="s9-neural__stat-label">CYBER INDEX</span>
+            <span class="s9-neural__stat-value" id="cyber-index">98.4%</span>
+          </div>
+          <div class="s9-neural__status-bar">
+            <div class="s9-neural__status-bar-label">GHOST INTEGRITY</div>
+            <div class="s9-neural__status-bar-track">
+              <div class="s9-neural__status-bar-fill" id="ghost-bar" style="width:98%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SequenceLog (left) -->
+    <div class="s9-panel" data-s9-id="seq-log-left">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">OPERATIVE LOG</span>
+        <span class="s9-panel__header-jp">工作員記録</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 0;">
+        <div class="s9-sequence" role="region" aria-label="Operative sequence log">
+          <div class="s9-sequence__entry s9-sequence__entry--complete" id="seq-auth">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">AUTHENTICATION</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--complete" id="seq-link">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">NETWORK LINK</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--active" id="seq-sync">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">GHOST SYNC</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-sweep">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">THREAT SWEEP</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-deploy">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">TACTICAL DEPLOY</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── CENTER ─────────────────────────────────────────────── -->
+  <main class="s9-ov__center">
+
+    <!-- ThreatMap -->
+    <div class="center__map s9-threatmap" role="img"
+         aria-label="GLOBAL THREAT VISUALIZATION"
+         data-s9-id="threatmap-1" data-threat-level="0">
+      <!-- canvas + overlay injected by initThreatMap() -->
+    </div>
+
+    <!-- CommandTerminal -->
+    <div class="center__terminal s9-panel" data-s9-id="terminal-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">COMMAND INTERFACE</span>
+        <span class="s9-panel__header-jp">コマンドインターフェース</span>
+        <span class="s9-panel__header-status">SECTION 9 ▶</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 0; display: flex; flex-direction: column;">
+        <div class="s9-terminal" role="region" aria-label="COMMAND TERMINAL"
+             data-s9-id="terminal-1">
+          <div class="s9-terminal__output" role="log" aria-live="polite"
+               aria-label="Terminal output" tabindex="0"></div>
+          <div class="s9-terminal__input-row">
+            <span class="s9-terminal__prompt" aria-hidden="true">[S9]▶</span>
+            <input class="s9-terminal__input" type="text"
+                   autocomplete="off" autocorrect="off" spellcheck="false"
+                   aria-label="Command input" placeholder="type a command…" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── RIGHT COLUMN ───────────────────────────────────────── -->
+  <aside class="s9-ov__right">
+
+    <!-- SystemTelemetry -->
+    <div class="s9-panel" data-s9-id="telemetry-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">SYSTEM TELEMETRY</span>
+        <span class="s9-panel__header-jp">システム通信</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 0;">
+        <div class="s9-telemetry" role="region" aria-label="System telemetry" data-s9-id="tel-1">
+          <div class="s9-telemetry__metric" data-metric-id="cpu">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">CPU</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill"></div></div>
+            <div class="s9-telemetry__readout"><span class="s9-telemetry__value">0</span><span class="s9-telemetry__unit">%</span></div>
+          </div>
+          <div class="s9-telemetry__metric" data-metric-id="mem">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">MEM</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill"></div></div>
+            <div class="s9-telemetry__readout"><span class="s9-telemetry__value">0</span><span class="s9-telemetry__unit">%</span></div>
+          </div>
+          <div class="s9-telemetry__metric" data-metric-id="net">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">NET I/O</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill"></div></div>
+            <div class="s9-telemetry__readout"><span class="s9-telemetry__value">0</span><span class="s9-telemetry__unit">%</span></div>
+          </div>
+          <div class="s9-telemetry__metric" data-metric-id="ghost">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">GHOST LAYER</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill"></div></div>
+            <div class="s9-telemetry__readout"><span class="s9-telemetry__value">0</span><span class="s9-telemetry__unit">%</span></div>
+          </div>
+          <div class="s9-telemetry__metric" data-metric-id="enc">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">ENCRYPT</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill"></div></div>
+            <div class="s9-telemetry__readout"><span class="s9-telemetry__value">0</span><span class="s9-telemetry__unit">%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SequenceLog (right) -->
+    <div class="s9-panel" data-s9-id="seq-log-right">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">MISSION TIMELINE</span>
+        <span class="s9-panel__header-jp">作戦時系列</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 0;">
+        <div class="s9-sequence" role="region" aria-label="Mission timeline">
+          <div class="s9-sequence__entry s9-sequence__entry--complete" id="seq-recon">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">RECONNAISSANCE</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--complete" id="seq-intercept">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">INTERCEPT</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--active" id="seq-breach">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">NETWORK BREACH</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-extract">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">DATA EXTRACTION</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-cover">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">COVER TRACES</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-exfil">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">EXFILTRATION</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── STATUSBAR ──────────────────────────────────────────── -->
+  <footer class="s9-ov__statusbar">
+    <span class="statusbar__badge statusbar__badge--ok" id="sb-state">● SYSTEMS NOMINAL</span>
+    <span class="statusbar__alert-count" id="sb-alerts">ALERTS: 0</span>
+    <div class="statusbar__spacer"></div>
+    <span class="statusbar__utc" id="sb-clock">UTC 2026-03-11 00:00:00</span>
+    <div style="width:1px;height:12px;background:var(--panel-border);flex-shrink:0;"></div>
+    <span class="statusbar__conn">SECURE CHANNEL ACTIVE</span>
+  </footer>
+
+</div>
+
+<script type="module">
+import { mountTerminal, printLine, clearOutput } from '/components/command-terminal.js';
+import { mountStream, appendRow }   from '/components/data-stream.js';
+import { setValue as setTelemetry } from '/components/system-telemetry.js';
+import { glitchUpdate, setStatusBarValue } from '/components/neural-readout.js';
+import { initThreatMap, addNode, setThreatLevel } from '/components/threat-map.js';
+import { mountPanel }               from '/components/panel-shell.js';
+
+// ── UTC clock ────────────────────────────────────────────────
+function fmtUtc(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `UTC ${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} `
+       + `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+function tickClock() {
+  const now = new Date();
+  const utc = fmtUtc(now);
+  document.getElementById('topbar-clock').textContent =
+    `UTC ${now.toUTCString().split(' ')[4]}`;
+  document.getElementById('sb-clock').textContent = utc;
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ── Mount panels ─────────────────────────────────────────────
+document.querySelectorAll('.s9-panel').forEach(mountPanel);
+
+// ── CommandTerminal ───────────────────────────────────────────
+const termEl = document.querySelector('.s9-terminal');
+const cmds = {
+  help: () => [
+    ['AVAILABLE COMMANDS:', 'sys'],
+    ['  help         — show this list', 'info'],
+    ['  status       — system status', 'info'],
+    ['  threat <0-100> — set threat level', 'info'],
+    ['  clear        — clear terminal', 'info'],
+    ['  ghost        — query ghost coefficient', 'info'],
+  ],
+  status: () => [['ALL SYSTEMS NOMINAL — GHOST COEFFICIENT: 1.000', 'sys']],
+  clear:  () => { clearOutput(termEl); return [['TERMINAL CLEARED', 'sys']]; },
+  ghost:  () => [['GHOST COEFFICIENT: 1.000 — IDENTITY CONFIRMED', 'sys']],
+};
+
+mountTerminal(termEl, {
+  onSubmit(cmd) {
+    const [name, ...args] = cmd.trim().toLowerCase().split(/\s+/);
+    if (name === 'threat') {
+      const lvl = parseInt(args[0]);
+      if (!isNaN(lvl)) {
+        setThreatLevel(threatEl, lvl);
+        printLine(termEl, `THREAT LEVEL SET: ${lvl}`, 'sys');
+      } else {
+        printLine(termEl, 'ERR: threat requires a numeric argument 0-100', 'err');
+      }
+      return;
+    }
+    const handler = cmds[name];
+    if (handler) {
+      for (const [text, type] of handler()) printLine(termEl, text, type);
+    } else if (name) {
+      printLine(termEl, `ERR: unknown command '${cmd}' — type HELP`, 'err');
+    }
+  },
+  tabComplete(partial) {
+    const keys = ['help', 'status', 'threat', 'clear', 'ghost'];
+    const match = keys.find(k => k.startsWith(partial.toLowerCase()));
+    return match ?? null;
+  },
+});
+
+printLine(termEl, 'SECTION 9 OPERATIVE INTERFACE — TYPE HELP FOR COMMANDS', 'sys');
+printLine(termEl, 'GHOST BABEL OPERATION: ACTIVE', 'info');
+
+// ── DataStream ────────────────────────────────────────────────
+const streamEl = document.querySelector('.s9-stream');
+mountStream(streamEl);
+
+const STREAM_MSGS = [
+  { source: 'AUTH',  message: 'HANDSHAKE COMPLETE — CHANNEL SECURE',         alert: false },
+  { source: 'NET',   message: 'ROUTING TABLE SYNC: 1024 NODES',              alert: false },
+  { source: 'GHOST', message: 'GHOST LAYER INITIALIZED',                     alert: false },
+  { source: 'CRYPT', message: 'AES-256 SESSION KEY ESTABLISHED',             alert: false },
+  { source: 'SCAN',  message: 'ANOMALOUS PACKET DETECTED: 192.168.7.44',     alert: true  },
+  { source: 'SYS',   message: 'MEMORY INTEGRITY: NOMINAL',                   alert: false },
+  { source: 'NET',   message: 'LATENCY: 12ms — NOMINAL',                     alert: false },
+  { source: 'AUTH',  message: 'USER TOKEN REFRESHED',                        alert: false },
+  { source: 'CRIT',  message: 'PROBE SIGNATURE DETECTED — SECTOR 7',         alert: true  },
+  { source: 'SYS',   message: 'AUTO-COUNTERMEASURE DEPLOYED',                alert: false },
+  { source: 'NET',   message: 'TRAFFIC ANOMALY CLEARED',                     alert: false },
+  { source: 'GHOST', message: 'DIVE DEPTH: STABLE AT 3.2m',                  alert: false },
+  { source: 'SYS',   message: 'THERMAL: 41°C — NOMINAL',                     alert: false },
+  { source: 'SCAN',  message: 'UNKNOWN HOST: 10.0.33.19',                    alert: true  },
+  { source: 'AUTH',  message: 'CERT CHAIN VALID',                            alert: false },
+];
+let msgIdx = 0;
+function emitStreamRow() {
+  const msg = STREAM_MSGS[msgIdx % STREAM_MSGS.length];
+  appendRow(streamEl, { timestamp: new Date().toISOString(), ...msg });
+  msgIdx++;
+}
+// Burst 6 initial rows immediately
+for (let i = 0; i < 6; i++) emitStreamRow();
+setInterval(emitStreamRow, 2400);
+
+// ── SystemTelemetry ────────────────────────────────────────────
+const telEl = document.querySelector('.s9-telemetry');
+const metrics = { cpu: 0, mem: 0, net: 0, ghost: 0, enc: 0 };
+const targets = { cpu: 42, mem: 61, net: 35, ghost: 98, enc: 88 };
+
+function stepTelemetry() {
+  for (const [id, target] of Object.entries(targets)) {
+    // drift target slightly
+    targets[id] = Math.max(5, Math.min(100,
+      target + (Math.random() - 0.5) * 8));
+    // move value toward target
+    metrics[id] = Math.round(
+      metrics[id] + (targets[id] - metrics[id]) * 0.18);
+    setTelemetry(
+      telEl.querySelector(`[data-metric-id="${id}"]`),
+      metrics[id]
+    );
+  }
+}
+for (let i = 0; i < 8; i++) stepTelemetry();
+setInterval(stepTelemetry, 1800);
+
+// ── NeuralReadout ─────────────────────────────────────────────
+const neuralEl  = document.getElementById('neural-01');
+const ghostVal  = document.getElementById('ghost-val');
+const cyberIdx  = document.getElementById('cyber-index');
+const ghostBar  = document.getElementById('ghost-bar');
+const neuralSync = document.getElementById('neural-sync');
+
+let ghostCoeff = 98.4;
+
+function stepNeural() {
+  ghostCoeff = Math.max(85, Math.min(100,
+    ghostCoeff + (Math.random() - 0.45) * 1.2));
+  const pct = ghostCoeff.toFixed(1);
+  glitchUpdate(neuralEl, () => {
+    ghostVal.textContent = pct;
+    cyberIdx.textContent = `${pct}%`;
+    neuralSync.textContent = `${Math.round(ghostCoeff)}%`;
+  });
+  setStatusBarValue(ghostBar, Math.round(ghostCoeff));
+}
+for (let i = 0; i < 3; i++) stepNeural();
+setInterval(stepNeural, 3000);
+
+// ── ThreatMap ─────────────────────────────────────────────────
+const threatEl = document.querySelector('.s9-threatmap');
+initThreatMap(threatEl, { autoRotate: true, bloomStrength: 0.5 });
+
+const NODES = [
+  { id: 'n-tokyo',    lat:  35.68,  lng: 139.69, label: 'TOKYO',    level: 15 },
+  { id: 'n-moscow',   lat:  55.75,  lng:  37.62, label: 'MOSCOW',   level: 72 },
+  { id: 'n-beijing',  lat:  39.91,  lng: 116.39, label: 'BEIJING',  level: 55 },
+  { id: 'n-london',   lat:  51.51,  lng:  -0.13, label: 'LONDON',   level: 18 },
+  { id: 'n-nyc',      lat:  40.71,  lng: -74.00, label: 'NEW YORK', level: 28 },
+  { id: 'n-sydney',   lat: -33.87,  lng: 151.21, label: 'SYDNEY',   level: 10 },
+  { id: 'n-dubai',    lat:  25.20,  lng:  55.27, label: 'DUBAI',    level: 45 },
+  { id: 'n-saopaulo', lat: -23.55,  lng: -46.63, label: 'SÃO PAULO',level: 33 },
+];
+
+// Stagger node additions so boot-up looks sequential
+NODES.forEach((node, i) => {
+  setTimeout(() => {
+    addNode(threatEl, node);
+    // After all nodes: ramp threat level to reflect max
+    if (i === NODES.length - 1) {
+      setTimeout(() => setThreatLevel(threatEl, 55), 1000);
+    }
+  }, i * 300 + 500);
+});
+
+// ── Alert count listener ──────────────────────────────────────
+const ovRoot = document.querySelector('.s9-ov');
+document.addEventListener('s9:alert', (e) => {
+  const count = parseInt(ovRoot.dataset.alertCount ?? '0') + 1;
+  ovRoot.dataset.alertCount = count;
+  document.getElementById('sb-alerts').textContent = `ALERTS: ${count}`;
+  if (e.detail?.level === 'critical') {
+    ovRoot.classList.add('s9-ov--alert');
+    document.getElementById('sb-state').textContent = '● ALERT CONDITION';
+    document.getElementById('sb-state').className = 'statusbar__badge statusbar__badge--alert';
+  }
+});
+
+// ── Threat level → stream echo ─────────────────────────────────
+threatEl.addEventListener('s9:threatmap-node-select', (e) => {
+  const { label, level, lat, lng } = e.detail;
+  printLine(termEl,
+    `NODE SELECT: ${label} — LEVEL ${level} — ${lat.toFixed(2)}°, ${lng.toFixed(2)}°`,
+    level >= 71 ? 'err' : level >= 41 ? 'warn' : 'info'
+  );
+  appendRow(streamEl, {
+    timestamp: new Date().toISOString(),
+    source: 'TGT',
+    message: `TARGET LOCKED: ${label} THREAT=${level}`,
+    alert: level >= 41,
+  });
+});
+</script>
 </body>
 </html>
