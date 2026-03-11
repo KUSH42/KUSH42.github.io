@@ -139,45 +139,100 @@ import { glitchUpdate, setStatusBarValue }
 
 ## 4. `ThreatMap` — Global Visualization Panel
 
+**Status:** `implemented` · JS API: `components/threat-map.js`
+
 **Purpose:** Central area map/globe/spatial display. Primary hero visualization.
 
 **CSS Classes:**
 ```
-.s9-threatmap           — container (position: relative, full center column)
-.s9-threatmap__canvas   — canvas or Three.js mount point
-.s9-threatmap__overlay  — CSS overlays atop the visualization (z-index: 10)
-.s9-threatmap__node     — interactive hotspot on the map
-.s9-threatmap__node--active — currently selected node (pulsing ring)
-.s9-threatmap__crosshair — targeting reticle overlay
-.s9-threatmap__coords   — lat/lon or coord readout strip
+.s9-threatmap                   — container (position: relative, full center column)
+.s9-threatmap__canvas           — Three.js WebGL canvas (renderer.domElement)
+.s9-threatmap__overlay          — CSS overlays atop the canvas (pointer-events: none)
+.s9-threatmap__bracket          — corner bracket element (4 variants: --tl, --tr, --bl, --br)
+.s9-threatmap__crosshair        — targeting reticle; visible with --visible modifier
+.s9-threatmap__crosshair--visible — shown when a node is active
+.s9-threatmap__coords           — lat/lng readout strip (bottom-center)
+.s9-threatmap__coords-lat       — lat span (aria-live="polite" on parent)
+.s9-threatmap__coords-lng       — lng span
+.s9-threatmap__node-count       — live node count (top-right)
 ```
 
-**Content:** Full-height canvas. Overlay includes corner brackets (ASCII-style), coordinate strip at bottom, node count in header.
+**Content:** Full-height WebGL canvas. Overlay includes 4 corner brackets, crosshair, coordinate strip, and node count badge.
 
-**Interactivity:** Click nodes to select (triggers NeuralReadout update). Drag to pan. Scroll to zoom.
+**Interactivity:** Click nodes to select (raycasting). Drag to orbit. Scroll to zoom. Auto-rotate pauses on interaction, resumes after 3s.
 
-**Effect:** Bloom post-processing if Three.js. CSS fallback: radial glow on `.s9-threatmap__node--active`. Grid lines via `background-image: linear-gradient`.
+**Effect:** UnrealBloomPass post-processing. bloom.strength scales with setThreatLevel(). QuadraticBezierCurve3 arcs connect nodes. Node color by threat level (green/amber/magenta).
+
+**JS API:** `components/threat-map.js`
+```js
+import { initThreatMap, destroyThreatMap, addNode, removeNode,
+         addEdge, removeEdge, setActiveNode, setThreatLevel }
+  from './components/threat-map.js';
+```
+- `initThreatMap(el, { autoRotate?, bloomStrength? })` — create scene, globe, controls, composer, DOM overlay
+- `destroyThreatMap(el)` — cancel animation, dispose all, remove DOM, delete WeakMap
+- `addNode(el, { id, lat, lng, label, level })` — add SphereGeometry node, color by level (0-40 green, 41-70 amber, 71-100 magenta)
+- `removeNode(el, nodeId)` — console.warn if not found; deselects if active; removes connected edges; disposes + scene.remove
+- `addEdge(el, { id, from, to })` — QuadraticBezierCurve3 arc between nodes; console.warn if nodes missing
+- `removeEdge(el, edgeId)` — dispose + scene.remove
+- `setActiveNode(el, nodeId)` — null deselects; fires deselect before select; updates crosshair--visible, coords readout, data-active-node
+- `setThreatLevel(el, level)` — clamp 0-100; sets data-threat-level; bloomPass.strength = 0.4+(level/100)*0.8 (skip if reducedMotion)
+
+**Custom Events (bubbles: true):**
+- `s9:threatmap-node-select` on `.s9-threatmap` → `{ nodeId, label, lat, lng, level }`
+- `s9:threatmap-node-deselect` on `.s9-threatmap` → `{ nodeId }`
 
 ---
 
 ## 5. `NetworkMatrix` — Connection Graph Panel
 
+**Status:** `implemented` · JS API: `components/network-matrix.js`
+
 **Purpose:** Displays network topology, communication routes, or dependency graph.
 
 **CSS Classes:**
 ```
-.s9-matrix              — container
-.s9-matrix__canvas      — SVG or canvas element
-.s9-matrix__node        — graph node circle
-.s9-matrix__node--root  — primary node (larger, brighter)
-.s9-matrix__edge        — connection line (SVG line or canvas path)
-.s9-matrix__edge--active — highlighted active connection
-.s9-matrix__label       — node annotation
+.s9-matrix                  — container (position: relative, width/height: 100%)
+.s9-matrix__canvas          — SVG element (viewBox: 0 0 100 100)
+.s9-matrix__edges           — <g> group containing all edge elements
+.s9-matrix__nodes           — <g> group containing all node groups
+.s9-matrix__node            — <g> node group (tabindex=0, role=button)
+.s9-matrix__node--root      — primary node (cyan stroke, thicker)
+.s9-matrix__node--active    — selected node (ring pulses infinitely)
+.s9-matrix__node--pulsing   — single one-shot ring pulse
+.s9-matrix__node-ring       — ring circle (r=5, animates on --active/--pulsing)
+.s9-matrix__node-core       — core circle (r=3, fill/stroke transitions)
+.s9-matrix__node-label      — <text> label (font-size: 3px, dominant-baseline: hanging)
+.s9-matrix__edge            — idle <line> (dashed, dim color)
+.s9-matrix__edge--active    — active <path> (solid cyan + edge-dot sibling)
+.s9-matrix__edge-dot        — traveling <circle r=1.2> with animateMotion
 ```
 
-**Content:** SVG preferred for DOM interactivity. Canvas for high node counts (1000+).
+**Content:** Inline SVG with viewBox 0 0 100 100. Nodes and edges use SVG coordinate space.
 
-**Effect:** Edges animate with a traveling dot along the path (SVG stroke-dashoffset animation). Node pulse on data activity.
+**Interactivity:** Click node to select (setActiveNode). Hover for ring preview (CSS-only). Tab/Enter for keyboard selection. Click empty space to deselect.
+
+**Effect:** Active edges get animateMotion traveling dot (suppressed in reducedMotion). Active nodes: infinite ring pulse. pulseNode: single one-shot pulse.
+
+**JS API:** `components/network-matrix.js`
+```js
+import { initMatrix, updateMatrix, pulseNode, activateEdge,
+         deactivateEdge, setActiveNode, destroyMatrix }
+  from './components/network-matrix.js';
+```
+- `initMatrix(el, { nodes, edges })` — create SVG, render all nodes/edges, attach click/keydown listeners
+  - nodes: `[{ id, x, y, label, root? }]` — coordinates in 0-100 SVG space
+  - edges: `[{ id, from, to, active? }]` — from/to reference node ids
+- `updateMatrix(el, { nodes, edges })` — id-keyed reconciliation: remove absent, add new, update existing; recomputes edge geometry for repositioned nodes; applies active field as source of truth
+- `pulseNode(el, nodeId)` — add --pulsing; no-op if --active; removes on animationend (animationName==='matrix-ring-pulse')
+- `activateEdge(el, edgeId)` — null deactivates all; promotes idle <line> to <path> with id="s9-edge-{id}", adds edge-dot with animateMotion (skip if reducedMotion)
+- `deactivateEdge(el, edgeId)` — removes dot, converts path back to line, removes --active
+- `setActiveNode(el, nodeId)` — null deselects; fires deselect before select when switching; updates aria-pressed
+- `destroyMatrix(el)` — abort, remove SVG, delete WeakMap
+
+**Custom Events (bubbles: true):**
+- `s9:matrix-node-click` on `.s9-matrix` → `{ nodeId, label }`
+- `s9:matrix-node-deselect` on `.s9-matrix` → `{ nodeId }`
 
 ---
 
@@ -225,24 +280,44 @@ import { setValue } from './components/system-telemetry.js';
 
 ## 7. `CommandTerminal` — Interactive Input Panel
 
+**Status:** `implemented` · JS API: `components/command-terminal.js`
+
 **Purpose:** CLI-style command interface. Supports typed input + structured output display.
 
 **CSS Classes:**
 ```
-.s9-terminal            — container
-.s9-terminal__output    — scrollable output area
-.s9-terminal__line      — single output line
-.s9-terminal__line--cmd — user command (--neon-green prefix `>`)
-.s9-terminal__line--sys — system response (--text-primary)
-.s9-terminal__line--err — error output (--neon-magenta)
-.s9-terminal__input-row — input line container
-.s9-terminal__prompt    — prompt symbol `[S9]▶`
-.s9-terminal__input     — text input element (transparent bg, neon cursor)
+.s9-terminal            — container (flex column, height: 100%, overflow: hidden)
+.s9-terminal__output    — scrollable output area (flex: 1, justify-content: flex-end)
+.s9-terminal__line      — single output line (animates in with terminal-line-in)
+.s9-terminal__line--cmd — user command (neon-green; CSS ::before adds '> ' prefix)
+.s9-terminal__line--sys — system response (text-primary)
+.s9-terminal__line--err — error output (text-alert / neon-magenta)
+.s9-terminal__line--info — informational output (text-secondary)
+.s9-terminal__input-row — input line container (flex row, height: --header-height)
+.s9-terminal__prompt    — prompt label (neon-cyan, no-wrap)
+.s9-terminal__input     — <input type="text"> (transparent bg, neon-cyan caret)
 ```
 
-**Interactivity:** Command history (up/down arrows). Tab completion hook. Enter submits.
+**Interactivity:** Enter submits (fires s9:terminal-submit, prints cmd line, calls onSubmit). ArrowUp/Down navigates history. Tab calls tabComplete(value). Typing at 1% random chance glitches one of last 8 output lines (skipped in reducedMotion).
 
-**Effect:** Typing triggers random 1-character glitch on nearby output lines (1% probability per keypress). Cursor blinks at 1.2s interval.
+**Effect:** New lines animate in with `terminal-line-in` keyframe (0.15s translateX + opacity). Input row border brightens on focus-within. Random glitch applies `.glitch-enter` from effects/index.css.
+
+**JS API:** `components/command-terminal.js`
+```js
+import { mountTerminal, unmountTerminal, printLine, clearOutput,
+         setPrompt, focusInput }
+  from './components/command-terminal.js';
+```
+- `mountTerminal(el, { onSubmit?, tabComplete? })` — attach keydown listener via AbortController; detect reducedMotion once at mount
+- `unmountTerminal(el)` — abort all listeners, delete WeakMap entry
+- `printLine(el, text, type)` — type: 'sys'|'cmd'|'err'|'info'; uses textContent (no HTML injection); scrolls output to bottom; do NOT include '>' for cmd — CSS adds it
+- `clearOutput(el)` — remove all .s9-terminal__line; fire s9:terminal-clear
+- `setPrompt(el, text)` — console.warn if falsy; updates __prompt textContent
+- `focusInput(el)` — focus the input element
+
+**Custom Events (bubbles: true):**
+- `s9:terminal-submit` on `.s9-terminal` → `{ command, timestamp: ISO string }`
+- `s9:terminal-clear` on `.s9-terminal` → (no detail)
 
 ---
 

@@ -15,3 +15,6 @@
 @import './components/system-telemetry.css';
 @import './components/alert-banner.css';
 @import './components/sequence-log.css';
+@import './components/command-terminal.css';
+@import './components/network-matrix.css';
+@import './components/threat-map.css';
