@@ -63,16 +63,20 @@ import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
 
 ## 2. `DataStream` — Live Scrolling Log
 
+**Status:** `implemented` · JS API: `components/data-stream.js`
+
 **Purpose:** Displays a continuous feed of timestamped events. Left column primary use.
 
 **CSS Classes:**
 ```
 .s9-stream              — container (overflow-y: hidden)
-.s9-stream__row         — single log entry
+.s9-stream__body        — inner scrollable area
+.s9-stream__row         — single log entry (grid: 7rem timestamp | auto source | 1fr message)
 .s9-stream__timestamp   — `HH:MM:SS.mmm` left column, monospace, --text-dim
 .s9-stream__source      — source tag (e.g. "NET.DIV.6"), --neon-green
 .s9-stream__message     — event message, --text-primary
 .s9-stream__row--alert  — row with magenta highlight for warnings
+.s9-stream__row--pinned — expanded/pinned row (message wraps, background --row-highlight)
 ```
 
 **Content:** Entries scroll upward. New entries append at bottom, container auto-scrolls.
@@ -81,27 +85,55 @@ import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
 
 **Effect:** New row fades in with glitch-enter animation. Alert rows pulse.
 
+**JS API:** `components/data-stream.js`
+```js
+import { mountStream, unmountStream, appendRow, clearRows, setFilter }
+  from './components/data-stream.js';
+```
+- `mountStream(el)` — set up hover-pause + click-to-pin listeners via AbortController
+- `unmountStream(el)` — teardown via AbortController abort
+- `appendRow(el, { timestamp, source, message, alert })` — add row, glitch-enter, auto-scroll
+- `clearRows(el)` — remove all rows
+- `setFilter(el, source)` — filter visible rows by source (null = show all)
+
+**Custom Events:**
+- `s9:stream-row-pinned` on `.s9-stream` → `{ row, pinned }`
+
 ---
 
 ## 3. `NeuralReadout` — Personnel / Entity Profile
+
+**Status:** `implemented` · JS API: `components/neural-readout.js`
 
 **Purpose:** Displays biometric or entity data. Cybernetic identity card format.
 
 **CSS Classes:**
 ```
-.s9-neural              — container
-.s9-neural__id          — large entity ID / designation
-.s9-neural__ghost-line  — "GHOST COEFFICIENT: 98.7%" readout
-.s9-neural__avatar      — image container (optional, clipped hexagonal)
-.s9-neural__stats       — data rows grid
-.s9-neural__stat-label  — left-aligned label
-.s9-neural__stat-value  — right-aligned monospace value
-.s9-neural__status-bar  — horizontal progress bar (neon fill)
+.s9-neural                         — container
+.s9-neural__id                     — large entity ID / designation (Orbitron, --neon-cyan, glow)
+.s9-neural__ghost-line             — "GHOST COEFFICIENT: 98.7%" readout
+.s9-neural__avatar                 — image container (optional, clipped hexagonal)
+.s9-neural__stats                  — data rows grid (2 columns: label | value)
+.s9-neural__stat-label             — left-aligned label, --text-dim
+.s9-neural__stat-value             — right-aligned monospace value, --text-primary
+.s9-neural__status-bar             — progress bar wrapper
+.s9-neural__status-bar-track       — bar track element
+.s9-neural__status-bar-fill        — colored fill (--neon-cyan default; --neon-magenta when >80%)
+.s9-neural__status-bar-fill--critical — critical state (>80%)
+.s9-neural__status-bar-label       — label above bar, --text-dim
 ```
 
 **Required Content:** ID line + at least 4 stat rows + 1 status bar.
 
 **Effect:** Avatar clipped with `clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)`. Glitch on data update.
+
+**JS API:** `components/neural-readout.js`
+```js
+import { glitchUpdate, setStatusBarValue }
+  from './components/neural-readout.js';
+```
+- `glitchUpdate(el, fn)` — run fn(), then apply `.glitch-enter` on element, remove on animationend
+- `setStatusBarValue(barEl, value)` — value 0-100; sets fill width; adds `--critical` class if >80
 
 ---
 
@@ -151,18 +183,26 @@ import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
 
 ## 6. `SystemTelemetry` — Metric Gauges Panel
 
+**Status:** `implemented` · JS API: `components/system-telemetry.js`
+
 **Purpose:** System health: CPU, memory, network, threat level. Right column standard.
 
 **CSS Classes:**
 ```
-.s9-telemetry           — container
-.s9-telemetry__metric   — individual metric row
-.s9-telemetry__label    — metric name + Japanese label
-.s9-telemetry__bar      — horizontal bar fill
-.s9-telemetry__bar-fill — colored fill element (width = % value)
-.s9-telemetry__value    — numeric readout right-aligned
-.s9-telemetry__unit     — unit label (--text-dim)
-.s9-telemetry__threshold — danger threshold marker line
+.s9-telemetry                    — container
+.s9-telemetry__metric            — individual metric row
+.s9-telemetry__label             — flex row: name + JP label
+.s9-telemetry__label-name        — metric name, --text-secondary, font-holo
+.s9-telemetry__label-jp          — Japanese label, --text-dim, font-jp
+.s9-telemetry__bar               — bar track (full width, low bg)
+.s9-telemetry__bar-fill          — colored fill (width = % value); transition: width 0.4s steps(8)
+.s9-telemetry__bar-fill--ok      — 0–60%: --neon-green
+.s9-telemetry__bar-fill--warning — 61–85%: --neon-amber
+.s9-telemetry__bar-fill--critical — 86–100%: --neon-magenta + pulse
+.s9-telemetry__threshold         — danger threshold marker (position: absolute)
+.s9-telemetry__readout           — flex row: value + unit, right-aligned
+.s9-telemetry__value             — numeric value, --text-primary, font-terminal
+.s9-telemetry__unit              — unit label, --text-dim
 ```
 
 **Color Rules:**
@@ -171,6 +211,15 @@ import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
 - 86–100%: `--neon-magenta` + pulse
 
 **Effect:** Bar fill animates on value change (`transition: width 0.4s steps(8)`). Threshold exceeded triggers panel-level alert state.
+
+**JS API:** `components/system-telemetry.js`
+```js
+import { setValue } from './components/system-telemetry.js';
+```
+- `setValue(metricEl, value)` — 0-100; sets bar-fill width; correct modifier class; updates value text; fires `s9:telemetry-threshold` on first crossing into critical (>85)
+
+**Custom Events:**
+- `s9:telemetry-threshold` on `.s9-telemetry__metric` → `{ value }`
 
 ---
 
@@ -199,44 +248,73 @@ import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
 
 ## 8. `AlertBanner` — Critical Notification Strip
 
+**Status:** `implemented` · JS API: `components/alert-banner.js`
+
 **Purpose:** Full-width or panel-width alert notification. Not a persistent component — appears on event.
 
 **CSS Classes:**
 ```
-.s9-alert               — container (position: fixed or absolute top)
-.s9-alert--critical     — magenta border + pulse
+.s9-alert               — container (position: absolute, top of parent)
+.s9-alert--critical     — magenta border + alert-pulse animation
 .s9-alert--warning      — amber border
-.s9-alert__icon         — ⚠ or ⬡ symbol
-.s9-alert__code         — alert code ID (e.g. "ERR-9C:0x4F")
-.s9-alert__message      — alert text
-.s9-alert__timestamp    — UTC timestamp
-.s9-alert__dismiss      — click to close
+.s9-alert--dismissing   — opacity 0 transition 0.3s before DOM removal
+.s9-alert__icon         — ⚠ or ⬡ symbol, left-side
+.s9-alert__body         — flex column: code + message
+.s9-alert__code         — alert code ID (e.g. "ERR-9C:0x4F"), --text-alert, font-terminal
+.s9-alert__message      — alert text, --text-primary
+.s9-alert__timestamp    — UTC timestamp, --text-dim, right-aligned
+.s9-alert__dismiss      — ✕ close button, right side
 ```
 
 **Effect:** Enters with glitch animation (0.3s). Magenta border pulses at 1Hz. Auto-dismiss after 8s unless `data-persistent="true"`.
+
+**JS API:** `components/alert-banner.js`
+```js
+import { showAlert, dismissAlert } from './components/alert-banner.js';
+```
+- `showAlert(containerEl, { level, code, message, persistent })` — creates banner, starts 8s timer, returns element
+- `dismissAlert(bannerEl)` — triggers dismiss animation, removes from DOM, fires `s9:alert-dismissed`
+
+**Custom Events:**
+- `s9:alert-dismissed` on `.s9-alert` → `{ code }`
 
 ---
 
 ## 9. `SequenceLog` — Operation Timeline
 
+**Status:** `implemented` · JS API: `components/sequence-log.js`
+
 **Purpose:** Shows a chronological sequence of operations/steps with status indicators.
 
 **CSS Classes:**
 ```
-.s9-sequence            — container
-.s9-sequence__entry     — single step row
-.s9-sequence__entry--complete  — green left indicator
-.s9-sequence__entry--active    — cyan + animated dot
-.s9-sequence__entry--failed    — magenta + glitch
-.s9-sequence__entry--pending   — dim, dashed left border
-.s9-sequence__step-id   — step number/ID
-.s9-sequence__step-name — step label
-.s9-sequence__step-jp   — Japanese label
-.s9-sequence__step-time — duration or timestamp
-.s9-sequence__step-status — status text
+.s9-sequence                    — container
+.s9-sequence__entry             — single step row (flex, left border accent)
+.s9-sequence__entry--complete   — green left indicator
+.s9-sequence__entry--active     — cyan + animated dot (status-blink)
+.s9-sequence__entry--failed     — magenta + glitch
+.s9-sequence__entry--pending    — dim, dashed left border
+.s9-sequence__entry--fail-flash — transient flash animation (2x flicker before failed settles)
+.s9-sequence__indicator         — colored left-border dot/line (4px wide)
+.s9-sequence__content           — right side flex column
+.s9-sequence__step-id           — step number/ID, --text-dim, small
+.s9-sequence__step-name         — step label, --text-primary, font-holo
+.s9-sequence__step-jp           — Japanese label, --text-dim, font-jp
+.s9-sequence__step-meta         — flex row container for status + time
+.s9-sequence__step-time         — duration or timestamp, --text-dim, right-aligned
+.s9-sequence__step-status       — status text, colored per state
 ```
 
-**Effect:** Active entry pulses. Step transitions animate with a 0.2s sweep. Failed steps flash twice before settling.
+**Effect:** Active entry indicator pulses (status-blink keyframe). Step transitions 0.2s ease. Failed steps play `s9-fail-flash` (2x opacity flicker) before settling on magenta.
+
+**JS API:** `components/sequence-log.js`
+```js
+import { setStepState } from './components/sequence-log.js';
+```
+- `setStepState(entryEl, state)` — state: `'complete'|'active'|'failed'|'pending'`; removes all state classes; adds correct modifier; if 'failed' plays flash animation; fires `s9:sequence-step-change`
+
+**Custom Events:**
+- `s9:sequence-step-change` on `.s9-sequence__entry` → `{ state }`
 
 ---
 
