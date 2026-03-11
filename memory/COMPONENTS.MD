@@ -261,3 +261,62 @@ import { mountPanel, unmountPanel, panelAlert, panelClearAlert, panelSetActive }
 .s9-ov { display: grid; grid-template-rows: 36px 1fr 28px; height: 100vh; }
 .s9-ov__workspace { display: grid; grid-template-columns: 280px 1fr 260px; gap: 4px; }
 ```
+
+---
+
+## 11. Theming System
+
+**Status:** `implemented` · Spec: `specs/theming.md`
+
+**Mechanism:** `[data-theme]` attribute on `<html>`. Default theme (`matrixgreen`) has no attribute — `:root` provides its values. All other themes use `[data-theme="name"]` selectors (specificity 0,1,0).
+
+**File Structure:**
+```
+aesthetic/variables/
+  base.css               — layout/typography/structural constants (never themed)
+  themes/matrixgreen.css — :root default (dark green-black, teal accent, orange alert)
+  themes/gits.css        — [data-theme="gits"] cyan/magenta GitS canon
+  themes/amber.css       — [data-theme="amber"] warm amber phosphor
+  themes/phosphor.css    — [data-theme="phosphor"] green CRT monochrome
+  themes/blood.css       — [data-theme="blood"] red/crimson hostile mode
+  index.css              — barrel import (same path as before — no consumer changes)
+  theme.js               — JS API
+```
+
+**JS API:** `aesthetic/variables/theme.js`
+```js
+import { setTheme, getTheme, applyPersistedTheme, THEMES }
+  from '/aesthetic/variables/theme.js';
+```
+- `THEMES` — `['matrixgreen', 'gits', 'amber', 'phosphor', 'blood']`
+- `getTheme()` — returns active theme name; `'matrixgreen'` when no attribute
+- `setTheme(name, persist?)` — idempotent; unknown names → console.warn + no-op; default theme removes attribute
+- `applyPersistedTheme()` — call once in `<head>` after stylesheet links
+
+**Custom Event:**
+- `s9:theme-change` on `document` → `{ from: string, to: string }`
+
+**Theme Variable Contract (28 variables per theme):**
+Backgrounds: `--void`, `--void-secondary`, `--panel-bg`, `--panel-bg-solid`
+Borders: `--panel-border`, `--panel-border-active`, `--panel-border-alert`, `--panel-border-dim`
+Neons: `--neon-cyan`, `--neon-green`, `--neon-magenta`, `--neon-amber`
+Text: `--text-primary`, `--text-secondary`, `--text-dim`, `--text-alert`, `--text-warning`, `--text-ok`
+States: `--row-highlight`, `--row-hover`
+Glows: `--glow-cyan`, `--glow-green`, `--glow-magenta`, `--glow-amber`, `--glow-text-cyan`, `--glow-text-green`, `--glow-text-magenta`, `--glow-text-amber`
+
+**Usage — HTML:**
+```html
+<!-- Default: no attribute (matrixgreen) -->
+<html lang="en">
+<!-- Switch: -->
+<html lang="en" data-theme="gits">
+```
+
+**Usage — Head:**
+```html
+<link rel="stylesheet" href="/aesthetic/index.css" />
+<script type="module">
+  import { applyPersistedTheme } from '/aesthetic/variables/theme.js';
+  applyPersistedTheme();
+</script>
+```

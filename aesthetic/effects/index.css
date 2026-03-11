@@ -21,8 +21,8 @@
     0deg,
     transparent         0px,
     transparent         2px,
-    rgba(0, 240, 255, 0.03) 2px,
-    rgba(0, 240, 255, 0.03) 4px
+    color-mix(in srgb, var(--neon-cyan) 3%, transparent) 2px,
+    color-mix(in srgb, var(--neon-cyan) 3%, transparent) 4px
   );
   pointer-events: none;
   z-index: 1;
@@ -87,8 +87,8 @@
    Apply .alert-pulse to any element in critical state.
 ---------------------------------------------------------- */
 @keyframes alert-pulse {
-  0%, 100% { box-shadow: 0 0 6px var(--neon-magenta), inset 0 0 6px rgba(255, 0, 204, 0.1); }
-  50%       { box-shadow: 0 0 20px var(--neon-magenta), inset 0 0 12px rgba(255, 0, 204, 0.25); }
+  0%, 100% { box-shadow: 0 0 6px var(--neon-magenta), inset 0 0 6px color-mix(in srgb, var(--neon-magenta) 10%, transparent); }
+  50%       { box-shadow: 0 0 20px var(--neon-magenta), inset 0 0 12px color-mix(in srgb, var(--neon-magenta) 25%, transparent); }
 }
 
 .alert-pulse {

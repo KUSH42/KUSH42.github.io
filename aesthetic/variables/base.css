@@ -1,0 +1,38 @@
+/* ============================================================
+   aesthetic/variables/base.css
+   GitS UI — Non-themeable constants
+   Layout dimensions, typography, structural constants.
+   These NEVER change per theme — zero colour/glow properties.
+   ============================================================ */
+
+:root {
+  /* ----------------------------------------------------------
+     Layout constants  (referenced by structure plane)
+  ---------------------------------------------------------- */
+  --topbar-height:    36px;
+  --statusbar-height: 28px;
+  --footer-height:    24px;
+  --sidebar-left:     280px;
+  --sidebar-right:    260px;
+  --panel-gap:        4px;
+  --panel-padding:    12px;
+  --header-height:    32px;
+  --header-gap:       8px;
+
+  /* ----------------------------------------------------------
+     Typography
+  ---------------------------------------------------------- */
+  --font-holo:     'Orbitron', 'Rajdhani', sans-serif;
+  --font-terminal: 'Share Tech Mono', 'Courier New', monospace;
+  --font-jp:       'Noto Sans JP', sans-serif;
+
+  --letter-spacing-wide:   0.2em;
+  --letter-spacing-normal: 0.05em;
+
+  /* ----------------------------------------------------------
+     Structural constants
+  ---------------------------------------------------------- */
+  --border-width:        1px;
+  --border-radius-panel: 2px;   /* max 4px per aesthetic guidelines */
+  --border-accent-width: 3px;   /* left accent bar on active panels */
+}

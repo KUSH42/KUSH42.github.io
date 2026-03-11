@@ -5,7 +5,7 @@
 | Field | Value |
 |---|---|
 | **Name** | `Theming` |
-| **Status** | `approved` |
+| **Status** | `implemented` |
 | **Scope** | `aesthetic/variables/` — CSS variables only |
 | **Mechanism** | `[data-theme]` attribute on `<html>` element |
 | **Breaking change** | `no` — additive; all existing class names and layout unchanged |
@@ -424,23 +424,23 @@ Current file has all values in a single `:root` block. After implementation:
 
 ## Quality Gates
 
-- [ ] Spec approved before any code written
-- [ ] `base.css` contains zero colour/glow properties
-- [ ] Every theme file defines all variables in the Theme Variable Contract (above) — no gaps
-- [ ] All glow variables use literal hex values (no var() references inside glow definitions)
-- [ ] `[data-theme="x"]` attribute selector used (specificity 0,1,0) — must exceed `:root` (0,0,1) to override defaults; `html[data-theme]` (0,1,1) is forbidden
-- [ ] Default theme (`matrixgreen`) applied via `:root` — requires no `data-theme` attribute; no `[data-theme="matrixgreen"]` rule exists
-- [ ] `setTheme('matrixgreen')` removes the `data-theme` attribute; `getTheme()` returns `'matrixgreen'` when attribute is absent
-- [ ] `applyPersistedTheme()` called in `<head>` after stylesheet link tags
-- [ ] `s9:theme-change` detail contains both `from` and `to` keys as exact theme name strings (e.g. `{ from: 'matrixgreen', to: 'amber' }`)
-- [ ] `setTheme()` with same theme name twice is a no-op — attribute unchanged, event not fired
-- [ ] `setTheme()` with unknown name is a no-op; logs `console.warn` in development
-- [ ] `aesthetic/effects/index.css` scanlines (`.holographic::after`) updated to `color-mix(in srgb, var(--neon-cyan) 3%, transparent)`
-- [ ] `aesthetic/effects/index.css` alert-pulse insets updated: `rgba(255, 0, 204, 0.1)` → `color-mix(in srgb, var(--neon-magenta) 10%, transparent)` and `rgba(255, 0, 204, 0.25)` → `color-mix(in srgb, var(--neon-magenta) 25%, transparent)`
-- [ ] All four themes (gits, amber, phosphor, blood) define all eight glow variables (`--glow-cyan` through `--glow-text-amber`) with literal hex values — no gaps
-- [ ] Visual test page exists at `tests/visual/theming.html`
-- [ ] Visual test: all four themes render without unstyled flash on switch
-- [ ] Visual test: scanline colour changes per theme (not fixed cyan)
-- [ ] Visual test: alert-pulse inset colour changes per theme
-- [ ] Visual test: text contrast ≥ 4.5:1 in all four themes (spot-check header label against panel-bg)
-- [ ] `aesthetic/variables/index.css` still importable from same path — no consumer file changes required
+- [x] Spec approved before any code written
+- [x] `base.css` contains zero colour/glow properties
+- [x] Every theme file defines all variables in the Theme Variable Contract (above) — no gaps
+- [x] All glow variables use literal hex values (no var() references inside glow definitions)
+- [x] `[data-theme="x"]` attribute selector used (specificity 0,1,0) — must exceed `:root` (0,0,1) to override defaults; `html[data-theme]` (0,1,1) is forbidden
+- [x] Default theme (`matrixgreen`) applied via `:root` — requires no `data-theme` attribute; no `[data-theme="matrixgreen"]` rule exists
+- [x] `setTheme('matrixgreen')` removes the `data-theme` attribute; `getTheme()` returns `'matrixgreen'` when attribute is absent
+- [x] `applyPersistedTheme()` called in `<head>` after stylesheet link tags
+- [x] `s9:theme-change` detail contains both `from` and `to` keys as exact theme name strings (e.g. `{ from: 'matrixgreen', to: 'amber' }`)
+- [x] `setTheme()` with same theme name twice is a no-op — attribute unchanged, event not fired
+- [x] `setTheme()` with unknown name is a no-op; logs `console.warn` in development
+- [x] `aesthetic/effects/index.css` scanlines (`.holographic::after`) updated to `color-mix(in srgb, var(--neon-cyan) 3%, transparent)`
+- [x] `aesthetic/effects/index.css` alert-pulse insets updated: `rgba(255, 0, 204, 0.1)` → `color-mix(in srgb, var(--neon-magenta) 10%, transparent)` and `rgba(255, 0, 204, 0.25)` → `color-mix(in srgb, var(--neon-magenta) 25%, transparent)`
+- [x] All four themes (gits, amber, phosphor, blood) define all eight glow variables (`--glow-cyan` through `--glow-text-amber`) with literal hex values — no gaps
+- [x] Visual test page exists at `tests/visual/theming.html`
+- [x] Visual test: all four themes render without unstyled flash on switch
+- [x] Visual test: scanline colour changes per theme (not fixed cyan)
+- [x] Visual test: alert-pulse inset colour changes per theme
+- [x] Visual test: text contrast ≥ 4.5:1 in all four themes (spot-check header label against panel-bg)
+- [x] `aesthetic/variables/index.css` still importable from same path — no consumer file changes required

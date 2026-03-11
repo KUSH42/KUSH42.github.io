@@ -1,90 +1,13 @@
 /* ============================================================
    aesthetic/variables/index.css
-   GitS UI — CSS Custom Property Definitions
-   Single source of truth for all colors, glows, spacing, type.
-   Import this file before any other aesthetic or component CSS.
+   GitS UI — Variables barrel import
+   Import this single file to get all CSS custom properties.
+   Order: base (non-colour constants) then themes.
    ============================================================ */
 
-:root {
-  /* ----------------------------------------------------------
-     Backgrounds
-  ---------------------------------------------------------- */
-  --void:             #05080f;
-  --void-secondary:   #080c14;
-  --panel-bg:         rgba(8, 12, 20, 0.85);
-  --panel-bg-solid:   #080c14;
-
-  /* ----------------------------------------------------------
-     Borders
-  ---------------------------------------------------------- */
-  --panel-border:         rgba(0, 240, 255, 0.3);
-  --panel-border-active:  rgba(0, 240, 255, 0.9);
-  --panel-border-alert:   rgba(255, 0, 204, 0.9);
-  --panel-border-dim:     rgba(0, 240, 255, 0.12);
-
-  /* ----------------------------------------------------------
-     Neon primaries
-  ---------------------------------------------------------- */
-  --neon-cyan:    #00f0ff;
-  --neon-green:   #00ff9d;
-  --neon-magenta: #ff00cc;
-  --neon-amber:   #ffb300;
-
-  /* ----------------------------------------------------------
-     Text
-  ---------------------------------------------------------- */
-  --text-primary:   #00f0ff;
-  --text-secondary: rgba(0, 240, 255, 0.65);
-  --text-dim:       rgba(0, 240, 255, 0.35);
-  --text-alert:     #ff00cc;
-  --text-warning:   #ffb300;
-  --text-ok:        #00ff9d;
-
-  /* ----------------------------------------------------------
-     Interactive states
-  ---------------------------------------------------------- */
-  --row-highlight: #1a2e1a;
-  --row-hover:     rgba(0, 240, 255, 0.06);
-
-  /* ----------------------------------------------------------
-     Glows  (use in box-shadow / text-shadow)
-  ---------------------------------------------------------- */
-  --glow-cyan:    0 0 8px #00f0ff, 0 0 20px rgba(0, 240, 255, 0.5);
-  --glow-green:   0 0 8px #00ff9d, 0 0 20px rgba(0, 255, 157, 0.5);
-  --glow-magenta: 0 0 8px #ff00cc, 0 0 20px rgba(255, 0, 204, 0.5);
-  --glow-amber:   0 0 8px #ffb300, 0 0 20px rgba(255, 179, 0, 0.5);
-
-  --glow-text-cyan:    0 0 5px #00f0ff, 0 0 10px #00f0ff, 0 0 20px #00f0ff;
-  --glow-text-green:   0 0 5px #00ff9d, 0 0 10px #00ff9d, 0 0 20px #00ff9d;
-  --glow-text-magenta: 0 0 5px #ff00cc, 0 0 10px #ff00cc, 0 0 20px #ff00cc;
-
-  /* ----------------------------------------------------------
-     Layout constants  (structure plane may reference these)
-  ---------------------------------------------------------- */
-  --topbar-height:    36px;
-  --statusbar-height: 28px;
-  --footer-height:    24px;
-  --sidebar-left:     280px;
-  --sidebar-right:    260px;
-  --panel-gap:        4px;
-  --panel-padding:    12px;
-  --header-height:    32px;
-  --header-gap:       8px;
-
-  /* ----------------------------------------------------------
-     Typography
-  ---------------------------------------------------------- */
-  --font-holo:     'Orbitron', 'Rajdhani', sans-serif;
-  --font-terminal: 'Share Tech Mono', 'Courier New', monospace;
-  --font-jp:       'Noto Sans JP', sans-serif;
-
-  --letter-spacing-wide:   0.2em;
-  --letter-spacing-normal: 0.05em;
-
-  /* ----------------------------------------------------------
-     Borders — structural constants
-  ---------------------------------------------------------- */
-  --border-width:        1px;
-  --border-radius-panel: 2px;   /* max 4px per SKILLS.MD */
-  --border-accent-width: 3px;   /* left accent bar on active panels */
-}
+@import './base.css';
+@import './themes/matrixgreen.css';
+@import './themes/gits.css';
+@import './themes/amber.css';
+@import './themes/phosphor.css';
+@import './themes/blood.css';
