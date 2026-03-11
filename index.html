@@ -143,14 +143,27 @@
       color: var(--text-dim);
     }
 
-    /* ── Center split: ThreatMap top, Terminal bottom ── */
+    /* ── Center tab views ───────────────────────────── */
     .s9-ov__center {
+      position: relative; /* already set in layout CSS, belt+suspenders */
+    }
+    .center__view {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
       gap: var(--panel-gap);
+      /* hidden by default — JS toggles visibility */
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .center__view--active {
+      visibility: visible;
+      pointer-events: auto;
     }
     .center__map { flex: 1; min-height: 0; position: relative; }
     .center__terminal { height: 200px; flex-shrink: 0; }
+    .center__matrix { flex: 1; min-height: 0; }
 
     /* ── Left / right flex grow helpers ────────────── */
     .s9-ov__left .s9-panel:nth-child(1) { flex: 2; }
@@ -168,9 +181,9 @@
   <header class="s9-ov__topbar">
     <span class="topbar__op">OPERATION: GHOST BABEL<span class="topbar__op-jp">／ゴーストバベル</span></span>
     <div class="topbar__divider"></div>
-    <span class="topbar__tab topbar__tab--active">OVERVIEW</span>
-    <span class="topbar__tab">TACTICAL</span>
-    <span class="topbar__tab">NETWORK</span>
+    <span class="topbar__tab topbar__tab--active" data-tab="overview" role="tab" aria-selected="true" tabindex="0">OVERVIEW</span>
+    <span class="topbar__tab" data-tab="tactical" role="tab" aria-selected="false" tabindex="0">TACTICAL</span>
+    <span class="topbar__tab" data-tab="network" role="tab" aria-selected="false" tabindex="0">NETWORK</span>
     <div class="topbar__spacer"></div>
     <span class="topbar__clock" id="topbar-clock">UTC 00:00:00</span>
     <div class="topbar__divider"></div>
@@ -274,33 +287,75 @@
   <!-- ── CENTER ─────────────────────────────────────────────── -->
   <main class="s9-ov__center">
 
-    <!-- ThreatMap -->
-    <div class="center__map s9-threatmap" role="img"
-         aria-label="GLOBAL THREAT VISUALIZATION"
-         data-s9-id="threatmap-1" data-threat-level="0">
-      <!-- canvas + overlay injected by initThreatMap() -->
-    </div>
+    <!-- VIEW: OVERVIEW — ThreatMap + Terminal -->
+    <div class="center__view center__view--active" data-view="overview">
 
-    <!-- CommandTerminal -->
-    <div class="center__terminal s9-panel" data-s9-id="terminal-1">
-      <div class="s9-panel__header">
-        <span class="s9-panel__header-label">COMMAND INTERFACE</span>
-        <span class="s9-panel__header-jp">コマンドインターフェース</span>
-        <span class="s9-panel__header-status">SECTION 9 ▶</span>
+      <div class="center__map s9-threatmap" role="img"
+           aria-label="GLOBAL THREAT VISUALIZATION"
+           data-s9-id="threatmap-1" data-threat-level="0">
+        <!-- canvas + overlay injected by initThreatMap() -->
       </div>
-      <div class="s9-panel__body" style="padding: 0; display: flex; flex-direction: column;">
-        <div class="s9-terminal" role="region" aria-label="COMMAND TERMINAL"
-             data-s9-id="terminal-1">
-          <div class="s9-terminal__output" role="log" aria-live="polite"
-               aria-label="Terminal output" tabindex="0"></div>
-          <div class="s9-terminal__input-row">
-            <span class="s9-terminal__prompt" aria-hidden="true">[S9]▶</span>
-            <input class="s9-terminal__input" type="text"
-                   autocomplete="off" autocorrect="off" spellcheck="false"
-                   aria-label="Command input" placeholder="type a command…" />
+
+      <div class="center__terminal s9-panel" data-s9-id="terminal-1">
+        <div class="s9-panel__header">
+          <span class="s9-panel__header-label">COMMAND INTERFACE</span>
+          <span class="s9-panel__header-jp">コマンドインターフェース</span>
+          <span class="s9-panel__header-status">SECTION 9 ▶</span>
+        </div>
+        <div class="s9-panel__body" style="padding: 0; display: flex; flex-direction: column;">
+          <div class="s9-terminal" role="region" aria-label="COMMAND TERMINAL"
+               data-s9-id="terminal-1">
+            <div class="s9-terminal__output" role="log" aria-live="polite"
+                 aria-label="Terminal output" tabindex="0"></div>
+            <div class="s9-terminal__input-row">
+              <span class="s9-terminal__prompt" aria-hidden="true">[S9]▶</span>
+              <input class="s9-terminal__input" type="text"
+                     autocomplete="off" autocorrect="off" spellcheck="false"
+                     aria-label="Command input" placeholder="type a command…" />
+            </div>
           </div>
         </div>
       </div>
+
+    </div>
+
+    <!-- VIEW: TACTICAL — ThreatMap fullscreen (no terminal) -->
+    <div class="center__view" data-view="tactical">
+
+      <div class="center__map s9-panel" data-s9-id="tactical-panel">
+        <div class="s9-panel__header">
+          <span class="s9-panel__header-label">TACTICAL OVERVIEW</span>
+          <span class="s9-panel__header-jp">戦術概況</span>
+          <span class="s9-panel__header-status" id="tactical-threat">THREAT: —</span>
+        </div>
+        <div class="s9-panel__body" style="padding: 0; position: relative;">
+          <div class="s9-threatmap" id="threatmap-tactical" role="img"
+               aria-label="TACTICAL THREAT OVERVIEW"
+               data-s9-id="threatmap-2" data-threat-level="0"
+               style="position:absolute;inset:0;">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW: NETWORK — NetworkMatrix -->
+    <div class="center__view" data-view="network">
+
+      <div class="s9-panel center__matrix" data-s9-id="matrix-panel">
+        <div class="s9-panel__header">
+          <span class="s9-panel__header-label">NETWORK TOPOLOGY</span>
+          <span class="s9-panel__header-jp">ネットワークトポロジー</span>
+          <span class="s9-panel__header-status" id="matrix-status">MAPPING</span>
+        </div>
+        <div class="s9-panel__body" style="padding: 0;">
+          <div class="s9-matrix" role="region" aria-label="NETWORK TOPOLOGY"
+               data-s9-id="matrix-1">
+            <!-- SVG injected by initMatrix() -->
+          </div>
+        </div>
+      </div>
+
     </div>
 
   </main>
@@ -413,6 +468,7 @@ import { mountStream, appendRow }   from '/components/data-stream.js';
 import { setValue as setTelemetry } from '/components/system-telemetry.js';
 import { glitchUpdate, setStatusBarValue } from '/components/neural-readout.js';
 import { initThreatMap, addNode, setThreatLevel } from '/components/threat-map.js';
+import { initMatrix }               from '/components/network-matrix.js';
 import { mountPanel }               from '/components/panel-shell.js';
 
 // ── UTC clock ────────────────────────────────────────────────
@@ -433,6 +489,41 @@ setInterval(tickClock, 1000);
 
 // ── Mount panels ─────────────────────────────────────────────
 document.querySelectorAll('.s9-panel').forEach(mountPanel);
+
+// ── Tab switching ─────────────────────────────────────────────
+const tabs  = document.querySelectorAll('.topbar__tab[data-tab]');
+const views = document.querySelectorAll('.center__view[data-view]');
+let matrixInited = false;
+let tacticalInited = false;
+
+function switchTab(name) {
+  tabs.forEach(t => {
+    const active = t.dataset.tab === name;
+    t.classList.toggle('topbar__tab--active', active);
+    t.setAttribute('aria-selected', active);
+  });
+  views.forEach(v => {
+    v.classList.toggle('center__view--active', v.dataset.view === name);
+  });
+
+  if (name === 'network' && !matrixInited) {
+    matrixInited = true;
+    initNetworkMatrix();
+  }
+  if (name === 'tactical' && !tacticalInited) {
+    tacticalInited = true;
+    initTactical();
+  }
+
+  printLine(termEl, `VIEW: ${name.toUpperCase()} ACTIVATED`, 'sys');
+}
+
+tabs.forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  tab.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab.dataset.tab); }
+  });
+});
 
 // ── CommandTerminal ───────────────────────────────────────────
 const termEl = document.querySelector('.s9-terminal');
@@ -609,6 +700,67 @@ threatEl.addEventListener('s9:threatmap-node-select', (e) => {
     alert: level >= 41,
   });
 });
+
+// ── Tactical ThreatMap (init on first tab visit) ──────────────
+function initTactical() {
+  const el = document.getElementById('threatmap-tactical');
+  const { initThreatMap: iTM, addNode: aN, setThreatLevel: sTL } =
+    { initThreatMap, addNode, setThreatLevel };
+  iTM(el, { autoRotate: true, bloomStrength: 0.7 });
+  NODES.forEach((node, i) => {
+    setTimeout(() => aN(el, node), i * 200 + 300);
+  });
+  setTimeout(() => sTL(el, 55), NODES.length * 200 + 800);
+  el.addEventListener('s9:threatmap-node-select', (e) => {
+    document.getElementById('tactical-threat').textContent =
+      `THREAT: ${e.detail.level} — ${e.detail.label}`;
+  });
+}
+
+// ── NetworkMatrix (init on first tab visit) ───────────────────
+function initNetworkMatrix() {
+  const matrixEl = document.querySelector('.s9-matrix');
+
+  const NM_NODES = [
+    { id: 'hub',    label: 'HQ',      x: 50, y: 50, root: true },
+    { id: 'alpha',  label: 'ALPHA',   x: 20, y: 20 },
+    { id: 'beta',   label: 'BETA',    x: 80, y: 20 },
+    { id: 'gamma',  label: 'GAMMA',   x: 20, y: 80 },
+    { id: 'delta',  label: 'DELTA',   x: 80, y: 80 },
+    { id: 'relay1', label: 'RELAY-1', x: 35, y: 35 },
+    { id: 'relay2', label: 'RELAY-2', x: 65, y: 35 },
+    { id: 'relay3', label: 'RELAY-3', x: 35, y: 65 },
+    { id: 'relay4', label: 'RELAY-4', x: 65, y: 65 },
+  ];
+
+  const NM_EDGES = [
+    { id: 'e-hub-r1',  from: 'hub',   to: 'relay1', active: true  },
+    { id: 'e-hub-r2',  from: 'hub',   to: 'relay2', active: true  },
+    { id: 'e-hub-r3',  from: 'hub',   to: 'relay3', active: false },
+    { id: 'e-hub-r4',  from: 'hub',   to: 'relay4', active: false },
+    { id: 'e-r1-a',   from: 'relay1', to: 'alpha',  active: true  },
+    { id: 'e-r2-b',   from: 'relay2', to: 'beta',   active: false },
+    { id: 'e-r3-g',   from: 'relay3', to: 'gamma',  active: false },
+    { id: 'e-r4-d',   from: 'relay4', to: 'delta',  active: false },
+    { id: 'e-a-b',    from: 'alpha',  to: 'beta',   active: false },
+    { id: 'e-g-d',    from: 'gamma',  to: 'delta',  active: false },
+  ];
+
+  initMatrix(matrixEl, { nodes: NM_NODES, edges: NM_EDGES });
+
+  document.getElementById('matrix-status').textContent = 'LIVE';
+
+  // Echo node clicks to terminal + stream
+  matrixEl.addEventListener('s9:matrix-node-click', (e) => {
+    printLine(termEl, `MATRIX NODE: ${e.detail.label} — ${e.detail.nodeId}`, 'info');
+    appendRow(streamEl, {
+      timestamp: new Date().toISOString(),
+      source: 'NET',
+      message: `NODE SELECTED: ${e.detail.label}`,
+      alert: false,
+    });
+  });
+}
 </script>
 </body>
 </html>
