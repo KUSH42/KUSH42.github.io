@@ -153,8 +153,9 @@
       pointer-events: auto;
     }
     .center__map { flex: 1; min-height: 0; position: relative; }
-    .center__bottom { display: flex; flex-direction: row; height: 250px; flex-shrink: 0; gap: var(--panel-gap); }
-    .center__radar  { width: 250px; flex-shrink: 0; }
+    .center__bottom { display: flex; flex-direction: row; height: 325px; flex-shrink: 0; gap: var(--panel-gap); }
+    .center__radar      { width: 250px; flex-shrink: 0; }
+    .center__telescreen { width: 576px; flex-shrink: 0; aspect-ratio: 4/3; }
     .center__terminal { flex: 1; min-width: 0; }
     .center__matrix { flex: 1; min-height: 0; }
 
@@ -519,6 +520,246 @@
     }
     .node-popup__table tr { line-height: 1.75; }
 
+    /* ── Telescreen ─────────────────────────────────────────── */
+    .s9-telescreen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* Base image / canvas — desaturate + slight contrast boost for CRT base */
+    .s9-telescreen__img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      filter: grayscale(0.75) contrast(1.25) brightness(0.7);
+      display: block;
+      image-rendering: pixelated;
+      transform: scale(1.15);
+    }
+
+    /* Theme-color tint overlay via mix-blend-mode */
+    .s9-telescreen__tint {
+      position: absolute;
+      inset: 0;
+      background: var(--neon-cyan);
+      mix-blend-mode: color;
+      opacity: 0.45;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── Scanlines — slow drift downward with subtle opacity pulse ── */
+    @keyframes ts-scanlines-drift {
+      0%   { background-position: 0 0;   opacity: 0.38; }
+      30%  {                              opacity: 0.42; }
+      65%  {                              opacity: 0.36; }
+      100% { background-position: 0 8px; opacity: 0.38; }
+    }
+    .s9-telescreen__scanlines {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 2px,
+        rgba(0, 0, 0, 0.55) 2px,
+        rgba(0, 0, 0, 0.55) 4px
+      );
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 2;
+      animation: ts-scanlines-drift 3.2s linear infinite;
+    }
+
+    /* Vignette */
+    .s9-telescreen__vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse at center,
+        transparent 45%,
+        rgba(0, 0, 0, 0.75) 100%
+      );
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    /* Phosphor bloom — inner glow ring */
+    .s9-telescreen__bloom {
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 28px 6px color-mix(in srgb, var(--neon-cyan) 25%, transparent);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    /* ── Phase interference bands — two async layers ── */
+    @keyframes ts-phase-a {
+      0%   { transform: translateY(-100%); opacity: 0;    }
+      8%   {                               opacity: 0.09; }
+      45%  {                               opacity: 0.06; }
+      92%  {                               opacity: 0.09; }
+      100% { transform: translateY(110%);  opacity: 0;    }
+    }
+    @keyframes ts-phase-b {
+      0%   { transform: translateY(-100%); opacity: 0;    }
+      12%  {                               opacity: 0.07; }
+      55%  {                               opacity: 0.04; }
+      88%  {                               opacity: 0.07; }
+      100% { transform: translateY(110%);  opacity: 0;    }
+    }
+    @keyframes ts-phase-c {
+      /* occasional sharp glitch band */
+      0%,  89%  { opacity: 0; transform: translateY(30%);  }
+      90%       { opacity: 0.13; transform: translateY(28%); }
+      91%       { opacity: 0.08; transform: translateY(32%); }
+      92%       { opacity: 0.15; transform: translateY(27%); }
+      93%       { opacity: 0;    transform: translateY(35%); }
+      100%      { opacity: 0; transform: translateY(35%);  }
+    }
+    .s9-telescreen__phase-a {
+      position: absolute;
+      left: 0; right: 0;
+      height: 55px;
+      background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        color-mix(in srgb, var(--neon-cyan) 18%, transparent) 40%,
+        color-mix(in srgb, var(--neon-cyan) 8%,  transparent) 70%,
+        transparent 100%
+      );
+      pointer-events: none;
+      z-index: 5;
+      animation: ts-phase-a 9.3s ease-in-out infinite;
+      animation-delay: -1.7s;
+    }
+    .s9-telescreen__phase-b {
+      position: absolute;
+      left: 0; right: 0;
+      height: 30px;
+      background: linear-gradient(
+        to bottom,
+        transparent 0%,
+        color-mix(in srgb, var(--neon-cyan) 10%, transparent) 50%,
+        transparent 100%
+      );
+      pointer-events: none;
+      z-index: 5;
+      animation: ts-phase-b 13.7s ease-in-out infinite;
+      animation-delay: -5.4s;
+    }
+    .s9-telescreen__phase-c {
+      position: absolute;
+      left: 0; right: 0;
+      height: 10px;
+      background: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+      pointer-events: none;
+      z-index: 5;
+      animation: ts-phase-c 17s steps(1) infinite;
+      animation-delay: -3.1s;
+    }
+
+    /* ── Static scatter — three noise tiles at diff speeds/sizes ── */
+    @keyframes ts-static-a {
+      0%   { transform: translate(0,    0);    opacity: 0.035; }
+      20%  { transform: translate(-3px, 2px);  opacity: 0.028; }
+      40%  { transform: translate(2px,  -1px); opacity: 0.040; }
+      60%  { transform: translate(-1px, 3px);  opacity: 0.030; }
+      80%  { transform: translate(3px,  -2px); opacity: 0.036; }
+      100% { transform: translate(0,    0);    opacity: 0.035; }
+    }
+    @keyframes ts-static-b {
+      0%   { background-position: 0   0;   opacity: 0.022; }
+      25%  { background-position: 40px 10px; opacity: 0.018; }
+      50%  { background-position: 10px 30px; opacity: 0.026; }
+      75%  { background-position: 50px 20px; opacity: 0.020; }
+      100% { background-position: 0   0;   opacity: 0.022; }
+    }
+    @keyframes ts-static-burst {
+      /* rare opacity spike simulating static burst */
+      0%,  94%  { opacity: 0.015; }
+      95%       { opacity: 0.12; }
+      96%       { opacity: 0.04; }
+      97%       { opacity: 0.10; }
+      98%       { opacity: 0.015; }
+      100%      { opacity: 0.015; }
+    }
+    .s9-telescreen__static {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 3;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='320' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      animation: ts-static-a 0.55s steps(3) infinite, ts-static-burst 23s steps(1) infinite;
+      animation-delay: 0s, -7.2s;
+    }
+    .s9-telescreen__static-b {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 3;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='480'%3E%3Cfilter id='n2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='480' filter='url(%23n2)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      animation: ts-static-b 1.1s steps(2) infinite;
+      animation-delay: -0.4s;
+    }
+
+    /* ── Grain filter overlay ───────────────────────────────── */
+    .s9-telescreen__grain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 4;
+      opacity: 0.28;
+      filter: url(#ts-grain-filter);
+      background: #888; /* neutral mid-gray — grain renders as luminance variation */
+      mix-blend-mode: overlay;
+    }
+
+    /* Feed ID label bottom-left */
+    .s9-telescreen__feed-id {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      font-family: var(--font-terminal);
+      font-size: 0.42rem;
+      letter-spacing: 0.1em;
+      color: color-mix(in srgb, var(--neon-cyan) 70%, transparent);
+      text-shadow: 0 0 6px var(--neon-cyan);
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    /* REC indicator top-right */
+    .s9-telescreen__rec {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-family: var(--font-terminal);
+      font-size: 0.42rem;
+      letter-spacing: 0.08em;
+      color: var(--neon-magenta);
+      text-shadow: 0 0 6px var(--neon-magenta);
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      pointer-events: none;
+      z-index: 6;
+    }
+    .s9-telescreen__rec::before {
+      content: '●';
+      animation: status-blink 1.2s ease-in-out infinite;
+    }
+
     /* ── Pulse Radar ───────────────────────────────────────── */
     .s9-radar { position: relative; width: 100%; height: 100%; overflow: hidden; }
     .s9-radar__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; }
@@ -679,10 +920,56 @@
           </div>
         </div>
 
+        <!-- Telescreen Feed -->
+        <div class="center__telescreen s9-panel" data-s9-id="telescreen-1">
+          <div class="s9-panel__header">
+            <span class="s9-panel__header-label">TELESCREEN</span>
+            <span class="s9-panel__header-jp">監視映像</span>
+            <span class="s9-panel__header-status" id="telescreen-status">● FEED ACTIVE</span>
+          </div>
+          <div class="s9-panel__body" style="padding:0;position:relative;">
+            <!-- SVG grain filter — seed updated by JS each frame -->
+            <svg width="0" height="0" style="position:absolute">
+              <defs>
+                <filter id="ts-grain-filter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+                  <feTurbulence id="ts-grain-turb" type="fractalNoise" baseFrequency="0.72 0.68" numOctaves="4" seed="2" stitchTiles="stitch" result="noise"/>
+                  <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+                  <feBlend in="SourceGraphic" in2="gray" mode="overlay"/>
+                </filter>
+              </defs>
+            </svg>
+
+            <!-- Hidden source image — canvas draws low-res version from this -->
+            <img id="ts-feed-src" src="data/section-9.jpg" alt="" aria-hidden="true"
+                 style="display:none" crossorigin="anonymous" />
+
+            <div class="s9-telescreen">
+              <canvas id="ts-feed-canvas" class="s9-telescreen__img" aria-label="SURVEILLANCE FEED"></canvas>
+              <div class="s9-telescreen__tint"></div>
+              <div class="s9-telescreen__static"></div>
+              <div class="s9-telescreen__static-b"></div>
+              <div class="s9-telescreen__scanlines"></div>
+              <div class="s9-telescreen__vignette"></div>
+              <div class="s9-telescreen__bloom"></div>
+              <div class="s9-telescreen__phase-a"></div>
+              <div class="s9-telescreen__phase-b"></div>
+              <div class="s9-telescreen__phase-c"></div>
+              <div class="s9-telescreen__grain"></div>
+              <div class="s9-telescreen__rec">REC</div>
+              <div class="s9-telescreen__feed-id">CH-04 // SEC9-FEED // ENCRYPTED</div>
+            </div>
+          </div>
+          <div class="s9-panel__footer">
+            <span style="font-family:var(--font-terminal);font-size:0.55rem;color:var(--text-dim);">
+              SRC: SECTOR-4-CAM // COMPRESS: H.265
+            </span>
+          </div>
+        </div>
+
         <!-- Proximity Scan Radar -->
         <div class="center__radar s9-panel" data-s9-id="pulse-radar-1">
           <div class="s9-panel__header">
-            <span class="s9-panel__header-label">PROXIMITY SCAN</span>
+            <span class="s9-panel__header-label">RADAR SCAN</span>
             <span class="s9-panel__header-jp">近接スキャン</span>
             <span class="s9-panel__header-status" id="radar-status">● ACTIVE</span>
           </div>
@@ -1942,6 +2229,91 @@ function initNetworkMatrix() {
 
   document.getElementById('matrix-status').textContent = '● LIVE';
 }
+
+// ── Telescreen: SDR low-res canvas render ────────────────────
+(function () {
+  const src    = document.getElementById('ts-feed-src');
+  const canvas = document.getElementById('ts-feed-canvas');
+  if (!src || !canvas) return;
+
+  // SDR sim: render at QCIF-ish resolution then draw back at full size.
+  // The combination of a tiny internal canvas + image-rendering:pixelated
+  // in CSS gives authentic low-res macroblock appearance.
+  const SDR_W = 480;  // soft SDR, minimal blocking
+  const SDR_H = 270;
+
+  const off = document.createElement('canvas');
+  off.width  = SDR_W;
+  off.height = SDR_H;
+  const offCtx = off.getContext('2d');
+  offCtx.imageSmoothingEnabled = false;
+
+  function renderFeed() {
+    const dpr  = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const dw   = Math.round(rect.width  * dpr);
+    const dh   = Math.round(rect.height * dpr);
+    if (canvas.width !== dw || canvas.height !== dh) {
+      canvas.width  = dw;
+      canvas.height = dh;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    // Step 1 — draw source into tiny offscreen canvas (the "SDR encode")
+    const iw = src.naturalWidth  || SDR_W * 4;
+    const ih = src.naturalHeight || SDR_H * 4;
+    const aspect = iw / ih;
+    // Letterbox-fit into SDR_W × SDR_H
+    let sw = SDR_W, sh = Math.round(SDR_W / aspect);
+    if (sh > SDR_H) { sh = SDR_H; sw = Math.round(SDR_H * aspect); }
+    const sx = ((SDR_W - sw) / 2) | 0;
+    const sy = ((SDR_H - sh) / 2) | 0;
+
+    offCtx.clearRect(0, 0, SDR_W, SDR_H);
+    offCtx.drawImage(src, sx, sy, sw, sh);
+
+    // Step 2 — blit tiny canvas onto display canvas with pixelated upscale
+    ctx.clearRect(0, 0, dw, dh);
+    const scale = Math.min(dw / SDR_W, dh / SDR_H);
+    const dx = ((dw - SDR_W * scale) / 2) | 0;
+    const dy = ((dh - SDR_H * scale) / 2) | 0;
+    ctx.drawImage(off, dx, dy, SDR_W * scale, SDR_H * scale);
+  }
+
+  function init() {
+    renderFeed();
+    // Re-render on container resize
+    new ResizeObserver(renderFeed).observe(canvas);
+  }
+
+  if (src.complete && src.naturalWidth) {
+    init();
+  } else {
+    src.addEventListener('load', init, { once: true });
+  }
+}());
+
+// ── Telescreen grain animation ────────────────────────────────
+(function () {
+  const grainTurb = document.getElementById('ts-grain-turb');
+  if (!grainTurb) return;
+  let frame = 0;
+  let lastSeed = 2;
+  function tickGrain() {
+    frame++;
+    const interval = 2 + (frame % 3 === 0 ? 1 : 0) + (frame % 7 === 0 ? 1 : 0);
+    if (frame % interval === 0) {
+      let seed;
+      do { seed = (Math.random() * 999 + 1) | 0; } while (seed === lastSeed);
+      lastSeed = seed;
+      grainTurb.setAttribute('seed', seed);
+    }
+    requestAnimationFrame(tickGrain);
+  }
+  requestAnimationFrame(tickGrain);
+}());
 </script>
 </body>
 </html>
