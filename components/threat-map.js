@@ -127,6 +127,11 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   // ── Globe — three-layer occlusion setup ──────────────────
   const globeGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 48, 48);
+  // Occluder is fractionally smaller so its depth is strictly less than globeFront
+  // on the front hemisphere (passes LEQUAL) but strictly less than globeFront on
+  // the back hemisphere too — meaning back-hemisphere wireframe fragments are
+  // always behind the occluder and correctly fail the depth test.
+  const occluderGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 0.999, 48, 48);
 
   // Layer 0: ghost back wires — drawn before any depth data, always faint
   const globeBackMat = new THREE.MeshBasicMaterial({
@@ -142,13 +147,20 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   globeBack.renderOrder = 0;
   scene.add(globeBack);
 
-  // Layer 1: invisible occluder — writes depth so front wires occlude correctly
+  // Layer 1: invisible occluder — writes back-surface depth unconditionally so that
+  // globeFront wireframe fragments on the back hemisphere (which are deeper than the
+  // occluder back surface) correctly fail LEQUAL, while front-hemisphere fragments
+  // (which are shallower) still pass.
+  // BackSide renders only the back-facing triangles (back hemisphere), and depthTest:false
+  // ensures the write happens regardless of what is already in the buffer.
   const occluderMat = new THREE.MeshBasicMaterial({
     colorWrite: false,
     depthWrite: true,
-    side: THREE.FrontSide,
+    depthTest: true,
+    depthFunc: THREE.AlwaysDepth,  // always passes → depth IS written (WebGL only writes depth when DEPTH_TEST is enabled)
+    side: THREE.BackSide,          // renders back hemisphere → writes back-surface depth at all interior pixels
   });
-  const occluder = new THREE.Mesh(globeGeo, occluderMat);
+  const occluder = new THREE.Mesh(occluderGeo, occluderMat);
   occluder.renderOrder = 1;
   scene.add(occluder);
 
@@ -311,6 +323,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     activeNodeId: null,
     colors,
     globeGeo,
+    occluderGeo,
     globeBack,
     occluder,
     globeFront,
@@ -375,7 +388,6 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
       s.satMat.uniforms.sunDir.value.set(
         Math.cos(s.sunAngle), 0.22, Math.sin(s.sunAngle)
       ).normalize();
-      s.satMat.uniforms.time.value = performance.now() * 0.001;
     }
 
     // Tick glitch cycle
@@ -438,8 +450,9 @@ export function destroyThreatMap(element) {
     state.scene.remove(record.line);
   }
 
-  // Dispose globe layers (shared geometry disposed once)
-  if (state.globeGeo) state.globeGeo.dispose();
+  // Dispose globe layers
+  if (state.globeGeo)    state.globeGeo.dispose();
+  if (state.occluderGeo) state.occluderGeo.dispose();
   if (state.globeBack)  { state.scene.remove(state.globeBack);  state.globeBack.material.dispose(); }
   if (state.occluder)   { state.scene.remove(state.occluder);   state.occluder.material.dispose(); }
   if (state.globeFront) { state.scene.remove(state.globeFront); state.globeFront.material.dispose(); }
@@ -830,6 +843,7 @@ async function _loadGeoLines(element) {
     color: new THREE.Color(colors.neonCyan || '#00d4b0'),
     transparent: true,
     opacity: 0.75,
+    depthWrite: false,
   });
   // Glow halo: duplicate coast lines at slightly higher radius, low opacity
   const coastGlowMat = new THREE.LineBasicMaterial({
@@ -857,6 +871,7 @@ async function _loadGeoLines(element) {
     color: new THREE.Color(colors.neonCyan || '#00d4b0'),
     transparent: true,
     opacity: 0.32,
+    depthWrite: false,
   });
   for (const coords of countryBorders.coordinates) {
     const points = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
@@ -867,6 +882,8 @@ async function _loadGeoLines(element) {
   }
 
   state.scene.add(geoGroup);
+  // If satellite mode was enabled before geo lines finished loading, keep them hidden
+  if (state.satelliteMode) geoGroup.visible = false;
   state.geoGroup = geoGroup;
 }
 
@@ -1301,7 +1318,6 @@ async function _createSatelliteGlobe(element) {
         Math.cos(state.sunAngle), 0.22, Math.sin(state.sunAngle)
       ).normalize() },
       realTex:   { value: realTexFlag },
-      time:      { value: 0 },
     },
     vertexShader: /* glsl */`
       varying vec2  vUv;
@@ -1317,10 +1333,8 @@ async function _createSatelliteGlobe(element) {
       uniform sampler2D nightMap;
       uniform vec3      sunDir;
       uniform float     realTex;
-      uniform float     time;
       varying vec2      vUv;
       varying vec3      vWorldNormal;
-      float hash(float n){return fract(sin(n)*43758.5453);}
       void main() {
         float d     = dot(normalize(vWorldNormal), normalize(sunDir));
         float blend = smoothstep(-0.18, 0.22, d);
@@ -1332,22 +1346,7 @@ async function _createSatelliteGlobe(element) {
         vec3  fringe = mix(vec3(0.0), vec3(1.0, 0.65, 0.2), term * 0.28 * (1.0 - realTex));
         vec3  base   = mix(night.rgb, day.rgb, blend) + fringe;
 
-        // ── Holographic overlay (day-side only) ──────────────
-        // Sweeping scan line
-        float sweep = step(0.993, fract(vUv.y * 200.0 + time * 0.04));
-        // Static grid lines
-        float gridH = step(0.991, fract(vUv.y * 80.0));
-        float gridV = step(0.993, fract(vUv.x * 120.0));
-        float grid  = max(gridH, gridV);
-        // Occasional digital noise band
-        float nb = hash(floor(vUv.y * 55.0) + floor(time * 7.0) * 91.3);
-        float noiseBand = step(0.96, nb) * step(0.0, sin(time * 4.0 + vUv.y * 30.0));
-
-        vec3 holoCol = vec3(0.15, 0.95, 0.88);
-        vec3 holo    = holoCol * (sweep * 0.40 + grid * 0.10 + noiseBand * 0.20);
-        holo        *= blend;  // only on lit day side
-
-        gl_FragColor = vec4(base + holo, 1.0);
+        gl_FragColor = vec4(base, 1.0);
       }
     `,
   });
