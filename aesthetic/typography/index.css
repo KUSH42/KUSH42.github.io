@@ -29,6 +29,8 @@ body {
   font-size: 14px;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+  min-width: 360px;
+  min-height: 480px;
 }
 
 /* ----------------------------------------------------------
