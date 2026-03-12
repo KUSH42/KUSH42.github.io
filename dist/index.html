@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SECTION 9 — OPERATIVE INTERFACE</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
+
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
+    /* ── Topbar content ─────────────────────────────── */
+    .s9-ov__topbar {
+      background: var(--panel-bg-solid);
+      border-bottom: 1px solid var(--panel-border);
+      position: relative;
+      z-index: 10;
+    }
+    .topbar__op {
+      font-family: var(--font-holo);
+      font-size: 0.65rem;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-text-cyan);
+      white-space: nowrap;
+    }
+    .topbar__op-jp {
+      font-family: var(--font-jp);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-left: 0.5rem;
+    }
+    .topbar__divider {
+      width: 1px;
+      height: 16px;
+      background: var(--panel-border);
+      flex-shrink: 0;
+    }
+    .topbar__tab {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-normal);
+      text-transform: uppercase;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 6px;
+      border: 1px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .topbar__tab--active {
+      color: var(--neon-cyan);
+      border-color: var(--panel-border-active);
+    }
+    .topbar__spacer { flex: 1; }
+    .topbar__clock {
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      letter-spacing: var(--letter-spacing-normal);
+      white-space: nowrap;
+    }
+    .topbar__status {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--neon-green);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .topbar__status::before {
+      content: '●';
+      animation: status-blink 2s ease-in-out infinite;
+    }
+
+    /* ── Statusbar content ──────────────────────────── */
+    .s9-ov__statusbar {
+      background: var(--panel-bg-solid);
+      border-top: 1px solid var(--panel-border);
+    }
+    .statusbar__badge {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-normal);
+      text-transform: uppercase;
+    }
+    .statusbar__badge--ok { color: var(--neon-green); }
+    .statusbar__badge--alert { color: var(--text-alert); }
+    .statusbar__alert-count {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-secondary);
+    }
+    .statusbar__spacer { flex: 1; }
+    .statusbar__utc {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+    }
+    .statusbar__conn {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--neon-green);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .statusbar__conn::before {
+      content: '◆';
+      font-size: 0.4rem;
+    }
+
+    /* ── Panel header labels ────────────────────────── */
+    .s9-panel__header-label {
+      font-family: var(--font-holo);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .s9-panel__header-jp {
+      font-family: var(--font-jp);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+    .s9-panel__header-status {
+      font-family: var(--font-terminal);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    /* ── Center tab views ───────────────────────────── */
+    .s9-ov__center {
+      position: relative; /* already set in layout CSS, belt+suspenders */
+    }
+    .center__view {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--panel-gap);
+      /* hidden by default — JS toggles visibility */
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .center__view--active {
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .center__map { flex: 1; min-height: 0; position: relative; }
+    .center__terminal { height: 200px; flex-shrink: 0; }
+    .center__matrix { flex: 1; min-height: 0; }
+
+    /* ── Left / right flex grow helpers ────────────── */
+    .s9-ov__left .s9-panel:nth-child(1) { flex: 2; }
+    .s9-ov__left .s9-panel:nth-child(2) { flex: 1.5; }
+    .s9-ov__left .s9-panel:nth-child(3) { flex: 1; }
+    .s9-ov__right .s9-panel:nth-child(1) { flex: 1; }
+    .s9-ov__right .s9-panel:nth-child(2) { flex: 2; }
+
+    /* ── Theme switcher buttons ──────────────────────────── */
+    .topbar__theme-btns {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .topbar__theme-btn {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+      padding: 0;
+      flex-shrink: 0;
+      transition: transform 0.12s, border-color 0.12s;
+    }
+    .topbar__theme-btn:hover { transform: scale(1.5); border-color: rgba(255,255,255,0.7); }
+    .topbar__theme-btn--active { border-color: white !important; transform: scale(1.3); }
+
+    /* ── Tactical node editor overlay ────────────────────── */
+    .tactical__editor {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 20;
+      background: var(--panel-bg-solid);
+      border: 1px solid var(--panel-border-dim);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 210px;
+      pointer-events: auto;
+    }
+    .tactical__editor-title {
+      font-family: var(--font-holo);
+      font-size: 0.55rem;
+      letter-spacing: var(--letter-spacing-wide);
+      color: var(--neon-cyan);
+      text-transform: uppercase;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--panel-border-dim);
+    }
+    .tactical__editor-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tactical__editor-info {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-secondary);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tactical__btn {
+      font-family: var(--font-terminal);
+      font-size: 0.55rem;
+      background: transparent;
+      border: 1px solid var(--panel-border);
+      color: var(--text-secondary);
+      padding: 2px 7px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: border-color 0.1s, color 0.1s;
+      flex-shrink: 0;
+    }
+    .tactical__btn:hover:not(:disabled) { border-color: var(--neon-cyan); color: var(--neon-cyan); }
+    .tactical__btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .tactical__btn--danger:hover:not(:disabled) { border-color: var(--text-alert); color: var(--text-alert); }
+    .tactical__level-slider {
+      flex: 1;
+      height: 3px;
+      accent-color: var(--neon-cyan);
+      cursor: pointer;
+    }
+    .tactical__level-val {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--neon-cyan);
+      min-width: 26px;
+      text-align: right;
+    }
+
+    /* ── Scrollable panel bodies ────────────────────────── */
+    .s9-panel__body {
+      scrollbar-width: thin;
+      scrollbar-color: var(--panel-border) transparent;
+    }
+
+    /* ── Live dot flashes ────────────────────────────────── */
+    @keyframes flash-red {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.15; }
+    }
+    @keyframes flash-green {
+      0%, 100% { color: var(--neon-green); opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    #stream-status {
+      color: var(--text-secondary);
+    }
+    #stream-status .stream-dot {
+      animation: flash-red 1.2s ease-in-out infinite;
+      color: var(--text-alert) !important;
+    }
+    .topbar__status::before {
+      animation: flash-green 2s ease-in-out infinite !important;
+    }
+
+    /* ── SIGINT / Intel news feeds ───────────────────────── */
+    .sigint-feed, .intel-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 0 6px;
+      overflow: hidden;
+    }
+    .sigint-item, .intel-item {
+      font-family: var(--font-terminal);
+      font-size: 0.58rem;
+      border-left: 2px solid var(--panel-border);
+      padding: 3px 6px;
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.4s ease, opacity 0.3s ease, border-color 0.3s ease;
+      cursor: default;
+    }
+    .sigint-item--visible, .intel-item--visible {
+      max-height: 60px;
+      opacity: 1;
+    }
+    .sigint-item--closing, .intel-item--closing {
+      max-height: 0;
+      opacity: 0;
+    }
+    .sigint-item__class {
+      font-size: 0.5rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1px;
+    }
+    .sigint-item__headline {
+      color: var(--text-secondary);
+      line-height: 1.3;
+    }
+    .sigint-item__detail {
+      color: var(--text-dim);
+      font-size: 0.52rem;
+      margin-top: 2px;
+      line-height: 1.2;
+    }
+    .sigint-item--sigint { border-left-color: var(--neon-cyan); }
+    .sigint-item--sigint .sigint-item__class { color: var(--neon-cyan); }
+    .sigint-item--humint { border-left-color: var(--neon-amber); }
+    .sigint-item--humint .sigint-item__class { color: var(--neon-amber); }
+    .sigint-item--cyber  { border-left-color: var(--text-alert); }
+    .sigint-item--cyber  .sigint-item__class { color: var(--text-alert); }
+    .sigint-item--ghost  { border-left-color: var(--neon-green); }
+    .sigint-item--ghost  .sigint-item__class { color: var(--neon-green); }
+    .sigint-item--elint  { border-left-color: var(--neon-magenta); }
+    .sigint-item--elint  .sigint-item__class { color: var(--neon-magenta); }
+    .intel-item { border-left-color: var(--panel-border-active); }
+    .intel-item__class {
+      font-size: 0.5rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      margin-bottom: 1px;
+    }
+    .intel-item__headline { color: var(--text-secondary); line-height: 1.3; }
+    .intel-item__detail   { color: var(--text-dim); font-size: 0.52rem; margin-top: 2px; }
+
+    /* ── Right column flex ───────────────────────────────── */
+    .s9-ov__right .s9-panel:nth-child(1) { flex: 1; }
+    .s9-ov__right .s9-panel:nth-child(2) { flex: 3; }
+    .s9-ov__right .s9-panel:nth-child(3) { flex: 1; }
+
+    /* ── Scanlines overlay ───────────────────────────────── */
+    .s9-ov::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.04) 2px,
+        rgba(0,0,0,0.04) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── No statusbar — remove bottom gap ────────────────── */
+    .s9-ov {
+      grid-template-rows: var(--topbar-h) 1fr !important;
+    }
+
+    /* ── Threat-level node colours (network matrix) ──────── */
+    .s9-matrix__node--threat-high .s9-matrix__node-core {
+      stroke: var(--text-alert);
+      stroke-width: 0.5;
+      filter: drop-shadow(0 0 1.5px var(--text-alert));
+    }
+    .s9-matrix__node--threat-high .s9-matrix__node-label { fill: var(--text-alert); }
+    .s9-matrix__node--threat-mid .s9-matrix__node-core { stroke: var(--neon-amber); }
+    .s9-matrix__node--threat-mid .s9-matrix__node-label { fill: var(--neon-amber); }
+
+    /* ── Alert host stack ────────────────────────────────── */
+    #alert-host {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      pointer-events: none;
+    }
+    #alert-host .s9-alert {
+      position: static;
+      pointer-events: auto;
+    }
+
+
+    /* ── Globe mode toggle ───────────────────────────────── */
+    .globe-mode-toggle {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 8px;
+      border: 1px solid var(--panel-border-dim);
+      background: rgba(0,0,0,0.45);
+      transition: border-color 0.15s;
+    }
+    .globe-mode-toggle:hover { border-color: var(--panel-border); }
+    .globe-mode-toggle input { display: none; }
+    .globe-mode-toggle__track {
+      width: 34px;
+      height: 16px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg-solid);
+      position: relative;
+      display: block;
+      flex-shrink: 0;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .globe-mode-toggle__knob {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 10px; height: 10px;
+      background: var(--text-dim);
+      transition: transform 0.15s, background 0.15s;
+    }
+    .globe-mode-toggle input:checked ~ .globe-mode-toggle__track {
+      border-color: var(--neon-cyan);
+      background: color-mix(in srgb, var(--neon-cyan) 15%, transparent);
+    }
+    .globe-mode-toggle input:checked ~ .globe-mode-toggle__track .globe-mode-toggle__knob {
+      transform: translateX(18px);
+      background: var(--neon-cyan);
+      box-shadow: 0 0 6px var(--neon-cyan);
+    }
+    .globe-mode-toggle__label {
+      font-family: var(--font-terminal);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: var(--letter-spacing-wide);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      transition: color 0.15s, text-shadow 0.15s;
+    }
+    .globe-mode-toggle:has(input:checked) {
+      border-color: var(--panel-border-active);
+    }
+    .globe-mode-toggle:has(input:checked) .globe-mode-toggle__label {
+      color: var(--neon-cyan);
+      text-shadow: 0 0 6px var(--neon-cyan);
+    }
+
+    /* ── Node detail popup ───────────────────────────────── */
+    #node-popup {
+      position: absolute;
+      top: 10%;
+      right: 12px;
+      z-index: 50;
+      background: var(--panel-bg-solid);
+      border: 1px solid var(--panel-border-active);
+      padding: 8px 10px;
+      width: 158px;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateX(8px);
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      box-shadow: 0 0 14px rgba(0,212,176,0.07), inset 0 0 8px rgba(0,0,0,0.45);
+    }
+    #node-popup.node-popup--visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    #node-popup.node-popup--left {
+      right: auto;
+      left: 8px;
+      transform: translateX(-8px);
+    }
+    #node-popup.node-popup--left.node-popup--visible {
+      transform: translateX(0);
+    }
+    .node-popup__title {
+      font-family: var(--font-holo);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: var(--letter-spacing-wide);
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-text-cyan);
+      text-transform: uppercase;
+      margin-bottom: 5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .node-popup__skyline {
+      color: var(--neon-cyan);
+      opacity: 0.55;
+      margin-bottom: 5px;
+      border-bottom: 1px solid var(--panel-border-dim);
+      padding-bottom: 4px;
+    }
+    .node-popup__table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-terminal);
+      font-size: 0.52rem;
+    }
+    .node-popup__table td:first-child {
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+      padding-right: 6px;
+      white-space: nowrap;
+    }
+    .node-popup__table td:last-child {
+      color: var(--text-secondary);
+      text-align: right;
+      word-break: break-all;
+    }
+    .node-popup__table tr { line-height: 1.75; }
+  </style>
+  <script type="module" crossorigin src="/assets/index-9GgbpaFm.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-D_mHDXxc.css">
+</head>
+
+<body>
+<div class="s9-ov" data-alert-count="0" data-s9-state="active">
+
+  <!-- ── TOPBAR ─────────────────────────────────────────────── -->
+  <header class="s9-ov__topbar">
+    <span class="topbar__op">OPERATION: GHOST BABEL<span class="topbar__op-jp">／ゴーストバベル</span></span>
+    <div class="topbar__divider"></div>
+    <span class="topbar__tab topbar__tab--active" data-tab="overview" role="tab" aria-selected="true" tabindex="0">OVERVIEW</span>
+    <span class="topbar__tab" data-tab="tactical" role="tab" aria-selected="false" tabindex="0">TACTICAL</span>
+    <span class="topbar__tab" data-tab="network" role="tab" aria-selected="false" tabindex="0">NETWORK</span>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__theme-btns" title="SWITCH THEME">
+      <button class="topbar__theme-btn topbar__theme-btn--active" data-theme-set="" style="background:#00d4b0" title="MATRIX GREEN"></button>
+      <button class="topbar__theme-btn" data-theme-set="gits" style="background:#00f0ff" title="GHOST IN THE SHELL"></button>
+      <button class="topbar__theme-btn" data-theme-set="amber" style="background:#ffb300" title="AMBER"></button>
+      <button class="topbar__theme-btn" data-theme-set="phosphor" style="background:#00ff50" title="PHOSPHOR"></button>
+      <button class="topbar__theme-btn" data-theme-set="blood" style="background:#ff1e1e" title="BLOOD"></button>
+    </div>
+    <div class="topbar__divider"></div>
+    <span class="topbar__clock" id="topbar-clock">UTC 00:00:00</span>
+    <div class="topbar__divider"></div>
+    <span class="topbar__status">OPERATIVE CONNECTED</span>
+  </header>
+
+  <!-- ── LEFT COLUMN ────────────────────────────────────────── -->
+  <aside class="s9-ov__left">
+
+    <!-- DataStream -->
+    <div class="s9-panel" data-s9-id="data-stream-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">DATA STREAM</span>
+        <span class="s9-panel__header-jp">データストリーム</span>
+        <span class="s9-panel__header-status" id="stream-status"><span class="stream-dot">●</span> LIVE</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 0;">
+        <div class="s9-stream" role="log" aria-label="Data stream" data-s9-id="stream-1">
+          <div class="s9-stream__body" tabindex="0" aria-label="Stream rows"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NeuralReadout -->
+    <div class="s9-panel" data-s9-id="neural-readout-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">NEURAL READOUT</span>
+        <span class="s9-panel__header-jp">神経読取</span>
+        <span class="s9-panel__header-status">SYNC: <span id="neural-sync">0%</span></span>
+      </div>
+      <div class="s9-panel__body">
+        <div class="s9-neural" id="neural-01">
+          <div class="s9-neural__id">KUSANAGI.M</div>
+          <div class="s9-neural__ghost-line">
+            GHOST COEFFICIENT: <span id="ghost-val">98.4</span>%
+          </div>
+          <div class="s9-neural__stats">
+            <span class="s9-neural__stat-label">DESIGNATION</span>
+            <span class="s9-neural__stat-value">MAJOR</span>
+            <span class="s9-neural__stat-label">UNIT</span>
+            <span class="s9-neural__stat-value">SEC.9</span>
+            <span class="s9-neural__stat-label">CLEARANCE</span>
+            <span class="s9-neural__stat-value">ALPHA-7</span>
+            <span class="s9-neural__stat-label">CYBER INDEX</span>
+            <span class="s9-neural__stat-value" id="cyber-index">98.4%</span>
+            <span class="s9-neural__stat-label">EKG BPM</span>
+            <span class="s9-neural__stat-value" style="overflow:visible;text-overflow:clip"><span id="ekg-bpm">62</span> <span id="ekg-heart">♥︎</span></span>
+          </div>
+          <div class="s9-neural__ekg">
+            <canvas class="s9-neural__ekg-canvas" id="ekg-canvas" height="30"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIGINT News Feed -->
+    <div class="s9-panel" data-s9-id="operative-log">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">OPERATIVE LOG</span>
+        <span class="s9-panel__header-jp">工作員記録</span>
+        <span class="s9-panel__header-status" id="op-log-status">INCOMING</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 4px 0; overflow-y: auto; position: relative;">
+        <div class="sigint-feed" id="sigint-feed"></div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── CENTER ─────────────────────────────────────────────── -->
+  <main class="s9-ov__center">
+    <div id="alert-host" aria-live="assertive" aria-label="Critical alerts"></div>
+
+    <!-- VIEW: OVERVIEW — ThreatMap + Terminal -->
+    <div class="center__view center__view--active" data-view="overview">
+
+      <div class="center__map s9-threatmap" role="img"
+           aria-label="GLOBAL THREAT VISUALIZATION"
+           data-s9-id="threatmap-1" data-threat-level="0">
+        <!-- canvas + overlay injected by initThreatMap() -->
+        <label class="globe-mode-toggle" title="Toggle satellite overlay">
+          <input type="checkbox" id="sat-toggle" autocomplete="off" />
+          <span class="globe-mode-toggle__track">
+            <span class="globe-mode-toggle__knob"></span>
+          </span>
+          <span class="globe-mode-toggle__label">SAT</span>
+        </label>
+      </div>
+
+      <!-- Node detail popup — sibling of threatmap so it renders above the WebGL canvas -->
+      <div id="node-popup" aria-hidden="true" aria-live="polite">
+        <div class="node-popup__title" id="np-city">—</div>
+        <div class="node-popup__skyline" id="np-skyline"></div>
+        <table class="node-popup__table">
+          <tr><td>COUNTRY</td><td id="np-country">—</td></tr>
+          <tr><td>POP</td><td id="np-pop">—</td></tr>
+          <tr><td>COORDS</td><td id="np-coords">—</td></tr>
+          <tr><td>THREAT LVL</td><td id="np-threat">—</td></tr>
+          <tr><td>STATUS</td><td id="np-status">—</td></tr>
+        </table>
+      </div>
+
+      <div class="center__terminal s9-panel" data-s9-id="terminal-1">
+        <div class="s9-panel__header">
+          <span class="s9-panel__header-label">COMMAND INTERFACE</span>
+          <span class="s9-panel__header-jp">コマンドインターフェース</span>
+          <span class="s9-panel__header-status">SECTION 9 ▶</span>
+        </div>
+        <div class="s9-panel__body" style="padding: 0; display: flex; flex-direction: column;">
+          <div class="s9-terminal" role="region" aria-label="COMMAND TERMINAL"
+               data-s9-id="terminal-1">
+            <div class="s9-terminal__output" role="log" aria-live="polite"
+                 aria-label="Terminal output" tabindex="0"></div>
+            <div class="s9-terminal__input-row">
+              <span class="s9-terminal__prompt" aria-hidden="true">[S9]▶</span>
+              <input class="s9-terminal__input" type="text"
+                     autocomplete="off" autocorrect="off" spellcheck="false"
+                     aria-label="Command input" placeholder="type a command…" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW: TACTICAL — ThreatMap fullscreen (no terminal) -->
+    <div class="center__view" data-view="tactical">
+
+      <div class="center__map s9-panel" data-s9-id="tactical-panel">
+        <div class="s9-panel__header">
+          <span class="s9-panel__header-label">TACTICAL OVERVIEW</span>
+          <span class="s9-panel__header-jp">戦術概況</span>
+          <span class="s9-panel__header-status" id="tactical-threat">THREAT: —</span>
+        </div>
+        <div class="s9-panel__body" style="padding: 0; position: relative;">
+          <div class="s9-threatmap" id="threatmap-tactical" role="img"
+               aria-label="TACTICAL THREAT OVERVIEW"
+               data-s9-id="threatmap-2" data-threat-level="0"
+               style="position:absolute;inset:0;">
+          </div>
+          <div class="tactical__editor" id="tactical-editor">
+            <div class="tactical__editor-title">NODE EDITOR</div>
+            <div class="tactical__editor-row">
+              <span class="tactical__editor-info" id="tact-node-info">NO NODE SELECTED</span>
+            </div>
+            <div class="tactical__editor-row">
+              <button class="tactical__btn" id="tact-btn-add">+ ADD</button>
+              <button class="tactical__btn tactical__btn--danger" id="tact-btn-remove" disabled>REMOVE</button>
+              <button class="tactical__btn" id="tact-btn-focus" disabled>FOCUS</button>
+              <button class="tactical__btn" id="tact-btn-deselect" disabled>DESEL</button>
+            </div>
+            <div class="tactical__editor-row" id="tact-level-row" style="opacity:0.4;pointer-events:none;">
+              <span style="font-family:var(--font-terminal);font-size:0.55rem;color:var(--text-dim)">LVL</span>
+              <input type="range" class="tactical__level-slider" id="tact-level-slider" min="0" max="100" value="50" disabled />
+              <span class="tactical__level-val" id="tact-level-val">50</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- VIEW: NETWORK — Signal Intercept Canvas -->
+    <div class="center__view" data-view="network">
+
+      <div class="s9-panel center__matrix" data-s9-id="matrix-panel">
+        <div class="s9-panel__header">
+          <span class="s9-panel__header-label">CYBERSPACE FLOW MAP</span>
+          <span class="s9-panel__header-jp">サイバースペース</span>
+          <span class="s9-panel__header-status" id="matrix-status">● SCANNING</span>
+        </div>
+        <div class="s9-panel__body" style="padding: 0; position: relative;">
+          <div class="s9-matrix" id="flow-matrix" style="position:absolute;inset:0;"></div>
+          <div id="flow-overlay" style="position:absolute;top:8px;left:10px;pointer-events:none;"></div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ── RIGHT COLUMN ───────────────────────────────────────── -->
+  <aside class="s9-ov__right">
+
+    <!-- Intelligence Feed -->
+    <div class="s9-panel" data-s9-id="intel-feed-1" style="flex:1;">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">INTEL FEED</span>
+        <span class="s9-panel__header-jp">情報フィード</span>
+        <span class="s9-panel__header-status" id="intel-feed-status">● LIVE</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 4px 0; overflow-y: auto; position: relative;">
+        <div class="intel-feed" id="intel-feed"></div>
+      </div>
+    </div>
+
+    <!-- SequenceLog (right) -->
+    <div class="s9-panel" data-s9-id="seq-log-right" style="flex: none">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">MISSION TIMELINE</span>
+        <span class="s9-panel__header-jp">作戦時系列</span>
+      </div>
+      <div class="s9-panel__body" style="padding: 0;">
+        <div class="s9-sequence" role="region" aria-label="Mission timeline">
+          <div class="s9-sequence__entry s9-sequence__entry--complete" id="seq-recon">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">RECONNAISSANCE</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--complete" id="seq-intercept">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">INTERCEPT</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--active" id="seq-breach">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">NETWORK BREACH</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-extract">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">DATA EXTRACTION</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-cover">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">COVER TRACES</span>
+            </div>
+          </div>
+          <div class="s9-sequence__entry s9-sequence__entry--pending" id="seq-exfil">
+            <span class="s9-sequence__indicator" aria-hidden="true"></span>
+            <div class="s9-sequence__content">
+              <span class="s9-sequence__step-name">EXFILTRATION</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SYS METRICS -->
+    <div class="s9-panel" data-s9-id="sys-metrics">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">SYS METRICS</span>
+        <span class="s9-panel__header-jp">システム</span>
+      </div>
+      <div class="s9-panel__body">
+        <div class="s9-telemetry" id="sys-telemetry" style="gap:0.35rem;">
+          <div class="s9-telemetry__metric" id="tele-cpu">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">CPU</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill s9-telemetry__bar-fill--ok" style="width:42%"></div></div>
+          </div>
+          <div class="s9-telemetry__metric" id="tele-mem">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">MEM</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill s9-telemetry__bar-fill--ok" style="width:61%"></div></div>
+          </div>
+          <div class="s9-telemetry__metric" id="tele-net">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">NET I/O</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill s9-telemetry__bar-fill--ok" style="width:12%"></div></div>
+          </div>
+          <div class="s9-telemetry__metric" id="tele-enc">
+            <div class="s9-telemetry__label"><span class="s9-telemetry__label-name">ENC</span></div>
+            <div class="s9-telemetry__bar"><div class="s9-telemetry__bar-fill s9-telemetry__bar-fill--ok" style="width:96%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+
+</div>
+
+</body>
+</html>

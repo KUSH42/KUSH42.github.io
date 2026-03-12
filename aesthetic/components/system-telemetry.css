@@ -1,0 +1,70 @@
+/* ============================================================
+   aesthetic/components/system-telemetry.css
+   SystemTelemetry — AESTHETIC PLANE ONLY.
+   Color, border, shadow, font, animation. Zero layout properties.
+   Requires: aesthetic/variables/index.css, aesthetic/effects/index.css
+   ============================================================ */
+
+/* ── Label name ─────────────────────────────────────────────── */
+
+.s9-telemetry__label-name {
+  font-family: var(--font-holo);
+  color: var(--text-secondary);
+}
+
+/* ── Label JP ───────────────────────────────────────────────── */
+
+.s9-telemetry__label-jp {
+  font-family: var(--font-jp);
+  color: var(--text-dim);
+}
+
+/* ── Bar track ──────────────────────────────────────────────── */
+
+.s9-telemetry__bar {
+  background: color-mix(in srgb, var(--neon-green) 8%, transparent);
+  border: 1px solid var(--panel-border-dim);
+}
+
+/* ── Bar fill — ok (0–60%) ──────────────────────────────────── */
+
+.s9-telemetry__bar-fill--ok {
+  background: var(--neon-green);
+  box-shadow: 0 0 6px #00ff70;
+}
+
+/* ── Bar fill — warning (61–85%) ───────────────────────────── */
+
+.s9-telemetry__bar-fill--warning {
+  background: var(--neon-amber);
+  box-shadow: 0 0 6px #b0ff44;
+}
+
+/* ── Bar fill — critical (86–100%) ─────────────────────────── */
+
+.s9-telemetry__bar-fill--critical {
+  background: var(--neon-magenta);
+  box-shadow: 0 0 8px #ff8c00;
+  animation: alert-pulse 1s ease-in-out infinite;
+}
+
+/* ── Threshold marker ───────────────────────────────────────── */
+
+.s9-telemetry__threshold {
+  border-right: 1px solid var(--neon-magenta);
+  opacity: 0.5;
+}
+
+/* ── Value readout ──────────────────────────────────────────── */
+
+.s9-telemetry__value {
+  font-family: var(--font-terminal);
+  color: var(--text-primary);
+}
+
+/* ── Unit label ─────────────────────────────────────────────── */
+
+.s9-telemetry__unit {
+  font-family: var(--font-terminal);
+  color: var(--text-dim);
+}

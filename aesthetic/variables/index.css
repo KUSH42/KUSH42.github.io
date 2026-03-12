@@ -1,0 +1,13 @@
+/* ============================================================
+   aesthetic/variables/index.css
+   GitS UI — Variables barrel import
+   Import this single file to get all CSS custom properties.
+   Order: base (non-colour constants) then themes.
+   ============================================================ */
+
+@import './base.css';
+@import './themes/matrixgreen.css';
+@import './themes/gits.css';
+@import './themes/amber.css';
+@import './themes/phosphor.css';
+@import './themes/blood.css';
