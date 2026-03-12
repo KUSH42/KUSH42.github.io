@@ -13,7 +13,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { mesh as topoMesh } from 'topojson-client';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { mesh as topoMesh, feature as topoFeature } from 'topojson-client';
 
 // ── Constants ──────────────────────────────────────────────────
 const LOW_THRESHOLD = 40;
@@ -22,6 +23,9 @@ const GLOBE_RADIUS = 1.0;
 
 // ── Internal state registry ────────────────────────────────────
 const _state = new WeakMap();
+
+// ── Shared TopoJSON cache (avoids double-fetch) ────────────────
+let _topoCache = null;
 
 // ── latLngToVec3 ──────────────────────────────────────────────
 
@@ -64,6 +68,30 @@ function _levelColor(level, colors) {
   return colors.neonMagenta;
 }
 
+// ── GlobeShiftShader ──────────────────────────────────────────
+// Subtle horizontal RGB channel shift — barely-there at rest,
+// gentle pulse on events. Clean, not CRT-glitchy.
+
+const GlobeGlitchShader = {
+  uniforms: {
+    tDiffuse:  { value: null },
+    shiftAmt:  { value: 0 },
+  },
+  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float shiftAmt;
+    varying vec2 vUv;
+    void main(){
+      float s = shiftAmt * 0.0012;
+      float r = texture2D(tDiffuse, vec2(vUv.x + s, vUv.y)).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vec2(vUv.x - s, vUv.y)).b;
+      gl_FragColor = vec4(vec3(r, g, b), 1.0);
+    }
+  `,
+};
+
 // ── initThreatMap ─────────────────────────────────────────────
 
 /**
@@ -102,10 +130,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   // Layer 0: ghost back wires — drawn before any depth data, always faint
   const globeBackMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color: new THREE.Color(colors.neonCyan || 'rgba(0, 192, 156, 225)'),
     wireframe: true,
     transparent: true,
-    opacity: 0.009,
+    opacity: 0.0015,
     depthTest: false,
     depthWrite: false,
     side: THREE.BackSide,
@@ -129,7 +157,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     color: new THREE.Color(colors.neonCyan || '#00d4b0'),
     wireframe: true,
     transparent: true,
-    opacity: 0.015,
+    opacity: 0.038,
     depthTest: true,
     depthWrite: false,
     side: THREE.FrontSide,
@@ -156,10 +184,14 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
     bloomStrength,
-    0.4,
-    0.85
+    0.55,  // radius
+    0.75   // threshold — lower = more objects catch bloom
   );
   composer.addPass(bloomPass);
+
+  const glitchPass = new ShaderPass(GlobeGlitchShader);
+  glitchPass.enabled = false;
+  composer.addPass(glitchPass);
 
   // ── Overlay DOM ───────────────────────────────────────────
   const overlay = document.createElement('div');
@@ -198,6 +230,12 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     if (resumeTimer !== null) {
       clearTimeout(resumeTimer);
       resumeTimer = null;
+    }
+    // Cancel any in-progress camera snap and record interaction time
+    const s = _state.get(element);
+    if (s) {
+      s.cameraLerpTarget = null;
+      s.lastOrbitInteraction = Date.now();
     }
   });
 
@@ -278,7 +316,14 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     globeFront,
     geoGroup: null,
     cameraLerpTarget: null,
+    lastOrbitInteraction: 0,
     arcs: [],
+    satelliteMode: false,
+    sunAngle: Math.random() * Math.PI * 2,
+    satelliteGroup: null,
+    glitchPass,
+    glitchActive: null,
+    glitchNext: performance.now() + 8000 + Math.random() * 12000,
   });
 
   // Store animFrameId after initial call
@@ -294,8 +339,8 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     if (!s) return;
     s.animFrameId = requestAnimationFrame(animateLoop);
 
-    // Camera lerp to focused node
-    if (s.cameraLerpTarget) {
+    // Camera lerp to focused node — suppressed for 3 s after user orbit interaction
+    if (s.cameraLerpTarget && Date.now() - s.lastOrbitInteraction >= 3000) {
       s.camera.position.lerp(s.cameraLerpTarget, 0.06);
       if (s.camera.position.distanceTo(s.cameraLerpTarget) < 0.04) {
         s.camera.position.copy(s.cameraLerpTarget);
@@ -323,6 +368,18 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
         s.arcs.splice(i, 1);
       }
     }
+
+    // Rotate sun direction + tick holo time when in satellite mode
+    if (s.satelliteMode && s.satMat) {
+      s.sunAngle += 0.00015;
+      s.satMat.uniforms.sunDir.value.set(
+        Math.cos(s.sunAngle), 0.22, Math.sin(s.sunAngle)
+      ).normalize();
+      s.satMat.uniforms.time.value = performance.now() * 0.001;
+    }
+
+    // Tick glitch cycle
+    _tickGlitch(s);
 
     // Track crosshair to active node via 3D→2D projection
     if (s.activeNodeId !== null) {
@@ -387,6 +444,17 @@ export function destroyThreatMap(element) {
   if (state.occluder)   { state.scene.remove(state.occluder);   state.occluder.material.dispose(); }
   if (state.globeFront) { state.scene.remove(state.globeFront); state.globeFront.material.dispose(); }
 
+  // Dispose satellite globe
+  if (state.satelliteGroup) {
+    state.scene.remove(state.satelliteGroup);
+    if (state.satGeo)   state.satGeo.dispose();
+    if (state.atmGeo)   state.atmGeo.dispose();
+    if (state.satMat)   state.satMat.dispose();
+    if (state.atmMat)   state.atmMat.dispose();
+    if (state.dayTex)   state.dayTex.dispose();
+    if (state.nightTex) state.nightTex.dispose();
+  }
+
   // Dispose live arcs
   for (const arc of state.arcs) {
     state.scene.remove(arc.line);
@@ -441,7 +509,7 @@ export function addNode(element, { id, lat, lng, label, level }) {
   const colors = _readCSSColors();
   const colorHex = _levelColor(level, colors);
 
-  const geo = new THREE.SphereGeometry(0.02, 8, 8);
+  const geo = new THREE.SphereGeometry(0.032, 8, 8);
   const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorHex) });
   const mesh = new THREE.Mesh(geo, mat);
 
@@ -617,9 +685,9 @@ export function setActiveNode(element, nodeId) {
   const record = state.nodeMap.get(nodeId);
   if (!record) return;
 
-  // Highlight with white/cyan
+  // Highlight with the node's own threat-level color
   const colors = _readCSSColors();
-  record.mesh.material.color.set(colors.neonCyan || '#00d4ff');
+  record.mesh.material.color.set(_levelColor(record.level, colors));
 
   const crosshair = element.querySelector('.s9-threatmap__crosshair');
   if (crosshair) {
@@ -667,9 +735,7 @@ export function setThreatLevel(element, level) {
   const clamped = Math.max(0, Math.min(100, level));
   element.setAttribute('data-threat-level', clamped);
 
-  if (!state.reducedMotion) {
-    state.bloomPass.strength = 0.4 + (clamped / 100) * 0.8;
-  }
+  // Bloom strength is fixed — threat level drives color/pulse only, not post-processing intensity
 }
 
 // ── updateNodeLevel ───────────────────────────────────────────
@@ -719,6 +785,9 @@ export function focusNode(element, nodeId) {
   const record = state.nodeMap.get(nodeId);
   if (!record) return;
 
+  // Don't snap if user has interacted with orbit controls within the last 3 s
+  if (Date.now() - state.lastOrbitInteraction < 3000) return;
+
   const camDist = state.camera.position.length();
   state.cameraLerpTarget = record.mesh.position.clone()
     .normalize()
@@ -743,6 +812,7 @@ async function _loadGeoLines(element) {
     const res = await fetch('/data/countries-110m.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     topo = await res.json();
+    _topoCache = topo;
   } catch (err) {
     console.warn('[s9-threatmap] geo lines: failed to load /data/countries-110m.json', err);
     return;
@@ -759,12 +829,26 @@ async function _loadGeoLines(element) {
   const coastMat = new THREE.LineBasicMaterial({
     color: new THREE.Color(colors.neonCyan || '#00d4b0'),
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.75,
+  });
+  // Glow halo: duplicate coast lines at slightly higher radius, low opacity
+  const coastGlowMat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    transparent: true,
+    opacity: 0.22,
+    depthWrite: false,
   });
   for (const coords of landBorders.coordinates) {
-    const points = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    geoGroup.add(new THREE.Line(geo, coastMat));
+    const points     = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
+    const glowPoints = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
+    const geo     = new THREE.BufferGeometry().setFromPoints(points);
+    const glowGeo = new THREE.BufferGeometry().setFromPoints(glowPoints);
+    const glowLine = new THREE.Line(glowGeo, coastGlowMat);
+    glowLine.userData.geoType = 'coast';
+    const line = new THREE.Line(geo, coastMat);
+    line.userData.geoType = 'coast';
+    geoGroup.add(glowLine);
+    geoGroup.add(line);
   }
 
   // ── Interior country borders (dimmer) ─────────────────────
@@ -772,12 +856,14 @@ async function _loadGeoLines(element) {
   const borderMat = new THREE.LineBasicMaterial({
     color: new THREE.Color(colors.neonCyan || '#00d4b0'),
     transparent: true,
-    opacity: 0.15,
+    opacity: 0.32,
   });
   for (const coords of countryBorders.coordinates) {
     const points = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
     const geo = new THREE.BufferGeometry().setFromPoints(points);
-    geoGroup.add(new THREE.Line(geo, borderMat));
+    const line = new THREE.Line(geo, borderMat);
+    line.userData.geoType = 'border';
+    geoGroup.add(line);
   }
 
   state.scene.add(geoGroup);
@@ -792,6 +878,19 @@ function _updateNodeCount(element) {
   if (countEl) {
     countEl.textContent = `NODES: ${state.nodeMap.size}`;
   }
+}
+
+// ── _tickGlitch ───────────────────────────────────────────────
+// Drives the subtle RGB-shift cycle.
+// At rest: near-zero constant base that slowly breathes.
+// Events: gentle pulse every 8–20 s, smooth bell envelope.
+
+function _tickGlitch(state) {
+  const gp = state.glitchPass;
+  if (!gp) return;
+  const t = performance.now() * 0.001;
+  // Constant slow-breathing shift — no pulse events
+  gp.uniforms.shiftAmt.value = 0.4 + Math.sin(t * 0.6) * 0.2;
 }
 
 // ── pulseNode ─────────────────────────────────────────────────
@@ -936,4 +1035,411 @@ export function spawnArc(element, fromId, toId) {
     t0: Date.now(),
     dur: 1000 + Math.random() * 700,
   });
+}
+
+// ── Satellite globe ───────────────────────────────────────────
+
+function _llToPx(lat, lng, W, H) {
+  return [(lng + 180) / 360 * W, (90 - lat) / 180 * H];
+}
+
+function _buildDayCanvas(topo = null) {
+  const W = 2048, H = 1024;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  // Ocean — satellite-realistic deep blue, darker at poles
+  const oceanGrad = ctx.createLinearGradient(0, 0, 0, H);
+  oceanGrad.addColorStop(0,    '#071a2e');
+  oceanGrad.addColorStop(0.15, '#082035');
+  oceanGrad.addColorStop(0.5,  '#0a2a46');
+  oceanGrad.addColorStop(0.85, '#082035');
+  oceanGrad.addColorStop(1,    '#071a2e');
+  ctx.fillStyle = oceanGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  if (topo) {
+    // Land polygons from TopoJSON
+    const landFC = topoFeature(topo, topo.objects.land);
+    const features = landFC.type === 'FeatureCollection' ? landFC.features : [landFC];
+    const polygons = features.flatMap(f => {
+      const g = f.geometry;
+      if (!g) return [];
+      return g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+    });
+
+    // Latitude-based land biome gradient (top = 90°N, bottom = 90°S)
+    const landGrad = ctx.createLinearGradient(0, 0, 0, H);
+    landGrad.addColorStop(0,    '#dce8dc');  // Arctic ice/snow
+    landGrad.addColorStop(0.06, '#8a9c7a');  // Tundra
+    landGrad.addColorStop(0.16, '#527848');  // Boreal/taiga
+    landGrad.addColorStop(0.28, '#4e7040');  // Temperate
+    landGrad.addColorStop(0.40, '#4a6c34');  // Subtropical
+    landGrad.addColorStop(0.50, '#3a5c24');  // Tropical equator — darkest
+    landGrad.addColorStop(0.60, '#4a6c34');  // Subtropical S
+    landGrad.addColorStop(0.72, '#4e7040');  // Temperate S
+    landGrad.addColorStop(0.84, '#7a8c6a');  // Sub-Antarctic
+    landGrad.addColorStop(0.92, '#ccd8c4');  // Near Antarctica
+    landGrad.addColorStop(1,    '#eaf0ea');  // Antarctic ice
+
+    // Fill land polygons with biome gradient
+    for (const polygon of polygons) {
+      for (let ri = 0; ri < polygon.length; ri++) {
+        const ring = polygon[ri];
+        ctx.beginPath();
+        for (let i = 0; i < ring.length; i++) {
+          const [lng, lat] = ring[i];
+          const x = (lng + 180) / 360 * W;
+          const y = (90 - lat) / 180 * H;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = ri === 0 ? landGrad : '#0a2a46';
+        ctx.fill();
+      }
+    }
+
+    // Desert overlays — sandy/tan patches over arid regions
+    // [centerLat, centerLng, latRadius, lngRadius, color]
+    const deserts = [
+      [22,  15,  16, 28, 'rgba(172,142, 88,0.72)'],  // Sahara
+      [23,  44,   8, 12, 'rgba(178,148, 96,0.68)'],  // Arabian
+      [27,  70,   5,  9, 'rgba(182,158,112,0.52)'],  // Thar
+      [42, 100,   6, 16, 'rgba(152,128, 86,0.58)'],  // Gobi
+      [-25, 132, 10, 17, 'rgba(168,134, 82,0.58)'],  // Australian outback
+      [-22, -68,  4,  6, 'rgba(142,118, 76,0.48)'],  // Atacama
+      [35, -114,  5,  8, 'rgba(158,128, 82,0.42)'],  // Mojave/SW USA
+      [40,  58,   5,  8, 'rgba(158,134, 88,0.45)'],  // Central Asian steppe
+    ];
+    for (const [lat, lng, dlat, dlng, color] of deserts) {
+      const [cx, cy] = _llToPx(lat, lng, W, H);
+      const rx = dlng / 360 * W;
+      const ry = dlat / 180 * H;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx, ry));
+      const fade = color.replace(/[\d.]+\)$/, '0)');
+      g.addColorStop(0,    color);
+      g.addColorStop(0.55, color);
+      g.addColorStop(0.88, color.replace(/[\d.]+\)$/, '0.08)'));
+      g.addColorStop(1,    fade);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Subtle coastline shimmer
+    ctx.strokeStyle = 'rgba(120,175,210,0.22)';
+    ctx.lineWidth = 0.8;
+    for (const polygon of polygons) {
+      const ring = polygon[0];
+      ctx.beginPath();
+      for (let i = 0; i < ring.length; i++) {
+        const [lng, lat] = ring[i];
+        const x = (lng + 180) / 360 * W;
+        const y = (90 - lat) / 180 * H;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  // Barely-visible lat/lng grid
+  ctx.strokeStyle = 'rgba(100,150,200,0.04)';
+  ctx.lineWidth = 0.5;
+  for (let lat = -80; lat <= 80; lat += 30) {
+    const y = _llToPx(lat, 0, W, H)[1];
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  for (let lng = -180; lng <= 180; lng += 30) {
+    const x = _llToPx(0, lng, W, H)[0];
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  return cv;
+}
+
+function _buildNightCanvas() {
+  const W = 1024, H = 512;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#000810';
+  ctx.fillRect(0, 0, W, H);
+
+  // City lights: [lat, lng, intensity 1-4]
+  const cities = [
+    // North America
+    [40.7,-74.0,4],[34.0,-118.2,3.5],[41.9,-87.6,3],[29.8,-95.4,2.5],
+    [19.4,-99.1,3],[43.7,-79.4,3],[45.5,-73.6,2.5],[49.3,-123.1,2],
+    [38.9,-77.0,2.5],[42.4,-71.1,2.5],[32.8,-96.8,2.5],[33.7,-84.4,2],
+    [37.8,-122.4,2.5],[47.6,-122.3,2],[39.7,-105.0,2],[33.4,-112.1,2],
+    [36.2,-115.1,2],[29.4,-98.5,2],[32.7,-97.1,2],[30.3,-81.7,1.5],
+    // Canada corridor
+    [51.0,-114.1,2],[53.5,-113.5,2],[49.9,-97.1,2],
+    // Central America
+    [14.1,-87.2,1.5],[13.7,-89.2,1.5],
+    // South America
+    [-23.5,-46.6,4],[-22.9,-43.2,3.5],[-34.6,-58.4,3.5],[-12.0,-77.0,2],
+    [4.7,-74.1,2],[10.5,-66.9,2],[-33.5,-70.7,2.5],[-3.7,-38.5,2],
+    [-8.1,-34.9,2],[-19.9,-43.9,2.5],[-30.0,-51.2,2],[-15.8,-47.9,2],
+    // Europe
+    [51.5,-0.1,4],[48.9,2.3,4],[52.5,13.4,3.5],[55.8,37.6,4],
+    [41.0,28.9,3.5],[59.9,10.8,2],[59.3,18.1,2],[60.2,25.0,2],
+    [52.2,21.0,2.5],[50.1,14.4,2.5],[47.5,19.0,2.5],[48.2,16.4,2.5],
+    [47.4,8.5,2.5],[48.1,11.6,3],[52.4,4.9,3],[40.4,-3.7,3],
+    [41.4,2.2,3],[45.5,9.2,3],[41.9,12.5,3],[37.9,23.7,2.5],
+    [50.0,8.7,2.5],[51.0,13.7,2],[51.2,6.8,2.5],[50.9,4.3,2.5],
+    [53.5,-2.2,2],[55.7,12.6,2],[50.5,30.5,2.5],[59.5,30.3,2.5],
+    [48.0,37.8,2],[46.5,30.7,2],[49.8,24.0,2],[50.4,30.5,2],
+    [45.4,28.0,2],[44.4,26.1,2],[42.7,23.3,2],[37.1,-8.6,2],
+    // Middle East / N Africa
+    [30.1,31.3,3.5],[25.2,55.3,2.5],[33.3,44.4,2.5],[35.7,51.4,3],
+    [24.7,46.7,2.5],[31.8,35.2,2],[33.9,35.5,2],[36.8,10.2,2],
+    [32.9,13.2,2],[30.7,29.7,2],
+    // Sub-Saharan Africa
+    [6.5,3.4,2.5],[-26.2,28.0,3],[-33.9,18.4,2],[-1.3,36.8,2],
+    [5.3,-4.0,2],[14.7,17.4,1.5],[9.1,7.4,2],[4.4,18.6,1.5],
+    [-4.3,15.3,1.5],[-11.7,43.3,1.5],[-18.9,47.5,1.5],
+    // South & Central Asia
+    [28.6,77.2,4],[19.1,72.9,3.5],[12.9,77.6,3],[23.7,90.4,3],
+    [24.9,67.0,2.5],[31.6,74.3,2.5],[33.7,73.1,2],[17.4,78.5,2.5],
+    [22.6,88.4,2.5],[13.1,80.3,2.5],[23.0,72.6,2],[22.3,70.8,2],
+    [26.9,75.8,2],[21.2,81.4,2],[27.7,85.3,2],
+    // Central Asia
+    [41.3,69.2,2],[43.3,76.9,2],[51.2,71.5,1.5],[53.9,27.6,2],
+    // Russia / Siberia
+    [54.7,55.9,2],[56.8,60.6,2],[55.0,73.4,2],[56.0,92.9,2],
+    [52.3,104.3,2],[53.7,87.1,2],[62.0,129.7,1.5],[43.1,131.9,2],
+    [61.8,34.4,2],
+    // East Asia
+    [35.7,139.7,5],[37.5,127.0,4],[39.9,116.4,4.5],[31.2,121.5,4.5],
+    [23.1,113.3,4],[22.3,114.2,3.5],[30.6,104.1,3.5],[32.1,118.8,3.5],
+    [30.3,120.2,3],[36.7,117.0,2.5],[34.3,108.9,2.5],[26.0,119.3,2.5],
+    [41.8,123.4,2.5],[45.8,126.5,2.5],[34.6,135.5,3.5],[33.6,130.4,3],
+    // SE Asia
+    [1.3,103.8,3.5],[13.7,100.5,2.5],[10.8,106.7,2.5],[14.6,121.0,2.5],
+    [3.1,101.7,2.5],[6.2,106.8,3],[21.0,105.8,2],[-6.2,106.8,2.5],
+    // Australia / NZ
+    [-33.9,151.2,2.5],[-37.8,144.9,2],[-27.5,153.0,2],[-31.9,115.9,2],
+    [-43.5,172.6,1.5],
+  ];
+
+  // Two-pass: soft halo first, sharp bright core on top
+  // Pass 1 — soft halo (source-over, very low opacity)
+  for (const [lat, lng, sz] of cities) {
+    const [cx, cy] = _llToPx(lat, lng, W, H);
+    const haloR = sz * 2.2;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    g.addColorStop(0,   `rgba(255,210,120,0.22)`);
+    g.addColorStop(0.5, `rgba(255,170,60,0.08)`);
+    g.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Pass 2 — tight bright core (lighter blending for natural accumulation)
+  ctx.globalCompositeOperation = 'lighter';
+  for (const [lat, lng, sz] of cities) {
+    const [cx, cy] = _llToPx(lat, lng, W, H);
+    const coreR = Math.max(1, sz * 0.9);
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    g.addColorStop(0,  `rgba(255,245,200,${Math.min(0.9, 0.5 + sz * 0.1)})`);
+    g.addColorStop(0.6, `rgba(255,200,100,0.15)`);
+    g.addColorStop(1,  'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
+  return cv;
+}
+
+function _loadTexture(url) {
+  return new Promise((resolve, reject) => {
+    new THREE.TextureLoader().load(url, resolve, undefined, reject);
+  });
+}
+
+async function _createSatelliteGlobe(element) {
+  const state = _state.get(element);
+  if (!state || state.satelliteGroup) return;
+
+  // Load real satellite textures; fall back to procedural on error
+  let dayTex, nightTex, realTexFlag = 1.0;
+  try {
+    [dayTex, nightTex] = await Promise.all([
+      _loadTexture('/textures/earth_day.jpg'),
+      _loadTexture('/textures/earth_night.jpg'),
+    ]);
+    dayTex.colorSpace   = THREE.SRGBColorSpace;
+    nightTex.colorSpace = THREE.SRGBColorSpace;
+  } catch (e) {
+    console.warn('[s9-threatmap] satellite textures not found, using procedural fallback', e);
+    if (!_topoCache) {
+      try {
+        const res = await fetch('/data/countries-110m.json');
+        if (res.ok) _topoCache = await res.json();
+      } catch (_) {}
+    }
+    dayTex   = new THREE.CanvasTexture(_buildDayCanvas(_topoCache));
+    nightTex = new THREE.CanvasTexture(_buildNightCanvas());
+    realTexFlag = 0.0;
+  }
+
+  // Sphere with day/night shader
+  const satMat = new THREE.ShaderMaterial({
+    uniforms: {
+      dayMap:    { value: dayTex },
+      nightMap:  { value: nightTex },
+      sunDir:    { value: new THREE.Vector3(
+        Math.cos(state.sunAngle), 0.22, Math.sin(state.sunAngle)
+      ).normalize() },
+      realTex:   { value: realTexFlag },
+      time:      { value: 0 },
+    },
+    vertexShader: /* glsl */`
+      varying vec2  vUv;
+      varying vec3  vWorldNormal;
+      void main() {
+        vUv          = uv;
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position  = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform sampler2D dayMap;
+      uniform sampler2D nightMap;
+      uniform vec3      sunDir;
+      uniform float     realTex;
+      uniform float     time;
+      varying vec2      vUv;
+      varying vec3      vWorldNormal;
+      float hash(float n){return fract(sin(n)*43758.5453);}
+      void main() {
+        float d     = dot(normalize(vWorldNormal), normalize(sunDir));
+        float blend = smoothstep(-0.18, 0.22, d);
+        vec4  day   = texture2D(dayMap,   vUv);
+        vec4  night = texture2D(nightMap, vUv);
+
+        // Terminator fringe — suppressed for real satellite textures
+        float term   = smoothstep(-0.06, 0.0, d) * (1.0 - smoothstep(0.0, 0.07, d));
+        vec3  fringe = mix(vec3(0.0), vec3(1.0, 0.65, 0.2), term * 0.28 * (1.0 - realTex));
+        vec3  base   = mix(night.rgb, day.rgb, blend) + fringe;
+
+        // ── Holographic overlay (day-side only) ──────────────
+        // Sweeping scan line
+        float sweep = step(0.993, fract(vUv.y * 200.0 + time * 0.04));
+        // Static grid lines
+        float gridH = step(0.991, fract(vUv.y * 80.0));
+        float gridV = step(0.993, fract(vUv.x * 120.0));
+        float grid  = max(gridH, gridV);
+        // Occasional digital noise band
+        float nb = hash(floor(vUv.y * 55.0) + floor(time * 7.0) * 91.3);
+        float noiseBand = step(0.96, nb) * step(0.0, sin(time * 4.0 + vUv.y * 30.0));
+
+        vec3 holoCol = vec3(0.15, 0.95, 0.88);
+        vec3 holo    = holoCol * (sweep * 0.40 + grid * 0.10 + noiseBand * 0.20);
+        holo        *= blend;  // only on lit day side
+
+        gl_FragColor = vec4(base + holo, 1.0);
+      }
+    `,
+  });
+
+  const satGeo    = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 32);
+  const satSphere = new THREE.Mesh(satGeo, satMat);
+  satSphere.renderOrder = 0;
+
+  // Atmosphere shell — rim glow via Fresnel (pronounced holo blue haze)
+  const atmGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 1.055, 32, 16);
+  const atmMat = new THREE.ShaderMaterial({
+    uniforms: { glowCol: { value: new THREE.Color(0x00c8ff) } },
+    vertexShader: /* glsl */`
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vNormal  = normalize(normalMatrix * normal);
+        vViewDir = normalize(-( modelViewMatrix * vec4(position,1.0) ).xyz);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform vec3 glowCol;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        float rim        = 1.0 - abs(dot(vNormal, vViewDir));
+        // Outer haze layer (very wide)
+        float outer      = pow(rim, 2.2) * 0.55;
+        // Inner sharp rim
+        float inner      = pow(rim, 5.0) * 1.10;
+        float intensity  = outer + inner;
+        gl_FragColor     = vec4(glowCol * intensity, intensity * 0.72);
+      }
+    `,
+    side: THREE.FrontSide,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+  });
+  const atmShell = new THREE.Mesh(atmGeo, atmMat);
+  atmShell.renderOrder = 1;
+
+  const group = new THREE.Group();
+  group.add(satSphere);
+  group.add(atmShell);
+  group.visible = false;
+  state.scene.add(group);
+
+  Object.assign(state, { satelliteGroup: group, satGeo, satMat, atmGeo, atmMat, dayTex, nightTex });
+}
+
+// ── setSatelliteMode ──────────────────────────────────────────
+
+/**
+ * Toggle between holographic satellite view and wireframe globe.
+ *
+ * @param {HTMLElement} element - .s9-threatmap root
+ * @param {boolean} enabled
+ */
+export async function setSatelliteMode(element, enabled) {
+  const state = _state.get(element);
+  if (!state) return;
+
+  if (enabled) {
+    // Hide wireframe immediately; show satellite once the async build resolves
+    if (state.globeBack)  state.globeBack.visible  = false;
+    if (state.occluder)   state.occluder.visible   = false;
+    if (state.globeFront) state.globeFront.visible  = false;
+    if (state.geoGroup)   state.geoGroup.visible   = false;
+    // Tighten bloom so node halos don't bleed over the texture
+    if (state.bloomPass) {
+      state._bloomPrev = { strength: state.bloomPass.strength, threshold: state.bloomPass.threshold, radius: state.bloomPass.radius };
+      state.bloomPass.strength  = 0.32;
+      state.bloomPass.threshold = 0.85;
+      state.bloomPass.radius    = 0.35;
+    }
+    state.satelliteMode = true;
+    await _createSatelliteGlobe(element);  // no-op if already created
+    if (state.satelliteGroup) state.satelliteGroup.visible = true;
+  } else {
+    if (state.satelliteGroup) state.satelliteGroup.visible = false;
+    if (state.globeBack)  state.globeBack.visible  = true;
+    if (state.occluder)   state.occluder.visible   = true;
+    if (state.globeFront) state.globeFront.visible  = true;
+    if (state.geoGroup)   state.geoGroup.visible   = true;
+    // Restore bloom
+    if (state.bloomPass && state._bloomPrev) {
+      state.bloomPass.strength  = state._bloomPrev.strength;
+      state.bloomPass.threshold = state._bloomPrev.threshold;
+      state.bloomPass.radius    = state._bloomPrev.radius;
+    }
+    state.satelliteMode = false;
+  }
 }
