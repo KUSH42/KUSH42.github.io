@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "vite",
-    "build": "vite build && rm -f assets/* && cp dist/assets/* assets/",
-    "deploy": "vite build && cp dist/index.html . && rm -f assets/* && cp dist/assets/* assets/",
+    "build": "vite build",
+    "deploy": "vite build && cp dist/index.html . && rm -f assets/*.js assets/*.css assets/*.ttf assets/*.jpg && cp dist/assets/* assets/ && cp dist/sonar-ping.mp3 . 2>/dev/null; true",
     "preview": "vite preview"
   },
   "devDependencies": {
