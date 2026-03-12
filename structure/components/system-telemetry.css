@@ -1,0 +1,95 @@
+/* ============================================================
+   structure/components/system-telemetry.css
+   SystemTelemetry — STRUCTURE PLANE ONLY.
+   Layout, sizing, flex/grid, overflow, position. Zero color/effect.
+   ============================================================ */
+
+/* ── Container ──────────────────────────────────────────────── */
+
+.s9-telemetry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Single metric row ──────────────────────────────────────── */
+
+.s9-telemetry__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ── Label row ──────────────────────────────────────────────── */
+
+.s9-telemetry__label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+
+.s9-telemetry__label-name {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.s9-telemetry__label-jp {
+  font-size: 0.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Bar track ──────────────────────────────────────────────── */
+
+.s9-telemetry__bar {
+  height: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Bar fill ───────────────────────────────────────────────── */
+
+.s9-telemetry__bar-fill {
+  height: 100%;
+  transition: width 0.4s steps(8);
+  overflow: hidden;
+}
+
+/* ── Threshold marker ───────────────────────────────────────── */
+
+.s9-telemetry__threshold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+/* ── Readout row ────────────────────────────────────────────── */
+
+.s9-telemetry__readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.2rem;
+}
+
+.s9-telemetry__value {
+  font-size: 0.75rem;
+  letter-spacing: var(--letter-spacing-normal);
+  line-height: 1;
+}
+
+.s9-telemetry__unit {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-normal);
+  line-height: 1;
+}

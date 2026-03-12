@@ -1,0 +1,51 @@
+/* ============================================================
+   aesthetic/variables/themes/matrixgreen.css
+   GitS UI — matrixgreen theme  (DEFAULT — applied via :root)
+   Dark green-black void, warm teal primary, orange alert.
+   Based on drBadger_tritium3.webp reference.
+   No [data-theme="matrixgreen"] selector exists — this is :root.
+   setTheme('matrixgreen') removes the data-theme attribute.
+   ============================================================ */
+
+:root {
+  /* Backgrounds */
+  --void:             #050e07;
+  --void-secondary:   #0b1a0e;
+  --panel-bg:         rgba(8, 20, 12, 0.88);
+  --panel-bg-solid:   #0b1a0e;
+
+  /* Borders */
+  --panel-border:        rgba(0, 190, 90, 0.25);
+  --panel-border-active: rgba(0, 212, 176, 0.88);
+  --panel-border-alert:  rgba(255, 140, 0, 0.9);
+  --panel-border-dim:    rgba(0, 170, 80, 0.1);
+
+  /* Neon primaries */
+  --neon-cyan:    #00d4b0;
+  --neon-green:   #00ff70;
+  --neon-magenta: #ff8c00;
+  --neon-amber:   #b0ff44;
+
+  /* Text */
+  --text-primary:   #00d4b0;
+  --text-secondary: rgba(0, 212, 176, 0.65);
+  --text-dim:       rgba(0, 212, 176, 0.35);
+  --text-alert:     #ff8c00;
+  --text-warning:   #b0ff44;
+  --text-ok:        #00ff70;
+
+  /* Interactive states */
+  --row-highlight: #001a0d;
+  --row-hover:     rgba(0, 212, 176, 0.06);
+
+  /* Glows — literal hex only, no var() inside box-shadow/text-shadow */
+  --glow-cyan:    0 0 8px #00d4b0, 0 0 20px rgba(0, 212, 176, 0.5);
+  --glow-green:   0 0 8px #00ff70, 0 0 20px rgba(0, 255, 112, 0.5);
+  --glow-magenta: 0 0 8px #ff8c00, 0 0 20px rgba(255, 140, 0, 0.5);
+  --glow-amber:   0 0 8px #b0ff44, 0 0 20px rgba(176, 255, 68, 0.5);
+
+  --glow-text-cyan:    0 0 5px #00d4b0, 0 0 10px #00d4b0, 0 0 20px #00d4b0;
+  --glow-text-green:   0 0 5px #00ff70, 0 0 10px #00ff70, 0 0 20px #00ff70;
+  --glow-text-magenta: 0 0 5px #ff8c00, 0 0 10px #ff8c00, 0 0 20px #ff8c00;
+  --glow-text-amber:   0 0 5px #b0ff44, 0 0 10px #b0ff44, 0 0 20px #b0ff44;
+}

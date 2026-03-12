@@ -1,0 +1,75 @@
+/* ============================================================
+   aesthetic/components/neural-readout.css
+   NeuralReadout — AESTHETIC PLANE ONLY.
+   Color, border, shadow, font, animation. Zero layout properties.
+   Requires: aesthetic/variables/index.css, aesthetic/effects/index.css
+   ============================================================ */
+
+/* ── Entity ID ──────────────────────────────────────────────── */
+
+.s9-neural__id {
+  font-family: var(--font-holo);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 5px #00d4b0, 0 0 10px #00d4b0, 0 0 20px #00d4b0;
+  text-transform: uppercase;
+}
+
+/* ── Ghost coefficient line ─────────────────────────────────── */
+
+.s9-neural__ghost-line {
+  font-family: var(--font-terminal);
+  color: var(--text-secondary);
+  letter-spacing: var(--letter-spacing-normal);
+}
+
+/* ── Avatar container ───────────────────────────────────────── */
+
+.s9-neural__avatar {
+  border: 1px solid var(--panel-border-active);
+  box-shadow: 0 0 8px #00d4b0, 0 0 20px rgba(0, 212, 176, 0.5);
+}
+
+/* ── Stats label ────────────────────────────────────────────── */
+
+.s9-neural__stat-label {
+  font-family: var(--font-terminal);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+/* ── Stats value ────────────────────────────────────────────── */
+
+.s9-neural__stat-value {
+  font-family: var(--font-terminal);
+  color: var(--text-primary);
+}
+
+/* ── Status bar label ───────────────────────────────────────── */
+
+.s9-neural__status-bar-label {
+  font-family: var(--font-terminal);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+/* ── Status bar track ───────────────────────────────────────── */
+
+.s9-neural__status-bar-track {
+  background: color-mix(in srgb, var(--neon-cyan) 8%, transparent);
+  border: 1px solid var(--panel-border-dim);
+}
+
+/* ── Status bar fill (default cyan) ────────────────────────── */
+
+.s9-neural__status-bar-fill {
+  background: var(--neon-cyan);
+  box-shadow: 0 0 8px #00d4b0;
+}
+
+/* ── Critical state (>80%) ──────────────────────────────────── */
+
+.s9-neural__status-bar-fill--critical {
+  background: var(--neon-magenta);
+  box-shadow: 0 0 8px #ff8c00;
+  animation: alert-pulse 1s ease-in-out infinite;
+}

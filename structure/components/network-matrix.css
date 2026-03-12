@@ -1,0 +1,24 @@
+/* ============================================================
+   structure/components/network-matrix.css
+   NetworkMatrix — STRUCTURE PLANE ONLY.
+   Layout, sizing, flex/grid, overflow, position. Zero color/effect.
+   ============================================================ */
+
+.s9-matrix {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.s9-matrix__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* SVG text baseline and centering */
+.s9-matrix__node-label {
+  dominant-baseline: hanging;
+  text-anchor: middle;
+}

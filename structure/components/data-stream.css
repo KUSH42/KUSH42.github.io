@@ -1,0 +1,85 @@
+/* ============================================================
+   structure/components/data-stream.css
+   DataStream — STRUCTURE PLANE ONLY.
+   Layout, sizing, flex/grid, overflow, position. Zero color/effect.
+   ============================================================ */
+
+/* ── Container ──────────────────────────────────────────────── */
+
+.s9-stream {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+/* ── Scrollable body ────────────────────────────────────────── */
+
+.s9-stream__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Row ────────────────────────────────────────────────────── */
+
+.s9-stream__row {
+  display: grid;
+  grid-template-columns: 7rem auto 1fr;
+  gap: 0 0.5rem;
+  align-items: baseline;
+  padding: 2px var(--panel-padding, 12px);
+  min-height: 1.5rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* ── Pinned row ─────────────────────────────────────────────── */
+
+.s9-stream__row--pinned {
+  grid-template-columns: 7rem auto 1fr;
+}
+
+.s9-stream__row--pinned .s9-stream__message {
+  grid-column: 1 / -1;
+  white-space: normal;
+  word-break: break-word;
+  padding-top: 2px;
+}
+
+/* ── Timestamp ──────────────────────────────────────────────── */
+
+.s9-stream__timestamp {
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+/* ── Source tag ─────────────────────────────────────────────── */
+
+.s9-stream__source {
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+/* ── Message ────────────────────────────────────────────────── */
+
+.s9-stream__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  min-width: 0;
+}
