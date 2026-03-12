@@ -831,7 +831,7 @@
 <script type="module">
 import { mountTerminal, printLine, clearOutput } from '/components/command-terminal.js';
 import { mountStream, appendRow }   from '/components/data-stream.js';
-import { glitchUpdate, setStatusBarValue } from '/components/neural-readout.js';
+import { glitchUpdate } from '/components/neural-readout.js';
 import { setValue as setTelemetryValue } from '/components/system-telemetry.js';
 import { showAlert } from '/components/alert-banner.js';
 import { initMatrix, activateEdge, deactivateEdge, pulseNode,
@@ -1285,7 +1285,6 @@ setInterval(() => {
 const neuralEl  = document.getElementById('neural-01');
 const ghostVal  = document.getElementById('ghost-val');
 const cyberIdx  = document.getElementById('cyber-index');
-const ghostBar  = document.getElementById('ghost-bar');
 const neuralSync = document.getElementById('neural-sync');
 
 let ghostCoeff = 98.4;
@@ -1299,7 +1298,6 @@ function stepNeural() {
     cyberIdx.textContent = `${pct}%`;
     neuralSync.textContent = `${Math.round(ghostCoeff)}%`;
   });
-  setStatusBarValue(ghostBar, Math.round(ghostCoeff));
 }
 for (let i = 0; i < 3; i++) stepNeural();
 setInterval(stepNeural, 3000);
