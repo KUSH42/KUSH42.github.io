@@ -134,8 +134,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const occluderGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 0.999, 48, 48);
 
   // Layer 0: ghost back wires — drawn before any depth data, always faint
+  const cyanColor = new THREE.Color(colors.neonCyan || '#00d4b0');
+
   const globeBackMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || 'rgba(0, 192, 156, 225)'),
+    color: cyanColor,
     wireframe: true,
     transparent: true,
     opacity: 0.0015,
@@ -166,12 +168,12 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   // Layer 2: visible front wires — depth-tested against occluder
   const globeFrontMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || 'hsla(179, 100%, 42%, 0.020)'),
+    color: cyanColor,
     wireframe: true,
     transparent: true,
-    opacity: 0.0002,
+    opacity: 0.014,
     depthTest: true,
-    depthWrite: true,
+    depthWrite: false,
     side: THREE.FrontSide,
   });
   const globeFront = new THREE.Mesh(globeGeo, globeFrontMat);
@@ -180,7 +182,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   // Layer 3: glow wireframe — subtle additive luminance on wireframe lines
   const globeGlowMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#00ffccb0'),
+    color: cyanColor,
     wireframe:   true,
     transparent: true,
     opacity:     0.025,
@@ -191,6 +193,41 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const globeGlow = new THREE.Mesh(globeGeo, globeGlowMat);
   globeGlow.renderOrder = 3;
   scene.add(globeGlow);
+
+  // Layer 4: fresnel rim glow — bright edge halo around globe silhouette
+  const rimGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 48, 48);
+  const rimMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Vector3(cyanColor.r, cyanColor.g, cyanColor.b) },
+    },
+    vertexShader: /* glsl */`
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vNormal  = normalize(normalMatrix * normal);
+        vec4 mv  = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        float rim   = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+        float alpha = pow(rim, 2.2) * 0.85;
+        gl_FragColor = vec4(uColor * alpha, alpha);
+      }
+    `,
+    transparent: true,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+    side:        THREE.FrontSide,
+  });
+  const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+  rimMesh.renderOrder = 4;
+  scene.add(rimMesh);
 
   // ── Orbit Controls ────────────────────────────────────────
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -342,6 +379,8 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     occluder,
     globeFront,
     globeGlow,
+    rimGeo,
+    rimMesh,
     geoGroup: null,
     cameraLerpTarget: null,
     lastOrbitInteraction: 0,
@@ -476,6 +515,8 @@ export function destroyThreatMap(element) {
   if (state.occluder)   { state.scene.remove(state.occluder);   state.occluder.material.dispose(); }
   if (state.globeFront) { state.scene.remove(state.globeFront); state.globeFront.material.dispose(); }
   if (state.globeGlow)  { state.scene.remove(state.globeGlow);  state.globeGlow.material.dispose(); }
+  if (state.rimMesh)    { state.scene.remove(state.rimMesh);    state.rimMesh.material.dispose(); }
+  if (state.rimGeo)     state.rimGeo.dispose();
 
   // Dispose satellite globe
   if (state.satelliteGroup) {
