@@ -1,0 +1,37 @@
+/* ============================================================
+   aesthetic/components/pulse-radar.css
+   GitS UI — Pulse Radar  (aesthetic plane only)
+   ============================================================ */
+
+.s9-radar__label {
+  font-family: var(--font-terminal);
+  font-size: 0.48rem;
+  color: var(--text-dim);
+  text-shadow: 0 0 4px currentColor;
+}
+
+.s9-radar__label--hostile {
+  color: var(--neon-magenta);
+}
+
+.s9-radar__label--friendly {
+  color: var(--neon-green);
+}
+
+.s9-radar__label--neutral {
+  color: var(--neon-amber);
+}
+
+.s9-radar__ring-label {
+  font-family: var(--font-terminal);
+  font-size: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.s9-radar__cardinal-label {
+  font-family: var(--font-terminal);
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}

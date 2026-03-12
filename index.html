@@ -161,9 +161,6 @@
     .s9-ov__left .s9-panel:nth-child(2) { flex: 0 0 auto; }
     .s9-ov__left .s9-panel:nth-child(3) { flex: 1; }
     [data-s9-id="neural-readout-1"] .s9-panel__body { flex: 0 0 auto; overflow-y: visible; }
-    .s9-ov__right .s9-panel:nth-child(1) { flex: 1; }
-    .s9-ov__right .s9-panel:nth-child(2) { flex: 2; }
-
     /* ── Theme switcher buttons ──────────────────────────── */
     .topbar__theme-btns {
       display: flex;
@@ -342,9 +339,10 @@
     .intel-item__detail   { color: var(--text-dim); font-size: 0.52rem; margin-top: 2px; }
 
     /* ── Right column flex ───────────────────────────────── */
-    .s9-ov__right .s9-panel:nth-child(1) { flex: 1; }
-    .s9-ov__right .s9-panel:nth-child(2) { flex: 3; }
-    .s9-ov__right .s9-panel:nth-child(3) { flex: 1; }
+    .s9-ov__right .s9-panel:nth-child(1) { flex: 1;    min-height: 0; }
+    .s9-ov__right .s9-panel:nth-child(2) { flex: 3;    min-height: 0; }
+    .s9-ov__right .s9-panel:nth-child(3) { flex: none; }
+    .s9-ov__right .s9-panel:nth-child(4) { flex: none; }
 
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
@@ -519,6 +517,18 @@
       word-break: break-all;
     }
     .node-popup__table tr { line-height: 1.75; }
+
+    /* ── Pulse Radar ───────────────────────────────────────── */
+    .s9-radar { position: relative; width: 100%; height: 100%; overflow: hidden; }
+    .s9-radar__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; }
+    .s9-radar__overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+    .s9-radar__labels { position: absolute; inset: 0; }
+    .s9-radar__label { position: absolute; white-space: nowrap; font-family: var(--font-terminal); font-size: 0.48rem; color: var(--text-dim); text-shadow: 0 0 4px currentColor; }
+    .s9-radar__label--hostile { color: var(--neon-magenta); }
+    .s9-radar__label--friendly { color: var(--neon-green); }
+    .s9-radar__label--neutral { color: var(--neon-amber); }
+    .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.5rem; color: var(--text-secondary); }
+    .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.55rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
   <link rel="stylesheet" crossorigin href="/assets/index-D_mHDXxc.css">
 </head>
@@ -739,8 +749,26 @@
       </div>
     </div>
 
+    <!-- Proximity Scan Radar -->
+    <div class="s9-panel" data-s9-id="pulse-radar-1">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">PROXIMITY SCAN</span>
+        <span class="s9-panel__header-jp">近接スキャン</span>
+        <span class="s9-panel__header-status" id="radar-status">● ACTIVE</span>
+      </div>
+      <div class="s9-panel__body" style="padding:0;position:relative;">
+        <div class="s9-radar" id="proximity-radar"></div>
+      </div>
+      <div class="s9-panel__footer">
+        <span id="radar-contacts"
+              style="font-family:var(--font-terminal);font-size:0.55rem;color:var(--text-dim);">
+          CONTACTS: 0 | SWEEP: 4.0s
+        </span>
+      </div>
+    </div>
+
     <!-- SequenceLog (right) -->
-    <div class="s9-panel" data-s9-id="seq-log-right" style="flex: none">
+    <div class="s9-panel" data-s9-id="seq-log-right">
       <div class="s9-panel__header">
         <span class="s9-panel__header-label">MISSION TIMELINE</span>
         <span class="s9-panel__header-jp">作戦時系列</span>
@@ -788,7 +816,7 @@
     </div>
 
     <!-- SYS METRICS -->
-    <div class="s9-panel" data-s9-id="sys-metrics" style="flex:none;">
+    <div class="s9-panel" data-s9-id="sys-metrics">
       <div class="s9-panel__header">
         <span class="s9-panel__header-label">SYS METRICS</span>
         <span class="s9-panel__header-jp">システム</span>
@@ -835,6 +863,7 @@ import { initThreatMap, addNode, removeNode, setActiveNode,
 import { mountPanel }               from '/components/panel-shell.js';
 import { setStepState }             from '/components/sequence-log.js';
 import { initMatrixRain }           from '/components/matrix-rain.js';
+import { initRadar, destroyRadar, refreshRadarTheme } from '/components/pulse-radar.js';
 
 // ── Theme system ──────────────────────────────────────────────
 const THEMES = { '': 'MATRIX GREEN', gits: 'GHOST IN THE SHELL', amber: 'AMBER', phosphor: 'PHOSPHOR', blood: 'BLOOD' };
@@ -852,6 +881,7 @@ function applyTheme(name) {
   // Refresh Three.js material colors to match new CSS variables
   refreshThemeColors(threatEl);
   if (tacticalInited) refreshThemeColors(document.getElementById('threatmap-tactical'));
+  refreshRadarTheme(radarEl);
 }
 
 // ── UTC clock ────────────────────────────────────────────────
@@ -987,12 +1017,14 @@ mountTerminal(termEl, {
           const old = updateNodeLevel(threatEl, id, lvl);
           globeNodes.set(id, lvl);
           setThreatLevel(threatEl, Math.max(0, ...globeNodes.values()));
+          radar.setRadarThreatLevel(Math.max(0, ...globeNodes.values()) / 100);
           printLine(termEl, `NODE ${id}: ${old} → ${lvl}`, lvl >= 70 ? 'err' : 'sys');
           if (lvl >= 70 && old < 70) { setActiveNode(threatEl, id); focusNode(threatEl, id); }
         } else {
           const lvl = parseInt(args[0]);
           if (isNaN(lvl) || lvl < 0 || lvl > 100) { printLine(termEl, 'ERR: level must be 0-100', 'err'); break; }
           setThreatLevel(threatEl, lvl);
+          radar.setRadarThreatLevel(lvl / 100);
           printLine(termEl, `GLOBAL THREAT LEVEL SET: ${lvl}`, 'sys');
         }
         break;
@@ -1393,6 +1425,10 @@ setInterval(stepNeural, 3000);
 const threatEl = document.querySelector('.s9-threatmap');
 initThreatMap(threatEl, { autoRotate: true, bloomStrength: 0.4 });
 
+// ── Proximity Radar ───────────────────────────────────────────
+const radarEl = document.getElementById('proximity-radar');
+const radar   = initRadar(radarEl, { threatLevel: 0 });
+
 // ── Matrix Rain (after globe so canvas stacking is correct) ───
 const rainColor = getComputedStyle(document.documentElement)
   .getPropertyValue('--neon-green').trim() || '#00ff70';
@@ -1502,7 +1538,7 @@ BOOT_CITIES.forEach((city, i) => {
   setTimeout(() => {
     _addCityNode(city, INITIAL_LEVELS[i]);
     if (i === BOOT_CITIES.length - 1) {
-      setTimeout(() => setThreatLevel(threatEl, 55), 800);
+      setTimeout(() => { setThreatLevel(threatEl, 55); radar.setRadarThreatLevel(0.55); }, 800);
     }
   }, i * 300 + 500);
 });
@@ -1545,6 +1581,7 @@ function runGlobeSimStep() {
     updateNodeLevel(threatEl, id, newLvl);
     globeNodes.set(id, newLvl);
     setThreatLevel(threatEl, Math.max(...globeNodes.values()));
+    radar.setRadarThreatLevel(Math.max(...globeNodes.values()) / 100);
 
     printLine(termEl,
       `THREAT ESCALATION: ${city?.label ?? id} ${oldLvl}→${newLvl}`,
@@ -1576,6 +1613,7 @@ function runGlobeSimStep() {
     updateNodeLevel(threatEl, id, newLvl);
     globeNodes.set(id, newLvl);
     setThreatLevel(threatEl, Math.max(0, ...globeNodes.values()));
+    radar.setRadarThreatLevel(Math.max(0, ...globeNodes.values()) / 100);
     printLine(termEl, `THREAT REDUCED: ${city?.label ?? id} LVL=${newLvl}`, 'info');
     // Pulse on band change
     const deEscOldBand = oldLvl >= 70 ? 2 : oldLvl >= 40 ? 1 : 0;
