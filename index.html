@@ -1306,7 +1306,7 @@ setInterval(stepNeural, 3000);
 
 // ── ThreatMap ─────────────────────────────────────────────────
 const threatEl = document.querySelector('.s9-threatmap');
-initThreatMap(threatEl, { autoRotate: true, bloomStrength: 0.9 });
+initThreatMap(threatEl, { autoRotate: true, bloomStrength: 0.4 });
 
 document.getElementById('sat-toggle').addEventListener('change', (e) => {
   setSatelliteMode(threatEl, e.target.checked);
