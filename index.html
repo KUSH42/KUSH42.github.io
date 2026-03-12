@@ -595,12 +595,11 @@
             <span class="s9-neural__stat-value">ALPHA-7</span>
             <span class="s9-neural__stat-label">CYBER INDEX</span>
             <span class="s9-neural__stat-value" id="cyber-index">98.4%</span>
+            <span class="s9-neural__stat-label">EKG BPM</span>
+            <span class="s9-neural__stat-value" style="overflow:visible;text-overflow:clip"><span id="ekg-bpm">62</span> <span id="ekg-heart">♥︎</span></span>
           </div>
           <div class="s9-neural__ekg">
-            <div class="s9-neural__ekg-header">
-              <span class="s9-neural__ekg-label">EKG BPM</span>
-              <span class="s9-neural__ekg-bpm"><span id="ekg-bpm">72</span> BPM</span>
-            </div>
+            <canvas class="s9-neural__ekg-canvas" id="ekg-canvas" height="30"></canvas>
           </div>
         </div>
       </div>
@@ -1282,17 +1281,111 @@ setInterval(() => {
 }, 2000);
 
 // ── NeuralReadout ─────────────────────────────────────────────
-const neuralEl  = document.getElementById('neural-01');
-const ghostVal  = document.getElementById('ghost-val');
-const cyberIdx  = document.getElementById('cyber-index');
+const neuralEl   = document.getElementById('neural-01');
+const ghostVal   = document.getElementById('ghost-val');
+const cyberIdx   = document.getElementById('cyber-index');
 const neuralSync = document.getElementById('neural-sync');
+const ekgCanvas  = document.getElementById('ekg-canvas');
+const ekgBpmEl   = document.getElementById('ekg-bpm');
+const ekgHeartEl = document.getElementById('ekg-heart');
 
-let ghostCoeff = 98.4;
+let ghostCoeff  = 98.4;
+let ekgBpm      = 62;   // beats per minute — updated by stepNeural
+let ekgPhase    = 0;    // 0..1 within one beat cycle
+let _ekgPrevPh  = 0;    // previous frame phase — for R-peak edge detection
+
+const EKG_BEAT_THRESHOLD = 0.37; // phase of R-peak (top of QRS)
+
+function _fireHeartBeat() {
+  if (!ekgHeartEl) return;
+  ekgHeartEl.classList.remove('beat');
+  void ekgHeartEl.offsetWidth; // force reflow to restart animation
+  ekgHeartEl.classList.add('beat');
+}
+
+// Single heartbeat waveform — returns normalised amplitude [-1, 1] for phase p ∈ [0,1)
+function _ekgWave(p) {
+  if (p > 0.08 && p < 0.18) return Math.sin((p - 0.08) / 0.10 * Math.PI) * 0.18;  // P wave
+  if (p > 0.28 && p < 0.32) return -((p - 0.28) / 0.04) * 0.38;                    // Q dip
+  if (p > 0.32 && p < 0.37) return -0.38 + ((p - 0.32) / 0.05) * 1.38;             // R rise
+  if (p > 0.37 && p < 0.43) return 1.0  - ((p - 0.37) / 0.06) * 1.28;              // S fall
+  if (p > 0.43 && p < 0.49) return -0.28 + ((p - 0.43) / 0.06) * 0.28;             // recovery
+  if (p > 0.52 && p < 0.68) return Math.sin((p - 0.52) / 0.16 * Math.PI) * 0.30;   // T wave
+  return 0;
+}
+
+// Draw the EKG trace onto the canvas
+function _drawEkg() {
+  if (!ekgCanvas) return;
+  const ctx = ekgCanvas.getContext('2d');
+  const W   = ekgCanvas.width;
+  const H   = ekgCanvas.height;
+  const cy  = H / 2;
+  const amp = H * 0.44;
+  const beatsPerPx = (ekgBpm / 60) / 80; // advance this many beats per pixel (80px/s assumed scroll)
+
+  ctx.clearRect(0, 0, W, H);
+
+  const col = getComputedStyle(document.documentElement)
+    .getPropertyValue('--neon-cyan').trim() || '#00d4b0';
+
+  ctx.beginPath();
+  for (let x = 0; x < W; x++) {
+    const p = ((ekgPhase - (W - 1 - x) * beatsPerPx) % 1 + 1) % 1;
+    const y = cy - _ekgWave(p) * amp;
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = col;
+  ctx.lineWidth   = 1;
+  ctx.shadowColor = col;
+  ctx.shadowBlur  = 5;
+  ctx.stroke();
+
+  // Bright scan-head dot at the leading edge
+  const headY = cy - _ekgWave(ekgPhase) * amp;
+  ctx.beginPath();
+  ctx.arc(W - 1, headY, 1.8, 0, Math.PI * 2);
+  ctx.fillStyle = col;
+  ctx.shadowBlur = 10;
+  ctx.fill();
+}
+
+// Resize canvas pixel buffer to match its CSS width
+function _resizeEkg() {
+  if (!ekgCanvas) return;
+  const w = ekgCanvas.clientWidth;
+  if (w && ekgCanvas.width !== w) ekgCanvas.width = w;
+}
+_resizeEkg();
+new ResizeObserver(_resizeEkg).observe(ekgCanvas);
+
+// Animation loop
+let _ekgLast = 0;
+(function ekgLoop(ts) {
+  const dt  = _ekgLast ? ts - _ekgLast : 16;
+  _ekgLast  = ts;
+  _ekgPrevPh = ekgPhase;
+  ekgPhase   = (ekgPhase + (ekgBpm / 60) * (dt / 1000)) % 1;
+
+  // Fire heart flash on R-peak crossing (handles wrap-around)
+  if (_ekgPrevPh < EKG_BEAT_THRESHOLD && ekgPhase >= EKG_BEAT_THRESHOLD) {
+    _fireHeartBeat();
+  } else if (_ekgPrevPh > ekgPhase && ekgPhase >= EKG_BEAT_THRESHOLD) {
+    // wrapped around — beat fires if we're already past threshold at wrap
+    _fireHeartBeat();
+  }
+
+  _drawEkg();
+  requestAnimationFrame(ekgLoop);
+})(0);
 
 function stepNeural() {
   ghostCoeff = Math.max(85, Math.min(100,
     ghostCoeff + (Math.random() - 0.45) * 1.2));
   const pct = ghostCoeff.toFixed(1);
+  // BPM rises as ghost coherence drops (stress response)
+  ekgBpm = Math.round(58 + (100 - ghostCoeff) / 15 * 12);
+  ekgBpmEl.textContent = ekgBpm;
   glitchUpdate(neuralEl, () => {
     ghostVal.textContent = pct;
     cyberIdx.textContent = `${pct}%`;
