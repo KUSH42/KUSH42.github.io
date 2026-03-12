@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S9-OV Layout — Visual Test</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
+
+  <!-- Aesthetic plane (variables, effects, typography) -->
+  <link rel="stylesheet" href="/aesthetic/index.css" />
+  <!-- Aesthetic component: sidebar scrollbars -->
+  <link rel="stylesheet" href="/aesthetic/components/s9-ov-scrollbar.css" />
+  <!-- Structure plane: S9-OV grid layout -->
+  <link rel="stylesheet" href="/structure/layouts/s9-ov.css" />
+
+  <style>
+    /* ── Reset ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--void);
+      overflow: hidden;
+    }
+
+    /* ── Topbar ─────────────────────────────────────────────── */
+
+    .s9-ov__topbar {
+      border-bottom: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      font-family: var(--font-terminal);
+      font-size: 0.7rem;
+    }
+
+    .topbar-operation {
+      font-family: var(--font-holo);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-text-cyan);
+      white-space: nowrap;
+    }
+
+    .topbar-tabs {
+      display: flex;
+      gap: 2px;
+      margin-left: 16px;
+    }
+
+    .topbar-tab {
+      padding: 0 10px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+      letter-spacing: var(--letter-spacing-normal);
+      color: var(--text-dim);
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    .topbar-tab:hover {
+      color: var(--text-secondary);
+    }
+
+    .topbar-tab--active {
+      color: var(--neon-cyan);
+      border-bottom-color: var(--neon-cyan);
+    }
+
+    .topbar-spacer {
+      flex: 1;
+    }
+
+    .topbar-clock {
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: var(--letter-spacing-normal);
+      white-space: nowrap;
+    }
+
+    .topbar-user {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .topbar-user-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--neon-green);
+      box-shadow: var(--glow-green);
+      animation: status-pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes status-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    /* ── Statusbar ──────────────────────────────────────────── */
+
+    .s9-ov__statusbar {
+      border-top: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+    }
+
+    .statusbar-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 8px;
+      height: 18px;
+      border: 1px solid var(--text-ok);
+      color: var(--text-ok);
+      font-size: 0.6rem;
+      letter-spacing: var(--letter-spacing-normal);
+      text-transform: uppercase;
+    }
+
+    .statusbar-badge--alert {
+      border-color: var(--text-alert);
+      color: var(--text-alert);
+      animation: alert-flash 0.8s step-end infinite;
+    }
+
+    @keyframes alert-flash {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .statusbar-alert-count {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-alert);
+      font-size: 0.6rem;
+    }
+
+    .s9-ov[data-alert-count]:not([data-alert-count="0"]) .statusbar-alert-count {
+      display: flex;
+    }
+
+    .statusbar-spacer {
+      flex: 1;
+    }
+
+    .statusbar-utc {
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .statusbar-conn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-secondary);
+    }
+
+    .statusbar-conn-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--neon-green);
+      box-shadow: 0 0 4px var(--neon-green);
+      animation: status-pulse 2.5s ease-in-out infinite;
+    }
+
+    /* ── PanelShell ─────────────────────────────────────────── */
+
+    .panel {
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      flex-shrink: 0;
+    }
+
+    .panel--flex-fill {
+      flex: 1 1 0;
+      min-height: 0;
+    }
+
+    .panel__header {
+      height: var(--header-height);
+      min-height: var(--header-height);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--panel-padding);
+      gap: 8px;
+      border-bottom: 1px solid var(--panel-border-dim);
+      border-left: var(--border-accent-width) solid var(--neon-cyan);
+    }
+
+    .panel__title {
+      font-family: var(--font-holo);
+      font-size: 0.58rem;
+      font-weight: 600;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .panel__tag {
+      font-family: var(--font-terminal);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      margin-left: auto;
+    }
+
+    .panel__body {
+      flex: 1;
+      overflow: hidden;
+      padding: var(--panel-padding);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* ── DataStream ─────────────────────────────────────────── */
+
+    .data-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: baseline;
+      padding: 3px 0;
+      border-bottom: 1px solid var(--panel-border-dim);
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+    }
+
+    .data-row:last-child { border-bottom: none; }
+
+    .data-row__key  { color: var(--text-dim); }
+    .data-row__val  { color: var(--neon-cyan); text-align: right; }
+    .data-row__val--ok      { color: var(--neon-green); }
+    .data-row__val--warn    { color: var(--neon-amber); }
+    .data-row__val--alert   { color: var(--neon-magenta); }
+
+    /* ── NeuralReadout ─────────────────────────────────────── */
+
+    .neural-bar-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .neural-bar {
+      display: grid;
+      grid-template-columns: 64px 1fr 32px;
+      gap: 6px;
+      align-items: center;
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+    }
+
+    .neural-bar__label { color: var(--text-dim); }
+
+    .neural-bar__track {
+      height: 3px;
+      background: var(--panel-border-dim);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .neural-bar__fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      background: var(--neon-cyan);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .neural-bar__fill--green   { background: var(--neon-green);   box-shadow: var(--glow-green); }
+    .neural-bar__fill--amber   { background: var(--neon-amber);   box-shadow: var(--glow-amber); }
+    .neural-bar__fill--magenta { background: var(--neon-magenta); box-shadow: var(--glow-magenta); }
+
+    .neural-bar__pct { color: var(--text-secondary); text-align: right; }
+
+    /* ── SequenceLog ─────────────────────────────────────────── */
+
+    .seq-log {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      overflow: hidden;
+    }
+
+    .seq-entry {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 6px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    .seq-entry__time { color: var(--neon-cyan); opacity: 0.6; white-space: nowrap; }
+    .seq-entry--ok   .seq-entry__msg { color: var(--text-ok); }
+    .seq-entry--warn .seq-entry__msg { color: var(--neon-amber); }
+    .seq-entry--err  .seq-entry__msg { color: var(--neon-magenta); }
+
+    /* ── AlertBanner ─────────────────────────────────────────── */
+
+    .alert-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .alert-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 6px 8px;
+      border: 1px solid var(--panel-border-dim);
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      line-height: 1.5;
+    }
+
+    .alert-item--critical {
+      border-color: var(--panel-border-alert);
+      background: rgba(255, 0, 204, 0.06);
+    }
+
+    .alert-item--warn {
+      border-color: rgba(255, 179, 0, 0.4);
+      background: rgba(255, 179, 0, 0.04);
+    }
+
+    .alert-item__icon { flex-shrink: 0; }
+    .alert-item--critical .alert-item__icon { color: var(--neon-magenta); }
+    .alert-item--warn     .alert-item__icon { color: var(--neon-amber); }
+
+    .alert-item__msg  { color: var(--text-secondary); }
+
+    /* ── SystemTelemetry ─────────────────────────────────────── */
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+
+    .telemetry-cell {
+      border: 1px solid var(--panel-border-dim);
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .telemetry-cell__label {
+      font-family: var(--font-holo);
+      font-size: 0.5rem;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    .telemetry-cell__val {
+      font-family: var(--font-terminal);
+      font-size: 0.9rem;
+      color: var(--neon-cyan);
+      line-height: 1;
+    }
+
+    .telemetry-cell__val--ok      { color: var(--neon-green); }
+    .telemetry-cell__val--warn    { color: var(--neon-amber); }
+
+    /* ── Center canvas placeholder ───────────────────────────── */
+
+    .center-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      background: var(--void);
+      z-index: 0;
+    }
+
+    .center-reticle {
+      width: 80px;
+      height: 80px;
+      border: 1px solid var(--panel-border);
+      position: relative;
+      animation: reticle-spin 12s linear infinite;
+    }
+
+    .center-reticle::before,
+    .center-reticle::after {
+      content: '';
+      position: absolute;
+      background: var(--neon-cyan);
+      box-shadow: var(--glow-cyan);
+    }
+
+    /* horizontal crosshair */
+    .center-reticle::before {
+      width: 100%; height: 1px;
+      top: 50%; left: 0;
+      transform: translateY(-50%);
+    }
+
+    /* vertical crosshair */
+    .center-reticle::after {
+      width: 1px; height: 100%;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+    }
+
+    @keyframes reticle-spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+
+    .center-label {
+      font-family: var(--font-holo);
+      font-size: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+
+    /* ── HUD overlay in center ───────────────────────────────── */
+
+    .center-hud-tl {
+      top: var(--panel-padding);
+      left: var(--panel-padding);
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      line-height: 1.8;
+    }
+
+    .center-hud-br {
+      bottom: var(--panel-padding);
+      right: var(--panel-padding);
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      text-align: right;
+      line-height: 1.8;
+    }
+
+    .hud-highlight { color: var(--neon-cyan); }
+
+    /* ── Boot animation ──────────────────────────────────────── */
+
+    @keyframes panel-boot-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .s9-ov__topbar,
+    .s9-ov__statusbar {
+      animation: panel-boot-in 0.3s ease forwards;
+    }
+
+    .s9-ov__left  { animation: panel-boot-in 0.4s 0.05s ease both; }
+    .s9-ov__right { animation: panel-boot-in 0.4s 0.1s ease both; }
+    .s9-ov__center { animation: panel-boot-in 0.5s 0.15s ease both; }
+
+    /* ── s9-ov--alert root modifier ─────────────────────────── */
+
+    .s9-ov--alert .s9-ov__topbar,
+    .s9-ov--alert .s9-ov__statusbar {
+      border-color: var(--panel-border-alert);
+    }
+  </style>
+</head>
+<body>
+
+<div class="s9-ov" id="s9-root" data-s9-state="active" data-alert-count="0">
+
+  <!-- ── TOPBAR ─────────────────────────────────────────────── -->
+  <header class="s9-ov__topbar">
+    <span class="topbar-operation">OP: GHOST WHISPER</span>
+
+    <nav class="topbar-tabs">
+      <button class="topbar-tab topbar-tab--active">ThreatMap</button>
+      <button class="topbar-tab">NetMatrix</button>
+      <button class="topbar-tab">Terminal</button>
+    </nav>
+
+    <div class="topbar-spacer"></div>
+
+    <span class="topbar-clock" id="topbar-clock">UTC 00:00:00</span>
+
+    <div class="topbar-user">
+      <div class="topbar-user-dot"></div>
+      <span>MOTOKO.K</span>
+    </div>
+  </header>
+
+  <!-- ── LEFT column ─────────────────────────────────────────── -->
+  <aside class="s9-ov__left">
+
+    <!-- DataStream -->
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">DataStream</span>
+        <span class="panel__tag">CH-01</span>
+      </div>
+      <div class="panel__body">
+        <div class="data-row">
+          <span class="data-row__key">SYNC</span>
+          <span class="data-row__val data-row__val--ok">98.4%</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">GHOST COEFF</span>
+          <span class="data-row__val">1.000</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">CYBERLINK</span>
+          <span class="data-row__val data-row__val--ok">ACTIVE</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">BANDWIDTH</span>
+          <span class="data-row__val">4.2 Gb/s</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">LATENCY</span>
+          <span class="data-row__val data-row__val--ok">3ms</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">NODES</span>
+          <span class="data-row__val">14 / 14</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">SECTOR</span>
+          <span class="data-row__val">NIIHAMA-7</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">ENCRYPT</span>
+          <span class="data-row__val data-row__val--ok">AES-2048</span>
+        </div>
+        <div class="data-row">
+          <span class="data-row__key">THREATS</span>
+          <span class="data-row__val data-row__val--warn">3 TRACKED</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- NeuralReadout -->
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">NeuralReadout</span>
+        <span class="panel__tag">BIO</span>
+      </div>
+      <div class="panel__body">
+        <div class="neural-bar-group">
+          <div class="neural-bar">
+            <span class="neural-bar__label">COGNITION</span>
+            <div class="neural-bar__track">
+              <div class="neural-bar__fill neural-bar__fill--green" style="width: 94%"></div>
+            </div>
+            <span class="neural-bar__pct">94%</span>
+          </div>
+          <div class="neural-bar">
+            <span class="neural-bar__label">REFLEX</span>
+            <div class="neural-bar__track">
+              <div class="neural-bar__fill" style="width: 87%"></div>
+            </div>
+            <span class="neural-bar__pct">87%</span>
+          </div>
+          <div class="neural-bar">
+            <span class="neural-bar__label">TACTICAL</span>
+            <div class="neural-bar__track">
+              <div class="neural-bar__fill" style="width: 79%"></div>
+            </div>
+            <span class="neural-bar__pct">79%</span>
+          </div>
+          <div class="neural-bar">
+            <span class="neural-bar__label">EMPATHY</span>
+            <div class="neural-bar__track">
+              <div class="neural-bar__fill neural-bar__fill--amber" style="width: 42%"></div>
+            </div>
+            <span class="neural-bar__pct">42%</span>
+          </div>
+          <div class="neural-bar">
+            <span class="neural-bar__label">MEMORY</span>
+            <div class="neural-bar__track">
+              <div class="neural-bar__fill neural-bar__fill--green" style="width: 100%"></div>
+            </div>
+            <span class="neural-bar__pct">∞</span>
+          </div>
+          <div class="neural-bar">
+            <span class="neural-bar__label">AUTONOMY</span>
+            <div class="neural-bar__track">
+              <div class="neural-bar__fill neural-bar__fill--magenta" style="width: 62%"></div>
+            </div>
+            <span class="neural-bar__pct">62%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SequenceLog (left) -->
+    <div class="panel panel--flex-fill">
+      <div class="panel__header">
+        <span class="panel__title">SequenceLog</span>
+        <span class="panel__tag">SYS</span>
+      </div>
+      <div class="panel__body">
+        <div class="seq-log">
+          <div class="seq-entry seq-entry--ok">
+            <span class="seq-entry__time">09:41:07</span>
+            <span class="seq-entry__msg">Ghost link established</span>
+          </div>
+          <div class="seq-entry">
+            <span class="seq-entry__time">09:41:10</span>
+            <span class="seq-entry__msg">Sector scan initiated</span>
+          </div>
+          <div class="seq-entry seq-entry--warn">
+            <span class="seq-entry__time">09:42:33</span>
+            <span class="seq-entry__msg">Anomaly — node 07</span>
+          </div>
+          <div class="seq-entry">
+            <span class="seq-entry__time">09:43:01</span>
+            <span class="seq-entry__msg">Rerouting via CH-02</span>
+          </div>
+          <div class="seq-entry seq-entry--ok">
+            <span class="seq-entry__time">09:43:04</span>
+            <span class="seq-entry__msg">Bypass confirmed</span>
+          </div>
+          <div class="seq-entry seq-entry--err">
+            <span class="seq-entry__time">09:44:18</span>
+            <span class="seq-entry__msg">Auth probe detected</span>
+          </div>
+          <div class="seq-entry">
+            <span class="seq-entry__time">09:44:22</span>
+            <span class="seq-entry__msg">Counter-measure active</span>
+          </div>
+          <div class="seq-entry seq-entry--ok">
+            <span class="seq-entry__time">09:44:30</span>
+            <span class="seq-entry__msg">Probe neutralized</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── CENTER ────────────────────────────────────────────── -->
+  <main class="s9-ov__center">
+
+    <!-- Three.js canvas mount point -->
+    <canvas class="s9-ov__canvas" id="s9-canvas"></canvas>
+
+    <!-- Placeholder (visible when no Three.js scene loaded) -->
+    <div class="center-placeholder" id="center-placeholder">
+      <div class="center-reticle"></div>
+      <span class="center-label">ThreatMap · Awaiting Scene</span>
+    </div>
+
+    <!-- HUD overlays (z-index: 10) -->
+    <div class="s9-ov__hud center-hud-tl">
+      <div>GRID <span class="hud-highlight">SECTOR-7</span></div>
+      <div>ZOOM <span class="hud-highlight">1.00×</span></div>
+      <div>LAYER <span class="hud-highlight">TACTICAL</span></div>
+    </div>
+
+    <div class="s9-ov__hud center-hud-br">
+      <div>LAT <span class="hud-highlight">35.6762° N</span></div>
+      <div>LON <span class="hud-highlight">139.6503° E</span></div>
+      <div>ALT <span class="hud-highlight">+0024m</span></div>
+    </div>
+
+  </main>
+
+  <!-- ── RIGHT column ─────────────────────────────────────────── -->
+  <aside class="s9-ov__right">
+
+    <!-- SystemTelemetry -->
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">SystemTelemetry</span>
+        <span class="panel__tag">HW</span>
+      </div>
+      <div class="panel__body">
+        <div class="telemetry-grid">
+          <div class="telemetry-cell">
+            <span class="telemetry-cell__label">CPU</span>
+            <span class="telemetry-cell__val telemetry-cell__val--ok">12%</span>
+          </div>
+          <div class="telemetry-cell">
+            <span class="telemetry-cell__label">MEM</span>
+            <span class="telemetry-cell__val">4.1G</span>
+          </div>
+          <div class="telemetry-cell">
+            <span class="telemetry-cell__label">NET</span>
+            <span class="telemetry-cell__val">4.2G</span>
+          </div>
+          <div class="telemetry-cell">
+            <span class="telemetry-cell__label">TEMP</span>
+            <span class="telemetry-cell__val telemetry-cell__val--warn">71°C</span>
+          </div>
+          <div class="telemetry-cell">
+            <span class="telemetry-cell__label">UPTIME</span>
+            <span class="telemetry-cell__val" style="font-size:0.7rem" id="uptime-val">00:00</span>
+          </div>
+          <div class="telemetry-cell">
+            <span class="telemetry-cell__label">PROCS</span>
+            <span class="telemetry-cell__val">247</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SequenceLog (right) -->
+    <div class="panel panel--flex-fill">
+      <div class="panel__header">
+        <span class="panel__title">SequenceLog</span>
+        <span class="panel__tag">NET</span>
+      </div>
+      <div class="panel__body">
+        <div class="seq-log">
+          <div class="seq-entry seq-entry--ok">
+            <span class="seq-entry__time">09:41:00</span>
+            <span class="seq-entry__msg">Net scan complete</span>
+          </div>
+          <div class="seq-entry">
+            <span class="seq-entry__time">09:41:15</span>
+            <span class="seq-entry__msg">14 nodes online</span>
+          </div>
+          <div class="seq-entry seq-entry--warn">
+            <span class="seq-entry__time">09:42:45</span>
+            <span class="seq-entry__msg">Packet loss 0.3%</span>
+          </div>
+          <div class="seq-entry seq-entry--ok">
+            <span class="seq-entry__time">09:43:12</span>
+            <span class="seq-entry__msg">Route optimized</span>
+          </div>
+          <div class="seq-entry seq-entry--err">
+            <span class="seq-entry__time">09:44:50</span>
+            <span class="seq-entry__msg">Port 8443 probed</span>
+          </div>
+          <div class="seq-entry">
+            <span class="seq-entry__time">09:45:01</span>
+            <span class="seq-entry__msg">Blacklisted — IP logged</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AlertBanner -->
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">AlertBanner</span>
+        <span class="panel__tag" id="alert-count-tag">0</span>
+      </div>
+      <div class="panel__body">
+        <div class="alert-list" id="alert-list">
+          <div class="alert-item alert-item--warn">
+            <span class="alert-item__icon">▲</span>
+            <span class="alert-item__msg">Node 07 — signal degraded</span>
+          </div>
+          <div class="alert-item alert-item--warn">
+            <span class="alert-item__icon">▲</span>
+            <span class="alert-item__msg">CPU temp approaching limit</span>
+          </div>
+        </div>
+
+        <button
+          id="fire-alert-btn"
+          style="
+            margin-top: auto;
+            padding: 4px 8px;
+            background: transparent;
+            border: 1px solid var(--panel-border);
+            color: var(--text-secondary);
+            font-family: var(--font-terminal);
+            font-size: 0.6rem;
+            cursor: pointer;
+            letter-spacing: var(--letter-spacing-normal);
+          "
+        >
+          FIRE CRITICAL ALERT ↯
+        </button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── STATUSBAR ──────────────────────────────────────────── -->
+  <footer class="s9-ov__statusbar">
+    <div class="statusbar-badge" id="status-badge">● NOMINAL</div>
+
+    <div class="statusbar-alert-count" id="statusbar-alert-count">
+      <span>▲</span>
+      <span id="alert-count-display">0</span>
+      <span>ALERTS</span>
+    </div>
+
+    <div class="statusbar-spacer"></div>
+
+    <span class="statusbar-utc" id="statusbar-clock">UTC 00:00:00</span>
+
+    <div class="statusbar-conn">
+      <div class="statusbar-conn-dot"></div>
+      <span>CONNECTED</span>
+    </div>
+  </footer>
+
+</div><!-- /.s9-ov -->
+
+<script>
+  /* ── UTC Clock ─────────────────────────────────────────────── */
+
+  function formatUTC() {
+    const now = new Date();
+    const hh = now.getUTCHours().toString().padStart(2, '0');
+    const mm = now.getUTCMinutes().toString().padStart(2, '0');
+    const ss = now.getUTCSeconds().toString().padStart(2, '0');
+    return `UTC ${hh}:${mm}:${ss}`;
+  }
+
+  function tickClock() {
+    const t = formatUTC();
+    document.getElementById('topbar-clock').textContent = t;
+    document.getElementById('statusbar-clock').textContent = t;
+  }
+
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  /* ── Uptime counter ─────────────────────────────────────────── */
+
+  const startTime = Date.now();
+
+  function tickUptime() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const s = (elapsed % 60).toString().padStart(2, '0');
+    document.getElementById('uptime-val').textContent = `${m}:${s}`;
+  }
+
+  tickUptime();
+  setInterval(tickUptime, 1000);
+
+  /* ── s9:alert event bus ─────────────────────────────────────── */
+
+  const root = document.querySelector('.s9-ov');
+
+  document.addEventListener('s9:alert', (e) => {
+    root.dataset.alertCount = (parseInt(root.dataset.alertCount ?? '0') + 1).toString();
+    if (e.detail?.level === 'critical') root.classList.add('s9-ov--alert');
+
+    // Update displayed counts
+    const count = parseInt(root.dataset.alertCount);
+    document.getElementById('alert-count-display').textContent = count;
+    document.getElementById('alert-count-tag').textContent = count;
+
+    // Inject new alert entry
+    const list = document.getElementById('alert-list');
+    const item = document.createElement('div');
+    item.className = 'alert-item' + (e.detail?.level === 'critical' ? ' alert-item--critical' : ' alert-item--warn');
+    item.innerHTML = `<span class="alert-item__icon">${e.detail?.level === 'critical' ? '■' : '▲'}</span>
+                      <span class="alert-item__msg">${e.detail?.message ?? 'Unspecified alert'}</span>`;
+    list.prepend(item);
+
+    // Update status badge
+    if (e.detail?.level === 'critical') {
+      const badge = document.getElementById('status-badge');
+      badge.textContent = '■ CRITICAL';
+      badge.classList.add('statusbar-badge--alert');
+    }
+  });
+
+  /* ── Test button — fires a critical alert ───────────────────── */
+
+  document.getElementById('fire-alert-btn').addEventListener('click', () => {
+    const messages = [
+      'Hostile cyberattack detected',
+      'Ghost hack attempt — sector 7',
+      'Secure channel compromised',
+      'Unidentified shell access',
+    ];
+    const msg = messages[Math.floor(Math.random() * messages.length)];
+    document.dispatchEvent(new CustomEvent('s9:alert', {
+      detail: { level: 'critical', message: msg }
+    }));
+  });
+
+  /* ── Topbar tab switching ───────────────────────────────────── */
+
+  document.querySelectorAll('.topbar-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.topbar-tab').forEach(t => t.classList.remove('topbar-tab--active'));
+      tab.classList.add('topbar-tab--active');
+    });
+  });
+</script>
+
+</body>
+</html>

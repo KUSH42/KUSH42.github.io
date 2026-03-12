@@ -1,0 +1,114 @@
+/* ============================================================
+   aesthetic/components/panel-shell.css
+   PanelShell — AESTHETIC PLANE ONLY.
+   Color, border, shadow, font, animation. Zero layout properties.
+   Requires: aesthetic/variables/index.css, aesthetic/effects/index.css
+   ============================================================ */
+
+/* ── Root ───────────────────────────────────────────────────── */
+
+.s9-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--border-radius-panel);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* ── Hover / keyboard focus ─────────────────────────────────── */
+
+.s9-panel:hover,
+.s9-panel:focus-within {
+  border-color: var(--panel-border-active);
+  box-shadow: var(--glow-cyan);
+}
+
+/* ── Active modifier ────────────────────────────────────────── */
+/* border-color only at root; left accent bar lives on __header  */
+
+.s9-panel--active {
+  border-color: var(--panel-border-active);
+}
+
+.s9-panel--active .s9-panel__header {
+  border-left-color: var(--neon-cyan);
+}
+
+.s9-panel--active .s9-panel__header-label {
+  color: var(--neon-cyan);
+  text-shadow: var(--glow-text-cyan);
+}
+
+/* ── Alert modifier ─────────────────────────────────────────── */
+/* alert-pulse keyframe defined in aesthetic/effects/index.css   */
+
+.s9-panel--alert {
+  border-color: var(--panel-border-alert);
+  animation: alert-pulse 1s ease-in-out infinite;
+}
+
+.s9-panel--alert .s9-panel__header-status {
+  color: var(--text-alert);
+}
+
+/* ── Mount animation ────────────────────────────────────────── */
+/* crt-flicker keyframe defined in aesthetic/effects/index.css   */
+
+.s9-panel--booting {
+  animation: crt-flicker 1.2s ease-out forwards;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+
+.s9-panel__header {
+  border-bottom: 1px solid var(--panel-border-dim);
+  /* Reserved left-border slot — keeps layout stable when accent is toggled */
+  border-left: var(--border-accent-width) solid transparent;
+}
+
+.s9-panel__header-label {
+  font-family: var(--font-holo);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px var(--neon-cyan);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.s9-panel__header-jp {
+  font-family: var(--font-jp);
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.s9-panel__header-status {
+  font-family: var(--font-terminal);
+  font-size: 0.6rem;
+  color: var(--text-ok);
+  white-space: nowrap;
+}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+
+.s9-panel__footer {
+  border-top: 1px solid var(--panel-border-dim);
+  font-family: var(--font-terminal);
+  font-size: 0.6rem;
+  color: var(--text-dim);
+}
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+/* Global reduced-motion rule in effects/index.css handles        */
+/* animations; we additionally remove transitions here.          */
+
+@media (prefers-reduced-motion: reduce) {
+  .s9-panel,
+  .s9-panel:hover,
+  .s9-panel:focus-within {
+    transition: none;
+  }
+}

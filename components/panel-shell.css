@@ -1,0 +1,8 @@
+/* ============================================================
+   components/panel-shell.css
+   PanelShell — combined barrel import.
+   Consumers import this single file to get both planes.
+   ============================================================ */
+
+@import '../structure/components/panel-shell.css';
+@import '../aesthetic/components/panel-shell.css';

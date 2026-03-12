@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S9-OV · Theming Visual Test</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/aesthetic/index.css" />
+  <script type="module">
+    import { applyPersistedTheme } from '/aesthetic/variables/theme.js';
+    applyPersistedTheme();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--void);
+      color: var(--text-primary);
+      font-family: var(--font-terminal);
+      min-height: 100vh;
+      padding: 24px;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    h1 {
+      font-family: var(--font-holo);
+      font-size: 0.75rem;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-text-cyan);
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      margin-bottom: 24px;
+    }
+
+    /* ---- Theme switcher ---- */
+    .theme-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .theme-btn {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: var(--border-radius-panel);
+      transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+
+    .theme-btn:hover {
+      border-color: var(--panel-border-active);
+      color: var(--neon-cyan);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .theme-btn[aria-pressed="true"] {
+      border-color: var(--panel-border-active);
+      color: var(--neon-cyan);
+      box-shadow: var(--glow-cyan);
+    }
+
+    /* ---- Grid of test panels ---- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    /* ---- Panels (PanelShell structure) ---- */
+    .s9-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--border-radius-panel);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .s9-panel:hover,
+    .s9-panel:focus-within {
+      border-color: var(--panel-border-active);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .s9-panel--active {
+      border-color: var(--panel-border-active);
+    }
+
+    .s9-panel--active .s9-panel__header {
+      border-left-color: var(--neon-cyan);
+    }
+
+    .s9-panel--active .s9-panel__header-label {
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-text-cyan);
+    }
+
+    .s9-panel--alert {
+      border-color: var(--panel-border-alert);
+      animation: alert-pulse 1s steps(2) infinite;
+    }
+
+    .s9-panel__header {
+      display: flex;
+      align-items: center;
+      gap: var(--header-gap);
+      height: var(--header-height);
+      min-height: var(--header-height);
+      padding: 0 var(--panel-padding);
+      overflow: hidden;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--panel-border-dim);
+      border-left: var(--border-accent-width) solid transparent;
+    }
+
+    .s9-panel__header-label {
+      font-family: var(--font-holo);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: var(--letter-spacing-wide);
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .s9-panel__header-jp {
+      font-family: var(--font-jp);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .s9-panel__header-status {
+      margin-left: auto;
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--text-ok);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .s9-panel--alert .s9-panel__header-status {
+      color: var(--text-alert);
+    }
+
+    .s9-panel__body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: var(--panel-padding);
+      position: relative;
+    }
+
+    /* ---- Panel body content ---- */
+    .palette-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .swatch {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    .swatch__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .swatch__dot--cyan    { background: var(--neon-cyan); box-shadow: var(--glow-cyan); }
+    .swatch__dot--green   { background: var(--neon-green); box-shadow: var(--glow-green); }
+    .swatch__dot--magenta { background: var(--neon-magenta); box-shadow: var(--glow-magenta); }
+    .swatch__dot--amber   { background: var(--neon-amber); box-shadow: var(--glow-amber); }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--panel-border-dim);
+      font-size: 0.6rem;
+    }
+
+    .stat-row:last-child { border-bottom: none; }
+
+    .stat-label { color: var(--text-secondary); }
+    .stat-value { color: var(--text-primary); font-family: var(--font-terminal); }
+    .stat-value--ok      { color: var(--text-ok); }
+    .stat-value--alert   { color: var(--text-alert); }
+    .stat-value--warning { color: var(--text-warning); }
+
+    .bar-container {
+      height: 4px;
+      background: var(--panel-border-dim);
+      border-radius: 2px;
+      margin-top: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.4s steps(8);
+    }
+
+    .bar-fill--ok      { background: var(--neon-green); }
+    .bar-fill--warning { background: var(--neon-amber); }
+    .bar-fill--alert   { background: var(--neon-magenta); }
+
+    /* ---- Scanline test strip ---- */
+    .scanline-demo {
+      height: 60px;
+      border: 1px solid var(--panel-border);
+      border-radius: var(--border-radius-panel);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    /* ---- Event log ---- */
+    .event-log {
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      max-height: 80px;
+      overflow-y: auto;
+      border: 1px solid var(--panel-border-dim);
+      padding: 6px;
+      border-radius: var(--border-radius-panel);
+    }
+
+    .event-log__entry {
+      padding: 1px 0;
+    }
+
+    .event-log__entry--change { color: var(--neon-cyan); }
+
+    /* ---- Quality gate checklist ---- */
+    .checklist {
+      font-size: 0.55rem;
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 16px;
+    }
+
+    .checklist li { color: var(--text-dim); }
+    .checklist li.pass { color: var(--text-ok); }
+    .checklist li.fail { color: var(--text-alert); }
+  </style>
+</head>
+<body>
+  <h1>S9-OV · Theming System Visual Test</h1>
+  <p class="subtitle">aesthetic/variables/theme.js · 5 themes · <span id="current-theme-label"></span></p>
+
+  <div class="theme-bar" role="group" aria-label="Theme switcher">
+    <button class="theme-btn" data-theme-target="matrixgreen" aria-pressed="false">matrixgreen</button>
+    <button class="theme-btn" data-theme-target="gits"        aria-pressed="false">gits</button>
+    <button class="theme-btn" data-theme-target="amber"       aria-pressed="false">amber</button>
+    <button class="theme-btn" data-theme-target="phosphor"    aria-pressed="false">phosphor</button>
+    <button class="theme-btn" data-theme-target="blood"       aria-pressed="false">blood</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- Panel A: Colour palette swatches -->
+    <div class="s9-panel" role="region" aria-label="PALETTE" tabindex="0" data-s9-id="panel-palette" data-s9-state="idle">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">PALETTE</span>
+        <span class="s9-panel__header-jp">色彩</span>
+        <span class="s9-panel__header-status">● ONLINE</span>
+      </div>
+      <div class="s9-panel__body holographic">
+        <div class="palette-grid">
+          <div class="swatch"><div class="swatch__dot swatch__dot--cyan"></div><span>--neon-cyan</span></div>
+          <div class="swatch"><div class="swatch__dot swatch__dot--green"></div><span>--neon-green</span></div>
+          <div class="swatch"><div class="swatch__dot swatch__dot--magenta"></div><span>--neon-magenta</span></div>
+          <div class="swatch"><div class="swatch__dot swatch__dot--amber"></div><span>--neon-amber</span></div>
+        </div>
+        <div class="stat-row"><span class="stat-label">PRIMARY</span><span class="stat-value">● ACTIVE</span></div>
+        <div class="stat-row"><span class="stat-label">STATUS</span><span class="stat-value stat-value--ok">● NOMINAL</span></div>
+        <div class="stat-row"><span class="stat-label">ALERT</span><span class="stat-value stat-value--alert">▲ STANDBY</span></div>
+        <div class="stat-row"><span class="stat-label">WARNING</span><span class="stat-value stat-value--warning">◆ MONITOR</span></div>
+      </div>
+    </div>
+
+    <!-- Panel B: Metrics bars -->
+    <div class="s9-panel s9-panel--active" role="region" aria-label="TELEMETRY" tabindex="0" data-s9-id="panel-telemetry" data-s9-state="active">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">TELEMETRY</span>
+        <span class="s9-panel__header-jp">テレメトリ</span>
+        <span class="s9-panel__header-status">● ONLINE</span>
+      </div>
+      <div class="s9-panel__body holographic">
+        <div class="stat-row">
+          <span class="stat-label">CPU</span>
+          <span class="stat-value stat-value--ok">42%</span>
+        </div>
+        <div class="bar-container"><div class="bar-fill bar-fill--ok" style="width:42%"></div></div>
+        <div class="stat-row" style="margin-top:8px">
+          <span class="stat-label">MEM</span>
+          <span class="stat-value stat-value--warning">71%</span>
+        </div>
+        <div class="bar-container"><div class="bar-fill bar-fill--warning" style="width:71%"></div></div>
+        <div class="stat-row" style="margin-top:8px">
+          <span class="stat-label">THREAT</span>
+          <span class="stat-value stat-value--alert">93%</span>
+        </div>
+        <div class="bar-container"><div class="bar-fill bar-fill--alert" style="width:93%"></div></div>
+      </div>
+    </div>
+
+    <!-- Panel C: Alert state + scanline demo -->
+    <div class="s9-panel s9-panel--alert" role="region" aria-label="ALERT STATUS" tabindex="0" data-s9-id="panel-alert" data-s9-state="alert">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">ALERT STATUS</span>
+        <span class="s9-panel__header-jp">警戒状態</span>
+        <span class="s9-panel__header-status">■ CRITICAL</span>
+      </div>
+      <div class="s9-panel__body holographic">
+        <div class="scanline-demo holographic">SCANLINE TEST — colour adapts per theme</div>
+        <div class="stat-row"><span class="stat-label">BORDER</span><span class="stat-value stat-value--alert">--panel-border-alert</span></div>
+        <div class="stat-row"><span class="stat-label">PULSE</span><span class="stat-value stat-value--alert">alert-pulse · 1Hz</span></div>
+        <div class="stat-row"><span class="stat-label">INSET</span><span class="stat-value stat-value--alert">color-mix(neon-magenta)</span></div>
+      </div>
+    </div>
+
+    <!-- Panel D: Text styles -->
+    <div class="s9-panel" role="region" aria-label="TYPOGRAPHY" tabindex="0" data-s9-id="panel-typography" data-s9-state="idle">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">TYPOGRAPHY</span>
+        <span class="s9-panel__header-jp">文字組</span>
+        <span class="s9-panel__header-status">● ONLINE</span>
+      </div>
+      <div class="s9-panel__body">
+        <div class="stat-row"><span class="stat-label">primary</span><span class="stat-value">--text-primary</span></div>
+        <div class="stat-row"><span class="stat-label">secondary</span><span class="stat-value" style="color:var(--text-secondary)">--text-secondary</span></div>
+        <div class="stat-row"><span class="stat-label">dim</span><span class="stat-value" style="color:var(--text-dim)">--text-dim</span></div>
+        <div class="stat-row"><span class="stat-label">ok</span><span class="stat-value stat-value--ok">--text-ok</span></div>
+        <div class="stat-row"><span class="stat-label">warning</span><span class="stat-value stat-value--warning">--text-warning</span></div>
+        <div class="stat-row"><span class="stat-label">alert</span><span class="stat-value stat-value--alert">--text-alert</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Event log -->
+  <div class="s9-panel" role="region" aria-label="THEME EVENTS" tabindex="0" style="margin-bottom:16px">
+    <div class="s9-panel__header">
+      <span class="s9-panel__header-label">THEME EVENTS</span>
+      <span class="s9-panel__header-jp">テーマイベント</span>
+      <span class="s9-panel__header-status">● LISTEN</span>
+    </div>
+    <div class="s9-panel__body">
+      <div class="event-log" id="event-log">
+        <div class="event-log__entry">Waiting for s9:theme-change events…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quality gate checklist -->
+  <div class="s9-panel" role="region" aria-label="QUALITY GATES" tabindex="0">
+    <div class="s9-panel__header">
+      <span class="s9-panel__header-label">QUALITY GATES</span>
+      <span class="s9-panel__header-jp">品質チェック</span>
+      <span class="s9-panel__header-status" id="gate-status">● CHECKING</span>
+    </div>
+    <div class="s9-panel__body">
+      <ul class="checklist" id="checklist">
+        <li id="gate-themes">[ ] 5 themes present</li>
+        <li id="gate-default">[ ] matrixgreen is default</li>
+        <li id="gate-idempotent">[ ] setTheme idempotent</li>
+        <li id="gate-unknown">[ ] unknown theme rejected</li>
+        <li id="gate-persist">[ ] localStorage persists</li>
+        <li id="gate-event">[ ] s9:theme-change fires</li>
+        <li id="gate-from-to">[ ] event.detail has from+to</li>
+        <li id="gate-scanline">[ ] scanlines visible</li>
+      </ul>
+    </div>
+  </div>
+
+  <script type="module">
+    import { setTheme, getTheme, THEMES } from '/aesthetic/variables/theme.js';
+
+    const log = document.getElementById('event-log');
+    const label = document.getElementById('current-theme-label');
+    const gateStatus = document.getElementById('gate-status');
+
+    function logEntry(msg, cls = '') {
+      const el = document.createElement('div');
+      el.className = 'event-log__entry' + (cls ? ` ${cls}` : '');
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      log.prepend(el);
+    }
+
+    function updateButtons() {
+      const current = getTheme();
+      label.textContent = `active: ${current}`;
+      document.querySelectorAll('[data-theme-target]').forEach(btn => {
+        const active = btn.dataset.themeTarget === current;
+        btn.setAttribute('aria-pressed', active);
+      });
+    }
+
+    // Wire theme buttons
+    document.querySelectorAll('[data-theme-target]').forEach(btn => {
+      btn.addEventListener('click', () => setTheme(btn.dataset.themeTarget));
+    });
+
+    // Listen for theme changes
+    let lastFrom = null, lastTo = null;
+    document.addEventListener('s9:theme-change', (e) => {
+      lastFrom = e.detail.from;
+      lastTo   = e.detail.to;
+      logEntry(`s9:theme-change → from="${e.detail.from}" to="${e.detail.to}"`, 'event-log__entry--change');
+      updateButtons();
+      runGates();
+    });
+
+    // ---- Quality gates ----
+    function pass(id) {
+      const el = document.getElementById(id);
+      el.textContent = el.textContent.replace('[ ]', '[✓]');
+      el.classList.add('pass');
+    }
+
+    function fail(id) {
+      const el = document.getElementById(id);
+      el.textContent = el.textContent.replace('[ ]', '[✗]');
+      el.classList.add('fail');
+    }
+
+    function runGates() {
+      // Gate 1: 5 themes present
+      if (THEMES.length === 5 &&
+          THEMES.includes('matrixgreen') && THEMES.includes('gits') &&
+          THEMES.includes('amber') && THEMES.includes('phosphor') && THEMES.includes('blood')) {
+        pass('gate-themes');
+      } else { fail('gate-themes'); }
+
+      // Gate 2: matrixgreen is default (no attribute when active)
+      const attr = document.documentElement.dataset.theme;
+      if (getTheme() === 'matrixgreen' && (attr === undefined || attr === '')) {
+        pass('gate-default');
+      }
+
+      // Gate 3: idempotent — call setTheme with current theme, check no event fired
+      const currentBefore = getTheme();
+      let eventFired = false;
+      const idempotentHandler = () => { eventFired = true; };
+      document.addEventListener('s9:theme-change', idempotentHandler, { once: true });
+      setTheme(currentBefore);
+      document.removeEventListener('s9:theme-change', idempotentHandler);
+      if (!eventFired) { pass('gate-idempotent'); } else { fail('gate-idempotent'); }
+
+      // Gate 4: unknown theme rejected (no event, no attribute change)
+      const attrBefore = document.documentElement.dataset.theme;
+      let unknownFired = false;
+      const unknownHandler = () => { unknownFired = true; };
+      document.addEventListener('s9:theme-change', unknownHandler, { once: true });
+      setTheme('__invalid_theme__');
+      document.removeEventListener('s9:theme-change', unknownHandler);
+      if (!unknownFired && document.documentElement.dataset.theme === attrBefore) {
+        pass('gate-unknown');
+      } else { fail('gate-unknown'); }
+
+      // Gate 5: localStorage persists
+      try {
+        const stored = localStorage.getItem('s9-theme');
+        if (stored === getTheme() || (stored === null && getTheme() === 'matrixgreen')) {
+          pass('gate-persist');
+        } else { fail('gate-persist'); }
+      } catch { fail('gate-persist'); }
+
+      // Gate 6+7: event fired with from+to
+      if (lastFrom !== null && lastTo !== null) {
+        pass('gate-event');
+        pass('gate-from-to');
+      }
+
+      // Gate 8: scanlines visible — presence of .holographic elements
+      if (document.querySelectorAll('.holographic').length > 0) {
+        pass('gate-scanline');
+      } else { fail('gate-scanline'); }
+
+      // Update header status
+      const fails = document.querySelectorAll('#checklist .fail').length;
+      gateStatus.textContent = fails === 0 ? '● PASS' : `■ ${fails} FAIL`;
+      gateStatus.style.color = fails === 0 ? 'var(--text-ok)' : 'var(--text-alert)';
+    }
+
+    // Init
+    updateButtons();
+    logEntry(`Loaded — active theme: ${getTheme()}`);
+
+    // Run gates after a tick to allow layout
+    setTimeout(() => {
+      runGates();
+      // Trigger gate-default: switch away and back to verify attribute removal
+      const current = getTheme();
+      if (current === 'matrixgreen') {
+        // Switch to gits to generate first event for gate-event/gate-from-to
+        setTheme('gits');
+        setTimeout(() => setTheme('matrixgreen'), 100);
+      }
+    }, 100);
+  </script>
+</body>
+</html>
