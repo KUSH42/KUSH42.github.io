@@ -592,6 +592,9 @@ function _addContact(state, angle, range, type, id) {
     ghostSpawned: false,
     instIdx:      slot,
     labelEl:      null,
+    // Sweep-reveal: contacts are invisible until the sweep arm paints them
+    revealed:     isGhost,   // ghost echoes appear immediately (created by the sweep event)
+    revealTime:   isGhost ? performance.now() : null,
   };
 
   if (!isGhost) {
@@ -680,18 +683,23 @@ function _updateContacts(state, dt) {
       c.phase += _ringHz('neutral') * dt / 1000;
     }
 
-    // Sweep-reveal
+    // Sweep-reveal: contacts are invisible until the sweep arm paints them
     if (c.type !== 'ghost' && !state.reducedMotion) {
       const diff = Math.abs(_angleDiff(sweepAngle, c.angle));
       if (diff < 0.12 && now - c.lastSweep > 800) {
         c.phase     = 0;
         c.lastSweep = now;
-        if (c.age > 0.65) c.age = 0.60;
+        if (!c.revealed) {
+          c.revealed    = true;
+          c.revealTime  = now;
+        } else if (c.age > 0.65) {
+          c.age = 0.60;  // re-illuminate fading contacts on subsequent passes
+        }
       }
     }
 
-    // Ghost spawn at FADING transition
-    if (c.type !== 'ghost' && !c.ghostSpawned && c.age >= 0.65) {
+    // Ghost spawn at FADING transition (only for revealed contacts)
+    if (c.type !== 'ghost' && !c.ghostSpawned && c.age >= 0.65 && c.revealed) {
       c.ghostAngle   = c.angle;
       c.ghostRange   = c.range;
       c.ghostSpawned = true;
@@ -710,7 +718,14 @@ function _updateInstances(state) {
   contacts.forEach((c, i) => {
     if (!c) return;
     dirty = true;
-    const scale = c.age < 0.08 ? _lerp(0, 8, c.age / 0.08) : 8;
+    // Unrevealed contacts stay invisible; revealed contacts scale up over 300ms
+    let scale;
+    if (!c.revealed) {
+      scale = 0;
+    } else {
+      const revealProgress = Math.min(1, (state.now - c.revealTime) / 300);
+      scale = revealProgress * 8;
+    }
     dummy.position.set(Math.sin(c.angle) * c.range * R, Math.cos(c.angle) * c.range * R, 0);
     dummy.scale.setScalar(scale);
     dummy.updateMatrix();
@@ -744,6 +759,7 @@ function _updateLabels(state) {
   const cy = element.clientHeight / 2;
   contacts.forEach(c => {
     if (!c?.labelEl) return;
+    if (!c.revealed) { c.labelEl.style.opacity = '0'; return; }
     const x = cx + Math.sin(c.angle) * c.range * R;
     const y = cy - Math.cos(c.angle) * c.range * R;
     c.labelEl.style.left    = `${x + 7}px`;
@@ -768,6 +784,7 @@ function _tick(state, ts) {
   }
   const dt    = Math.min(ts - (state.lastTs ?? ts), 100);
   state.lastTs = ts;
+  state.now    = ts;
 
   if (state.R > 0) {
     if (state.backgroundMesh) state.backgroundMesh.material.uniforms.uTime.value = ts / 1000;
@@ -866,6 +883,7 @@ export function initRadar(element, opts = {}) {
     matRingInner:    null,  matRingOuter:    null,  matRingTicks: null,
     spawnTimer:      null,
     lastTs:          null,
+    now:             performance.now(),
     resizeObserver:  null,  intersectionObserver: null,
     _motionMq:       null,  _motionHandler:  null,
     setRadarThreatLevel: null,

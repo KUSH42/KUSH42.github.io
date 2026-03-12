@@ -153,7 +153,9 @@
       pointer-events: auto;
     }
     .center__map { flex: 1; min-height: 0; position: relative; }
-    .center__terminal { height: 200px; flex-shrink: 0; }
+    .center__bottom { display: flex; flex-direction: row; height: 250px; flex-shrink: 0; gap: var(--panel-gap); }
+    .center__radar  { width: 250px; flex-shrink: 0; }
+    .center__terminal { flex: 1; min-width: 0; }
     .center__matrix { flex: 1; min-height: 0; }
 
     /* ── Left / right flex grow helpers ────────────── */
@@ -342,7 +344,6 @@
     .s9-ov__right .s9-panel:nth-child(1) { flex: 1;    min-height: 0; }
     .s9-ov__right .s9-panel:nth-child(2) { flex: 3;    min-height: 0; }
     .s9-ov__right .s9-panel:nth-child(3) { flex: none; }
-    .s9-ov__right .s9-panel:nth-child(4) { flex: none; }
 
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
@@ -655,25 +656,47 @@
         </table>
       </div>
 
-      <div class="center__terminal s9-panel" data-s9-id="terminal-1">
-        <div class="s9-panel__header">
-          <span class="s9-panel__header-label">COMMAND INTERFACE</span>
-          <span class="s9-panel__header-jp">コマンドインターフェース</span>
-          <span class="s9-panel__header-status">SECTION 9 ▶</span>
+      <div class="center__bottom">
+
+        <!-- Proximity Scan Radar -->
+        <div class="center__radar s9-panel" data-s9-id="pulse-radar-1">
+          <div class="s9-panel__header">
+            <span class="s9-panel__header-label">PROXIMITY SCAN</span>
+            <span class="s9-panel__header-jp">近接スキャン</span>
+            <span class="s9-panel__header-status" id="radar-status">● ACTIVE</span>
+          </div>
+          <div class="s9-panel__body" style="padding:0;position:relative;">
+            <div class="s9-radar" id="proximity-radar"></div>
+          </div>
+          <div class="s9-panel__footer">
+            <span id="radar-contacts"
+                  style="font-family:var(--font-terminal);font-size:0.55rem;color:var(--text-dim);">
+              CONTACTS: 0 | SWEEP: 4.0s
+            </span>
+          </div>
         </div>
-        <div class="s9-panel__body" style="padding: 0; display: flex; flex-direction: column;">
-          <div class="s9-terminal" role="region" aria-label="COMMAND TERMINAL"
-               data-s9-id="terminal-1">
-            <div class="s9-terminal__output" role="log" aria-live="polite"
-                 aria-label="Terminal output" tabindex="0"></div>
-            <div class="s9-terminal__input-row">
-              <span class="s9-terminal__prompt" aria-hidden="true">[S9]▶</span>
-              <input class="s9-terminal__input" type="text"
-                     autocomplete="off" autocorrect="off" spellcheck="false"
-                     aria-label="Command input" placeholder="type a command…" />
+
+        <div class="center__terminal s9-panel" data-s9-id="terminal-1">
+          <div class="s9-panel__header">
+            <span class="s9-panel__header-label">COMMAND INTERFACE</span>
+            <span class="s9-panel__header-jp">コマンドインターフェース</span>
+            <span class="s9-panel__header-status">SECTION 9 ▶</span>
+          </div>
+          <div class="s9-panel__body" style="padding: 0; display: flex; flex-direction: column;">
+            <div class="s9-terminal" role="region" aria-label="COMMAND TERMINAL"
+                 data-s9-id="terminal-1">
+              <div class="s9-terminal__output" role="log" aria-live="polite"
+                   aria-label="Terminal output" tabindex="0"></div>
+              <div class="s9-terminal__input-row">
+                <span class="s9-terminal__prompt" aria-hidden="true">[S9]▶</span>
+                <input class="s9-terminal__input" type="text"
+                       autocomplete="off" autocorrect="off" spellcheck="false"
+                       aria-label="Command input" placeholder="type a command…" />
+              </div>
             </div>
           </div>
         </div>
+
       </div>
 
     </div>
@@ -746,24 +769,6 @@
       </div>
       <div class="s9-panel__body" style="padding: 4px 0; overflow-y: auto; position: relative;">
         <div class="intel-feed" id="intel-feed"></div>
-      </div>
-    </div>
-
-    <!-- Proximity Scan Radar -->
-    <div class="s9-panel" data-s9-id="pulse-radar-1">
-      <div class="s9-panel__header">
-        <span class="s9-panel__header-label">PROXIMITY SCAN</span>
-        <span class="s9-panel__header-jp">近接スキャン</span>
-        <span class="s9-panel__header-status" id="radar-status">● ACTIVE</span>
-      </div>
-      <div class="s9-panel__body" style="padding:0;position:relative;">
-        <div class="s9-radar" id="proximity-radar"></div>
-      </div>
-      <div class="s9-panel__footer">
-        <span id="radar-contacts"
-              style="font-family:var(--font-terminal);font-size:0.55rem;color:var(--text-dim);">
-          CONTACTS: 0 | SWEEP: 4.0s
-        </span>
       </div>
     </div>
 
