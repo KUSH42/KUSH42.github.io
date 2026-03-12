@@ -9,6 +9,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
 
+  <style>
+    @font-face {
+      font-family: 'Matrix-Code';
+      src: url('/assets/Matrix-Code-Bme_c6c4.ttf') format('truetype');
+      font-display: swap;
+    }
+  </style>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -538,10 +545,9 @@
       height: 100%;
       object-fit: contain;
       object-position: center center;
-      filter: grayscale(0.75) contrast(1.25) brightness(0.7);
+      filter: grayscale(0.7) contrast(1.2) brightness(0.75) blur(0.36px);
       display: block;
-      image-rendering: pixelated;
-      transform: scale(1.15);
+      transform: scale(1.265);
     }
 
     /* Theme-color tint overlay via mix-blend-mode */
@@ -592,6 +598,19 @@
     }
 
     /* Phosphor bloom — inner glow ring */
+    .s9-telescreen__glow {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      filter: grayscale(1) brightness(1.2) blur(7.2px) saturate(3);
+      mix-blend-mode: screen;
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 1;
+      transform: scale(1.265);
+    }
+
     .s9-telescreen__bloom {
       position: absolute;
       inset: 0;
@@ -773,7 +792,7 @@
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-8Y71QKx9.js"></script>
+  <script type="module" crossorigin src="/assets/index-CV1lSfZO.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/three-D9Cdoq1N.js">
   <link rel="stylesheet" crossorigin href="/assets/index-D_mHDXxc.css">
 </head>
@@ -948,6 +967,7 @@
 
             <div class="s9-telescreen">
               <canvas id="ts-feed-canvas" class="s9-telescreen__img" aria-label="SURVEILLANCE FEED"></canvas>
+              <canvas id="ts-glow-canvas" class="s9-telescreen__glow" aria-hidden="true"></canvas>
               <div class="s9-telescreen__tint"></div>
               <div class="s9-telescreen__static"></div>
               <div class="s9-telescreen__static-b"></div>

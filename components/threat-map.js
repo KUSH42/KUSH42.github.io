@@ -74,7 +74,7 @@ function _levelColor(level, colors) {
 const GlobeGlitchShader = {
   uniforms: {
     tDiffuse:  { value: null },
-    shiftAmt:  { value: 0 },
+    shiftAmt:  { value: 0.9 },
   },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
   fragmentShader: /* glsl */`
@@ -99,7 +99,7 @@ const GlobeGlitchShader = {
  * @param {HTMLElement} element - .s9-threatmap root
  * @param {{ autoRotate?: boolean, bloomStrength?: number }} [options]
  */
-export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 } = {}) {
+export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 } = {}) {
   const ac = new AbortController();
   const { signal } = ac;
 
@@ -107,10 +107,11 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const colors = _readCSSColors();
 
   // ── Renderer ─────────────────────────────────────────────
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ E: true, alpha: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(element.clientWidth || 800, element.clientHeight || 600);
   renderer.domElement.classList.add('s9-threatmap__canvas');
+  renderer.domElement.style.filter = 'blur(0.66px) drop-shadow(0 1 4px rgba(0,200,255,0.84))';
   element.appendChild(renderer.domElement);
 
   // ── Scene + Camera ────────────────────────────────────────
@@ -130,7 +131,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   // on the front hemisphere (passes LEQUAL) but strictly less than globeFront on
   // the back hemisphere too — meaning back-hemisphere wireframe fragments are
   // always behind the occluder and correctly fail the depth test.
-  const occluderGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 0.999, 48, 48);
+  const occluderGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 0.98, 48, 48);
 
   // Layer 0: ghost back wires — drawn before any depth data, always faint
   const cyanColor = new THREE.Color(colors.neonCyan || '#00d4b0');
@@ -139,9 +140,9 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     color: cyanColor,
     wireframe: true,
     transparent: true,
-    opacity: 0.0015,
-    depthTest: false,
-    depthWrite: false,
+    opacity: 0.005,
+    depthTest: true,
+    depthWrite: true,
     side: THREE.BackSide,
   });
   const globeBack = new THREE.Mesh(globeGeo, globeBackMat);
@@ -169,7 +170,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const globeSurfaceMat = new THREE.MeshBasicMaterial({
     color:       new THREE.Color('#010e0b'),
     transparent: true,
-    opacity:     0.5,
+    opacity:     0.85,
     depthTest:   true,
     depthWrite:  true,
     side:        THREE.DoubleSide,
@@ -183,7 +184,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     color: cyanColor,
     wireframe: true,
     transparent: true,
-    opacity: 0.014,
+    opacity: 0.002,
     depthTest: true,
     depthWrite: false,
     side: THREE.FrontSide,
@@ -197,7 +198,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     color: cyanColor,
     wireframe:   true,
     transparent: true,
-    opacity:     0.025,
+    opacity:     0.0061,
     blending:    THREE.AdditiveBlending,
     depthTest:   true,
     depthWrite:  false,
@@ -250,6 +251,8 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   controls.enablePan = false;
   controls.minDistance = 1.5;
   controls.maxDistance = 5;
+  controls.minPolarAngle = Math.PI / 2 - (42.5 * Math.PI / 180);  // 42.5° above equator
+  controls.maxPolarAngle = Math.PI / 2 + (42.5 * Math.PI / 180);  // 42.5° below equator
 
   // ── Post-processing ───────────────────────────────────────
   const composer = new EffectComposer(renderer);
@@ -258,9 +261,9 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
-    bloomStrength,
-    0.55,  // radius
-    0.65   // threshold
+    bloomStrength * 1.8,
+    1.525, // radius
+    0.45   // threshold
   );
   composer.addPass(bloomPass);
 
@@ -598,7 +601,7 @@ export function addNode(element, { id, lat, lng, label, level }) {
   const colors = _readCSSColors();
   const colorHex = _levelColor(level, colors);
 
-  const geo = new THREE.SphereGeometry(0.032, 8, 8);
+  const geo = new THREE.SphereGeometry(0.02, 8, 8);
   const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorHex) });
   const mesh = new THREE.Mesh(geo, mat);
 
@@ -918,22 +921,22 @@ async function _loadGeoLines(element) {
   const coastMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.75,
-    depthWrite:  false,
+    opacity:     0.85,
+    depthWrite:  true,
   });
   // Inner glow halo
   const coastGlowMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.55,
+    opacity:     0.8,
     blending:    THREE.AdditiveBlending,
-    depthWrite:  false,
+    depthWrite:  true,
   });
   // Outer soft halo
   const coastGlowWideMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.16,
+    opacity:     0.45,
     blending:    THREE.AdditiveBlending,
     depthWrite:  false,
   });
@@ -953,19 +956,19 @@ async function _loadGeoLines(element) {
   const borderMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.32,
-    depthWrite:  false,
+    opacity:     0.35,
+    depthWrite:  true,
   });
   const borderGlowMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.18,
+    opacity:     0.15,
     blending:    THREE.AdditiveBlending,
     depthWrite:  false,
   });
   for (const coords of countryBorders.coordinates) {
-    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
+    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.012));
+    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.022));
     const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     borderMat);
     const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), borderGlowMat);
     line.userData.geoType = glow.userData.geoType = 'border';
@@ -1027,7 +1030,7 @@ export function pulseNode(element, nodeId) {
   const mat = new THREE.LineBasicMaterial({
     color: new THREE.Color(colorHex),
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.8,
     depthWrite: false,
   });
   const ring = new THREE.LineLoop(geo, mat);
@@ -1063,7 +1066,7 @@ export function refreshThemeColors(element) {
   state.colors = colors;
 
   // Globe wireframe layers
-  const globeColor = colors.neonCyan || '#00d4b0';
+  const globeColor = colors.neonCyan || '#00d48ddf';
   if (state.globeBack)  state.globeBack.material.color.set(globeColor);
   if (state.globeFront) state.globeFront.material.color.set(globeColor);
 
@@ -1071,7 +1074,7 @@ export function refreshThemeColors(element) {
   if (state.geoGroup) {
     state.geoGroup.traverse((obj) => {
       if (obj.isLine) {
-        obj.material.color.set(colors.neonCyan || '#00d4b0');
+        obj.material.color.set(colors.neonCyan || '#008410D0');
       }
     });
   }
@@ -1503,10 +1506,12 @@ export async function setSatelliteMode(element, enabled) {
 
   if (enabled) {
     // Hide wireframe immediately; show satellite once the async build resolves
-    if (state.globeBack)  state.globeBack.visible  = false;
-    if (state.occluder)   state.occluder.visible   = false;
-    if (state.globeFront) state.globeFront.visible  = false;
-    if (state.geoGroup)   state.geoGroup.visible   = false;
+    if (state.globeBack)    state.globeBack.visible    = false;
+    if (state.occluder)     state.occluder.visible     = false;
+    if (state.globeFront)   state.globeFront.visible   = false;
+    if (state.globeSurface) state.globeSurface.visible  = false;
+    if (state.globeGlow)    state.globeGlow.visible     = false;
+    if (state.geoGroup)     state.geoGroup.visible      = false;
     // Tighten bloom so node halos don't bleed over the texture
     if (state.bloomPass) {
       state._bloomPrev = { strength: state.bloomPass.strength, threshold: state.bloomPass.threshold, radius: state.bloomPass.radius };
@@ -1519,10 +1524,12 @@ export async function setSatelliteMode(element, enabled) {
     if (state.satelliteGroup) state.satelliteGroup.visible = true;
   } else {
     if (state.satelliteGroup) state.satelliteGroup.visible = false;
-    if (state.globeBack)  state.globeBack.visible  = true;
-    if (state.occluder)   state.occluder.visible   = true;
-    if (state.globeFront) state.globeFront.visible  = true;
-    if (state.geoGroup)   state.geoGroup.visible   = true;
+    if (state.globeBack)    state.globeBack.visible    = true;
+    if (state.occluder)     state.occluder.visible     = true;
+    if (state.globeFront)   state.globeFront.visible   = true;
+    if (state.globeSurface) state.globeSurface.visible  = true;
+    if (state.globeGlow)    state.globeGlow.visible     = true;
+    if (state.geoGroup)     state.geoGroup.visible      = true;
     // Restore bloom
     if (state.bloomPass && state._bloomPrev) {
       state.bloomPass.strength  = state._bloomPrev.strength;

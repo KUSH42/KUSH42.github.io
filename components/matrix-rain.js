@@ -10,28 +10,28 @@
 
 import * as THREE from 'three';
 
-// ── Glyph set ─────────────────────────────────────────────────
+// ── Glyph set (Matrix-Code.ttf — Rezmason/matrix, MIT license) ──
 const GLYPHS = [
-  ...'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ',
-  ...'ﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ',
-  ...'012345789',
-  ...':."=*+-<>¦|',
+  ...'アウエオカキケコサシスセソタツテナニヌネ',
+  ...'ハヒホマミムメモヤヨラリワー',
+  ...'012345789z',
+  ...':."*+<>|¦╌▪꞊',
 ];
+const ATLAS_PX = 96;  // canvas pixels per glyph cell
 
 // ── Scene constants ───────────────────────────────────────────
-const N_COLS     = 800;
+const N_COLS     = 2400;
 const N_ROWS     = 70;    // max trail length — long fading tails
 const CELL_W     = 0.12;  // base world-unit glyph width
-const CELL_H     = 0.16;  // base world-unit glyph height
+const CELL_H     = 0.08;  // base world-unit glyph height
 const WORLD_H    = 16;    // vertical sweep range per column
-const ATLAS_PX   = 64;
 
 // Spherical shell around globe (radius 1.0)
 // Camera orbits at ~3.0, columns must extend well past that
-const R_MIN      = 1.06;
-const R_MAX      = 6.0;
+const R_MIN      = 3.5;
+const R_MAX      = 8.0;
 
-// ── Glyph atlas ───────────────────────────────────────────────
+// ── Canvas glyph atlas (vertical strip, one glyph per row) ──
 function buildAtlas() {
   const n   = GLYPHS.length;
   const px  = ATLAS_PX;
@@ -45,7 +45,7 @@ function buildAtlas() {
   ctx.fillStyle    = '#fff';
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `${Math.round(px * 0.84)}px "Share Tech Mono", "Courier New", monospace`;
+  ctx.font = `${Math.round(px * 0.78)}px "Matrix-Code", "Share Tech Mono", monospace`;
 
   GLYPHS.forEach((g, i) => ctx.fillText(g, px / 2, px * i + px / 2));
 
@@ -86,8 +86,8 @@ function buildGeometry() {
     const cosP  = 1 - 2 * Math.random();                 // cos(phi) uniform -1..1
     const sinP  = Math.sqrt(1 - cosP * cosP);
 
-    // Radius: strongly biased toward outer shell (4–6 range)
-    const t      = Math.pow(Math.random(), 0.25);
+    // Radius: heavily biased toward outer shell (5–6 range)
+    const t      = Math.pow(Math.random(), 0.12);
     const radius = R_MIN + t * (R_MAX - R_MIN);
 
     const wx = sinP * Math.cos(theta) * radius;
@@ -97,11 +97,11 @@ function buildGeometry() {
     const yBase  = cosP * radius;
     const yOff   = yBase + (Math.random() - 0.5) * 2.0;
 
-    const speed  = 0.6 + Math.random() * 2.8;            // 0.6 – 3.4
+    const speed  = 0.4 + Math.random() * 1.87;            // 0.4 – 2.27
     const seed   = Math.random();
     const scale  = 0.5 + Math.random() * 1.0;            // 0.5 – 1.5× size
-    const alpha  = 0.15 + Math.random() * 0.7;           // 0.15 – 0.85 brightness (wider variance)
-    const trail  = 0.03 + Math.random() * 0.12;          // 0.03 – 0.15 decay rate (slow fade)
+    const alpha  = 0.18 + Math.random() * 0.72;          // 0.18 – 0.90 brightness (higher floor, more visible)
+    const trail  = 0.004 + Math.random() * 0.03;           // 0.004 – 0.034 decay rate (ultra long trails)
 
     for (let r = 0; r < N_ROWS; r++) {
       const idx = c * N_ROWS + r;
@@ -159,30 +159,47 @@ varying float vColIdx;
 varying float vRowIdx;
 varying float vAlpha;
 varying float vTrail;
+varying float vDepthDim;
+varying float vSpeed;
+
+float hash(vec2 v) {
+  vec2 s = fract(v * vec2(0.1031, 0.1030));
+  s += dot(s, s.yx + 33.33);
+  return fract((s.x + s.y) * s.x);
+}
 
 void main() {
   vUv     = uv;
   vColIdx = aColIdx;
   vRowIdx = aRowIdx;
-  vAlpha  = aAlpha;
   vTrail  = aTrail;
+  vSpeed  = aSpeed;
+
+  // Per-column spacing compression: 0–33% tighter
+  float spacingFactor = 1.0 - 0.33 * hash(vec2(aColIdx * 0.61, 0.29));
+  float cellStep = uCellH * aScale * spacingFactor;
+
+  // Per-glyph Y jitter: nudge upward only (decreases spacing)
+  float yJitter = hash(vec2(aColIdx * 0.43, aRowIdx * 0.89)) * 0.16 * cellStep;
+
+  // Per-glyph alpha variation: ±12% of column alpha
+  float alphaJitter = 1.0 + (hash(vec2(aColIdx * 0.67, aRowIdx * 0.31)) - 0.5) * 0.24;
+  vAlpha = aAlpha * alphaJitter;
 
   // Static world-Y of this cell, offset per column
-  float cellY = aYOff + uWorldH * 0.5 - aRowIdx * uCellH * aScale;
+  float cellY = aYOff + uWorldH * 0.5 - aRowIdx * cellStep + yJitter;
 
   // Illumination head sweeps down
-  float cycleH = uWorldH + uNRows * uCellH * aScale;
+  float cycleH = uWorldH + uNRows * cellStep;
   float headY  = aYOff + uWorldH * 0.5 - mod(uTime * aSpeed + aSeed * cycleH, cycleH);
 
-  vDist = (cellY - headY) / (uCellH * aScale);
+  vDist = (cellY - headY) / cellStep;
 
   // Cull cells ahead of the head or far enough behind that decay is invisible
-  // No hard wall — the exponential trail handles the fadeout
   if (vDist < -0.5) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
-  // Conservative GPU cull: exp(-70 * 0.03) ≈ 0.12 — still let frag shader decide
   if (vDist > uNRows * 1.2) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -191,9 +208,30 @@ void main() {
   // Transform column center to view space
   vec4 viewCenter = modelViewMatrix * vec4(aWX, cellY, aWZ, 1.0);
 
-  // Depth-scaled billboard with per-column scale
-  float depthScale = clamp(-viewCenter.z / 3.0, 0.3, 3.0);
-  float s = aScale * depthScale;
+  // Camera proximity — cull within 1.0 of camera
+  float viewDist = -viewCenter.z;  // depth in front of camera
+  float sideDist = length(viewCenter.xy);  // lateral distance
+  float camDist3D = length(viewCenter.xyz);
+  if (camDist3D < 1.0) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+
+  // Proximity fade: sides within 0.8, front (toward globe) within 3.0
+  float sideFade  = smoothstep(0.0, 0.8, sideDist);
+  float frontFade = (viewDist > 0.0) ? smoothstep(0.0, 3.0, viewDist) : 1.0;
+  float proxFade  = sideFade * frontFade;
+
+  // Depth-based brightness: closer = brighter, far = dim
+  vDepthDim = clamp(viewDist / 6.0, 0.0, 1.0);
+  vDepthDim = (1.0 - vDepthDim * vDepthDim) * proxFade;  // quadratic falloff + proximity fade
+
+  // Per-glyph scale variation: ±10%
+  float scaleJitter = 1.0 + (hash(vec2(aColIdx * 0.53, aRowIdx * 0.17)) - 0.5) * 0.20;
+
+  // Depth-scaled billboard with per-column scale + per-glyph variation
+  float depthScale = clamp(viewDist / 3.0, 0.3, 3.0);
+  float s = aScale * scaleJitter * depthScale;
   viewCenter.xy += position.xy * vec2(uCellW, uCellH) * s;
 
   gl_Position = projectionMatrix * viewCenter;
@@ -207,6 +245,7 @@ precision highp float;
 uniform sampler2D uGlyphTex;
 uniform float     uGlyphCount;
 uniform float     uTime;
+uniform float     uFrame;
 uniform vec3      uColor;
 uniform float     uNRows;
 
@@ -216,9 +255,14 @@ varying float vColIdx;
 varying float vRowIdx;
 varying float vAlpha;
 varying float vTrail;
+varying float vDepthDim;
+varying float vSpeed;
 
+// Stable hash — keeps inputs small with fract() to avoid GPU sin() precision issues
 float h2(vec2 v) {
-  return fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453);
+  vec2 s = fract(v * vec2(0.1031, 0.1030));
+  s += dot(s, s.yx + 33.33);
+  return fract((s.x + s.y) * s.x);
 }
 
 void main() {
@@ -226,26 +270,47 @@ void main() {
   float trail = exp(-max(vDist, 0.0) * vTrail);
   if (trail < 0.005) discard;
 
-  // Glyph identity with flicker
-  float proximity = 1.0 - clamp(vDist / 6.0, 0.0, 1.0);
-  float rate      = 1.0 + proximity * 3.0 + h2(vec2(vColIdx, 0.5)) * 2.0;
-  float tick      = floor(uTime * rate);
-  float glyphIdx  = floor(
-    h2(vec2(vColIdx * 0.37 + tick * 0.11, vRowIdx * 0.73 + tick * 0.07)) * uGlyphCount
-  );
+  // Snap to integer — varyings can have interpolation noise across the quad
+  vec2 cellId = vec2(floor(vColIdx + 0.5), floor(vRowIdx + 0.5));
 
-  // Sample atlas
+  float cellPhase = h2(cellId * 0.37);
+  float stability = h2(cellId * 0.91);
+
+  // Hold period in seconds (refresh-rate independent) — 3.3–11.7s, median ~7.5s
+  float holdSec    = 20.0 + h2(cellId * 0.29) * 40.0;
+  float changeTick = floor((cellPhase * holdSec + uTime) / holdSec);
+
+  // ~55% of cells are stable — keep base glyph, never change
+  float baseGlyph = floor(h2(cellId * 0.47 + 0.5) * uGlyphCount);
+  float glyphIdx  = floor(
+    h2(cellId * 0.37 + changeTick * vec2(0.11, 0.07)) * uGlyphCount
+  );
+  glyphIdx = stability < 0.9325 ? baseGlyph : glyphIdx;
+
+  // Vertical strip atlas
   float atlasV = (glyphIdx + (1.0 - vUv.y)) / uGlyphCount;
   float mask   = texture2D(uGlyphTex, vec2(vUv.x, atlasV)).r;
-  if (mask < 0.05) discard;
+  if (mask < 0.06) discard;
 
-  // Color: head → white; trail → theme color
-  float headFrac = 1.0 - smoothstep(0.0, 1.5, vDist);
-  vec3  col      = mix(uColor * 1.4, vec3(1.0, 1.0, 1.0), headFrac);
+  // Film grain
+  float grain = h2(vec2(
+    gl_FragCoord.x * 0.73 + gl_FragCoord.y * 0.41,
+    uTime * 7.3 + vColIdx * 0.17
+  ));
+  grain = (grain - 0.5) * 0.08;
 
-  // Per-column brightness variation
-  float alpha = trail * mask * vAlpha * 1.1;
-  gl_FragColor = vec4(col * alpha, alpha);
+  // High-contrast color: head burns white, trail is deep saturated green
+  // baseBrightness equivalent: trail already decays to near-zero,
+  // plus depth dimming kills distant cells → dark grid with bright heads
+  float headFrac = 1.0 - smoothstep(0.0, 0.8, vDist);
+  vec3  col2     = mix(uColor * 1.6, uColor * 3.0 + vec3(0.3), headFrac);
+  col2          += grain;
+
+  // Moderate contrast: pow curve adds depth without killing trails
+  float rawBright = trail * mask * vAlpha * vDepthDim;
+  float contrast  = pow(rawBright, 1.05);
+  float alpha     = contrast;
+  gl_FragColor    = vec4(col2 * alpha, alpha);
 }
 `;
 
@@ -263,10 +328,10 @@ const _state = new Map();
 export function initMatrixRain(element, opts = {}) {
   if (_state.has(element)) destroyMatrixRain(element);
 
-  const { color = '#00ff70', opacity = 1.0, syncCamera = null } = opts;
+  const { color = '#00ff70', opacity = 0.82, syncCamera = null } = opts;
   const rgb = new THREE.Color(color);
 
-  const atlas    = buildAtlas();
+  const atlas = buildAtlas();
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(element.clientWidth || 1, element.clientHeight || 1);
@@ -274,7 +339,8 @@ export function initMatrixRain(element, opts = {}) {
   const canvas = renderer.domElement;
   canvas.style.cssText =
     'position:absolute;inset:0;width:100%;height:100%;' +
-    'pointer-events:none;z-index:0;mix-blend-mode:screen;';
+    'pointer-events:none;z-index:0;mix-blend-mode:screen;' +
+    'filter:blur(0.15px) drop-shadow(0 0 3px rgba(0,255,112,0.3));';
   canvas.style.opacity = String(opacity);
   element.appendChild(canvas);
 
@@ -305,6 +371,7 @@ export function initMatrixRain(element, opts = {}) {
     uGlyphTex:   { value: atlas.tex },
     uGlyphCount: { value: atlas.count },
     uTime:       { value: 0 },
+    uFrame:      { value: 0 },
     uCellW:      { value: CELL_W },
     uCellH:      { value: CELL_H },
     uWorldH:     { value: WORLD_H },
@@ -333,6 +400,7 @@ export function initMatrixRain(element, opts = {}) {
   function animate(ts) {
     s.animId = requestAnimationFrame(animate);
     uniforms.uTime.value = ts * 0.001;
+    uniforms.uFrame.value += 1;
     if (s.syncCamera) {
       camera.position.copy(s.syncCamera.position);
       camera.quaternion.copy(s.syncCamera.quaternion);
@@ -354,9 +422,9 @@ export function initMatrixRain(element, opts = {}) {
   });
   s.ro.observe(element);
 
+  // Rebuild atlas once Matrix-Code font loads for authentic glyphs
   document.fonts.ready.then(() => {
-    const st = _state.get(element);
-    if (!st) return;
+    if (!_state.get(element)) return;
     const { tex, canvas: ac, ctx } = atlas;
     ctx.clearRect(0, 0, ac.width, ac.height);
     ctx.fillStyle = '#000';
@@ -364,7 +432,7 @@ export function initMatrixRain(element, opts = {}) {
     ctx.fillStyle    = '#fff';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `${Math.round(ATLAS_PX * 0.84)}px "Share Tech Mono", monospace`;
+    ctx.font = `${Math.round(ATLAS_PX * 0.78)}px "Matrix-Code", "Share Tech Mono", monospace`;
     GLYPHS.forEach((g, i) => ctx.fillText(g, ATLAS_PX / 2, ATLAS_PX * i + ATLAS_PX / 2));
     tex.needsUpdate = true;
   });

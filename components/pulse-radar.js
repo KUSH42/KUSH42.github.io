@@ -69,6 +69,29 @@ function _typeFloat(type) {
   return 3.0;
 }
 
+// ── Sonar ping (Web Audio) ────────────────────────────────────────
+let _audioCtx = null;
+function _playSonarPing(volume = 0.08) {
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _audioCtx;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1320, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  } catch (_) { /* audio not available */ }
+}
+
 // ── Shaders ──────────────────────────────────────────────────────
 
 const _bgVert = /* glsl */`
@@ -136,15 +159,18 @@ const _contactVert = /* glsl */`
 attribute float a_type;
 attribute float a_age;
 attribute float a_phase;
+attribute float a_sweepFade;
 varying float vType;
 varying float vAge;
 varying float vPhase;
+varying float vSweepFade;
 varying vec2  vUv;
 void main() {
-  vType  = a_type;
-  vAge   = a_age;
-  vPhase = a_phase;
-  vUv    = uv;
+  vType      = a_type;
+  vAge       = a_age;
+  vPhase     = a_phase;
+  vSweepFade = a_sweepFade;
+  vUv        = uv;
   #ifdef USE_INSTANCING
     vec4 wp = instanceMatrix * vec4(position, 1.0);
   #else
@@ -157,6 +183,7 @@ const _dotFrag = /* glsl */`
 varying float vType;
 varying float vAge;
 varying float vPhase;
+varying float vSweepFade;
 varying vec2  vUv;
 uniform vec3 uC0;
 uniform vec3 uC1;
@@ -178,12 +205,11 @@ void main() {
   else if (vType < 2.5) { color = uC2; baseAlpha = 1.0; }
   else                  { color = uC3; baseAlpha = 0.15; }
 
-  float ageAlpha = vType > 2.5
-    ? 0.15
-    : (1.0 - smoothstep(0.65, 0.85, vAge) * 0.85);
+  // Sweep fade: contacts dim between sweep passes (5-15% floor)
+  float sweepAlpha = vType > 2.5 ? 0.15 : vSweepFade;
 
   float detect = vAge < 0.08 ? mix(1.6, 1.0, vAge / 0.08) : 1.0;
-  float alpha  = shape * ageAlpha * baseAlpha * detect;
+  float alpha  = shape * sweepAlpha * baseAlpha * detect;
   gl_FragColor = vec4(color * shape * detect, alpha);
 }`;
 
@@ -191,6 +217,7 @@ const _ringFrag = /* glsl */`
 varying float vType;
 varying float vAge;
 varying float vPhase;
+varying float vSweepFade;
 varying vec2  vUv;
 uniform vec3 uC0;
 uniform vec3 uC1;
@@ -223,9 +250,19 @@ void main() {
   else if (vType < 1.5) color = uC1;
   else                  color = uC2;
 
-  float ageAlpha   = 1.0 - smoothstep(0.65, 0.85, vAge);
   float phaseAlpha = 1.0 - phase;
-  gl_FragColor     = vec4(color, ring * ageAlpha * phaseAlpha * 0.75);
+  gl_FragColor     = vec4(color, ring * vSweepFade * phaseAlpha * 0.75);
+}`;
+
+const _centerGlowFrag = /* glsl */`
+varying vec2 vUv;
+uniform vec3  uColor;
+uniform float uIntensity;
+void main() {
+  float r = length(vUv - 0.5) * 2.0;
+  float glow = exp(-r * r * 8.0) * uIntensity;
+  if (glow < 0.005) discard;
+  gl_FragColor = vec4(uColor * glow, glow * 0.6);
 }`;
 
 // ── Geometry builders ────────────────────────────────────────────
@@ -289,6 +326,33 @@ function _buildBackground(state) {
   mesh.renderOrder = 0;
   scene.add(mesh);
   state.backgroundMesh = mesh;
+}
+
+function _buildCenterGlow(state) {
+  const { scene, R, theme } = state;
+  if (state.centerGlowMesh) {
+    state.centerGlowMesh.geometry.dispose();
+    state.centerGlowMesh.material.dispose();
+    scene.remove(state.centerGlowMesh);
+  }
+  const cc = new THREE.Color(theme.neonCyan);
+  const size = R * 0.5;
+  const geo = new THREE.PlaneGeometry(size, size);
+  const mat = new THREE.ShaderMaterial({
+    vertexShader:   _bgVert,
+    fragmentShader: _centerGlowFrag,
+    uniforms: {
+      uColor:     { value: new THREE.Vector3(cc.r, cc.g, cc.b) },
+      uIntensity: { value: 0 },
+    },
+    transparent: true,
+    depthWrite:  false,
+    blending:    THREE.AdditiveBlending,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 6;
+  scene.add(mesh);
+  state.centerGlowMesh = mesh;
 }
 
 function _buildRingsAndTicks(state) {
@@ -410,15 +474,18 @@ function _buildContactMeshes(state) {
 
   function _makeInstMesh(fragShader, uniforms, renderOrder) {
     const geo = new THREE.PlaneGeometry(1, 1);
-    const aType  = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).fill(0),   1);
-    const aAge   = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).fill(1.0), 1);
-    const aPhase = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).map(() => Math.random()), 1);
+    const aType      = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).fill(0),   1);
+    const aAge       = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).fill(1.0), 1);
+    const aPhase     = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).map(() => Math.random()), 1);
+    const aSweepFade = new THREE.InstancedBufferAttribute(new Float32Array(POOL_SIZE).fill(0.0), 1);
     aType.setUsage(THREE.DynamicDrawUsage);
     aAge.setUsage(THREE.DynamicDrawUsage);
     aPhase.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('a_type',  aType);
-    geo.setAttribute('a_age',   aAge);
-    geo.setAttribute('a_phase', aPhase);
+    aSweepFade.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('a_type',      aType);
+    geo.setAttribute('a_age',       aAge);
+    geo.setAttribute('a_phase',     aPhase);
+    geo.setAttribute('a_sweepFade', aSweepFade);
 
     const mat = new THREE.ShaderMaterial({
       vertexShader:   _contactVert,
@@ -508,6 +575,7 @@ function _repositionStaticLabels(state) {
 
 function _rebuildGeometry(state) {
   _buildBackground(state);
+  _buildCenterGlow(state);
   _buildRingsAndTicks(state);
   _buildSweep(state);
   _repositionStaticLabels(state);
@@ -589,6 +657,7 @@ function _addContact(state, angle, range, type, id) {
     ghostSpawned: false,
     instIdx:      slot,
     labelEl:      null,
+    sweepAlpha:   isGhost ? 0.15 : 1.0,  // fades between sweep passes
     // Sweep-reveal: contacts are invisible until the sweep arm paints them
     revealed:     isGhost,   // ghost echoes appear immediately (created by the sweep event)
     revealTime:   isGhost ? performance.now() : null,
@@ -637,7 +706,22 @@ function _spawnAutoContact(state) {
 
 function _updateSweep(state, dt) {
   if (state.reducedMotion) return;
+  const prevAngle = state.sweepAngle;
   state.sweepAngle = (state.sweepAngle + state.sweepSpeed * dt / 1000) % TAU;
+
+  // Detect full revolution (angle wraps past TAU)
+  if (state.sweepAngle < prevAngle) {
+    _playSonarPing(0.06);
+    state.centerGlowIntensity = 1.0;
+  }
+  // Decay center glow
+  if (state.centerGlowIntensity > 0) {
+    state.centerGlowIntensity *= Math.pow(0.001, dt / 600);  // fade over ~600ms
+    if (state.centerGlowIntensity < 0.005) state.centerGlowIntensity = 0;
+    if (state.centerGlowMesh) {
+      state.centerGlowMesh.material.uniforms.uIntensity.value = state.centerGlowIntensity;
+    }
+  }
 
   const now = performance.now();
   if (state.staticNextAt === null) state.staticNextAt = now + 7000 + Math.random() * 5000;
@@ -669,9 +753,22 @@ function _updateContacts(state, dt) {
   const { contacts, sweepAngle } = state;
   const now = performance.now();
 
+  // Fade to floor 220ms before next sweep pass
+  const sweepPeriodMs = (TAU / state.sweepSpeed) * 1000;
+  const fadeTimeMs = Math.max(200, sweepPeriodMs - 220);
+  const nowMs = performance.now();
+
   contacts.forEach((c, i) => {
     if (!c) return;
     c.age += dt / c.maxAge;
+
+    // Direct time-based fade: guaranteed to reach floor by fadeTimeMs
+    if (c.type !== 'ghost' && c.revealed) {
+      const floor = 0.05 + 0.10 * (c.range);
+      const elapsed = nowMs - c.lastSweep;
+      const t = Math.min(1, elapsed / fadeTimeMs);
+      c.sweepAlpha = floor + (1.0 - floor) * Math.pow(1.0 - t, 2.5);
+    }
 
     if (c.type !== 'ghost') {
       const inFading = c.age > 0.65 && c.age < 0.85;
@@ -684,13 +781,12 @@ function _updateContacts(state, dt) {
     if (c.type !== 'ghost' && !state.reducedMotion) {
       const diff = Math.abs(_angleDiff(sweepAngle, c.angle));
       if (diff < 0.12 && now - c.lastSweep > 800) {
-        c.phase     = 0;
-        c.lastSweep = now;
+        c.phase      = 0;
+        c.lastSweep  = now;
+        c.sweepAlpha = 1.0;  // full brightness on sweep refresh
         if (!c.revealed) {
           c.revealed    = true;
           c.revealTime  = now;
-        } else if (c.age > 0.65) {
-          c.age = 0.60;  // re-illuminate fading contacts on subsequent passes
         }
       }
     }
@@ -733,9 +829,11 @@ function _updateInstances(state) {
     contactDotsMesh.geometry.attributes.a_type.setX(i, tf);
     contactDotsMesh.geometry.attributes.a_age.setX(i, c.age);
     contactDotsMesh.geometry.attributes.a_phase.setX(i, c.phase);
+    contactDotsMesh.geometry.attributes.a_sweepFade.setX(i, c.sweepAlpha);
     contactRingsMesh.geometry.attributes.a_type.setX(i, tf);
     contactRingsMesh.geometry.attributes.a_age.setX(i, c.age);
     contactRingsMesh.geometry.attributes.a_phase.setX(i, c.phase);
+    contactRingsMesh.geometry.attributes.a_sweepFade.setX(i, c.sweepAlpha);
   });
 
   if (dirty) {
@@ -744,9 +842,11 @@ function _updateInstances(state) {
     contactDotsMesh.geometry.attributes.a_type.needsUpdate       = true;
     contactDotsMesh.geometry.attributes.a_age.needsUpdate        = true;
     contactDotsMesh.geometry.attributes.a_phase.needsUpdate      = true;
+    contactDotsMesh.geometry.attributes.a_sweepFade.needsUpdate  = true;
     contactRingsMesh.geometry.attributes.a_type.needsUpdate      = true;
     contactRingsMesh.geometry.attributes.a_age.needsUpdate       = true;
     contactRingsMesh.geometry.attributes.a_phase.needsUpdate     = true;
+    contactRingsMesh.geometry.attributes.a_sweepFade.needsUpdate = true;
   }
 }
 
@@ -761,7 +861,7 @@ function _updateLabels(state) {
     const y = cy - Math.cos(c.angle) * c.range * R;
     c.labelEl.style.left    = `${x + 7}px`;
     c.labelEl.style.top     = `${y - 6}px`;
-    c.labelEl.style.opacity = String(Math.max(0, 1 - Math.max(0, c.age - 0.5) / 0.5));
+    c.labelEl.style.opacity = String(c.sweepAlpha);
   });
 }
 
@@ -816,11 +916,11 @@ export function initRadar(element, opts = {}) {
   }
 
   const options = {
-    sweepPeriod:    Math.max(600,  Math.min(20000, opts.sweepPeriod    ?? 4000)),
+    sweepPeriod:    Math.max(600,  Math.min(20000, opts.sweepPeriod    ?? 3690)),
     contactDensity: Math.max(0,    Math.min(1,     opts.contactDensity ?? 0.5)),
     threatLevel:    Math.max(0,    Math.min(1,     opts.threatLevel    ?? 0)),
     primaryColor:   opts.primaryColor ?? null,
-    maxContacts:    Math.max(4,    Math.min(64,    opts.maxContacts    ?? 48)),
+    maxContacts:    Math.max(4,    Math.min(64,    opts.maxContacts    ?? 28)),
   };
 
   const theme = _readTheme();
@@ -874,6 +974,8 @@ export function initRadar(element, opts = {}) {
     rafRunning:      false,
     destroyed:       false,
     reducedMotion:   matchMedia('(prefers-reduced-motion: reduce)').matches,
+    centerGlowIntensity: 0,
+    centerGlowMesh:  null,
     backgroundMesh:  null,  ringMeshes:      null,  ticksMesh:       null,
     sweepTrailMesh:  null,  sweepArmLine:    null,
     contactDotsMesh: null,  contactRingsMesh: null,
