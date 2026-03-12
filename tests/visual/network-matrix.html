@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S9-OV — NetworkMatrix Visual Test</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
+
+  <!-- Aesthetic system -->
+  <link rel="stylesheet" href="/aesthetic/index.css" />
+
+  <!-- Component CSS -->
+  <link rel="stylesheet" href="/components/panel-shell.css" />
+  <link rel="stylesheet" href="/components/network-matrix.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--void);
+      color: var(--text-primary);
+      font-family: var(--font-terminal);
+    }
+
+    .demo-layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 8px;
+      padding: 16px;
+      height: 100vh;
+    }
+
+    .s9-panel {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .s9-panel__body {
+      flex: 1;
+      min-height: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .s9-matrix {
+      height: 100%;
+    }
+
+    .demo-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+      background: var(--panel-bg-solid);
+      border: 1px solid var(--panel-border);
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      overflow-y: auto;
+    }
+
+    .demo-controls h3 {
+      font-family: var(--font-holo);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      color: var(--neon-cyan);
+      text-transform: uppercase;
+    }
+
+    .demo-btn {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--neon-amber);
+      background: color-mix(in srgb, var(--neon-amber) 10%, transparent);
+      border: 1px solid var(--neon-amber);
+      padding: 4px 10px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      width: 100%;
+      text-align: left;
+    }
+
+    .demo-btn:hover {
+      background: color-mix(in srgb, var(--neon-amber) 20%, transparent);
+    }
+
+    .demo-label {
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    .demo-log {
+      font-family: var(--font-terminal);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      border-top: 1px solid var(--panel-border-dim);
+      padding-top: 8px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .demo-log p { margin: 2px 0; }
+  </style>
+</head>
+
+<body>
+  <div class="demo-layout">
+
+    <!-- ── Matrix Panel ───────────────────────────────────────── -->
+    <div class="s9-panel s9-panel--active"
+         role="region" aria-label="NETWORK TOPOLOGY"
+         tabindex="0" data-s9-id="matrix-01" data-s9-state="active">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">NETWORK TOPOLOGY</span>
+        <span class="s9-panel__header-jp">ネットワークトポロジー</span>
+        <span class="s9-panel__header-status" aria-live="polite">● LIVE</span>
+      </div>
+      <div class="s9-panel__body holographic">
+        <div class="s9-matrix" id="matrix-01"></div>
+      </div>
+    </div>
+
+    <!-- ── Controls ───────────────────────────────────────────── -->
+    <div class="demo-controls">
+      <h3>NetworkMatrix — Visual Test Controls</h3>
+
+      <p class="demo-label">Click any node on the graph to select it. Hover for ring preview.</p>
+
+      <button class="demo-btn" id="btn-pulse-random">PULSE RANDOM NODE</button>
+      <button class="demo-btn" id="btn-activate-edge">ACTIVATE RANDOM EDGE</button>
+      <button class="demo-btn" id="btn-deactivate-all">DEACTIVATE ALL EDGES</button>
+      <button class="demo-btn" id="btn-deselect">DESELECT NODE</button>
+      <button class="demo-btn" id="btn-update">SHUFFLE NODE POSITIONS</button>
+      <button class="demo-btn" id="btn-add-node">ADD TEMP NODE</button>
+      <button class="demo-btn" id="btn-destroy">DESTROY / REINIT</button>
+
+      <div class="demo-log" id="event-log">
+        <p><em>Events will appear here…</em></p>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import {
+      initMatrix,
+      updateMatrix,
+      pulseNode,
+      activateEdge,
+      deactivateEdge,
+      setActiveNode,
+      destroyMatrix,
+    } from '/components/network-matrix.js';
+
+    const matrixEl = document.getElementById('matrix-01');
+
+    // ── Graph data ─────────────────────────────────────────────
+    const NODES = [
+      { id: 'root',   x: 50,  y: 50,  label: 'SEC9.CORE', root: true },
+      { id: 'n1',     x: 20,  y: 20,  label: 'NET.DIV.6' },
+      { id: 'n2',     x: 80,  y: 20,  label: 'GHOST.RELAY' },
+      { id: 'n3',     x: 80,  y: 80,  label: 'BARRIER.SYS' },
+      { id: 'n4',     x: 20,  y: 80,  label: 'TACHIKOMA.1' },
+      { id: 'n5',     x: 50,  y: 15,  label: 'SAT.UPLINK' },
+      { id: 'n6',     x: 85,  y: 50,  label: 'CYBER.CRIMES' },
+      { id: 'n7',     x: 50,  y: 85,  label: 'PROXY.CHAIN' },
+      { id: 'n8',     x: 15,  y: 50,  label: 'COUNTER.SYS' },
+    ];
+
+    const EDGES = [
+      { id: 'e1', from: 'root', to: 'n1' },
+      { id: 'e2', from: 'root', to: 'n2' },
+      { id: 'e3', from: 'root', to: 'n3' },
+      { id: 'e4', from: 'root', to: 'n4' },
+      { id: 'e5', from: 'n1',   to: 'n5' },
+      { id: 'e6', from: 'n2',   to: 'n5' },
+      { id: 'e7', from: 'n2',   to: 'n6' },
+      { id: 'e8', from: 'n3',   to: 'n6' },
+      { id: 'e9', from: 'n3',   to: 'n7' },
+      { id: 'e10', from: 'n4',  to: 'n7' },
+      { id: 'e11', from: 'n4',  to: 'n8' },
+      { id: 'e12', from: 'n1',  to: 'n8' },
+    ];
+
+    initMatrix(matrixEl, { nodes: NODES, edges: EDGES });
+
+    // ── Event log ─────────────────────────────────────────────
+    const eventLog = document.getElementById('event-log');
+
+    function logEvent(msg) {
+      const p = document.createElement('p');
+      p.textContent = `[${new Date().toISOString().slice(11, 23)}] ${msg}`;
+      if (eventLog.querySelector('em')) eventLog.innerHTML = '';
+      eventLog.appendChild(p);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    matrixEl.addEventListener('s9:matrix-node-click', (e) => {
+      logEvent(`s9:matrix-node-click → id="${e.detail.nodeId}" label="${e.detail.label}"`);
+    });
+
+    matrixEl.addEventListener('s9:matrix-node-deselect', (e) => {
+      logEvent(`s9:matrix-node-deselect → id="${e.detail.nodeId}"`);
+    });
+
+    // ── Button handlers ───────────────────────────────────────
+    document.getElementById('btn-pulse-random').addEventListener('click', () => {
+      const id = NODES[Math.floor(Math.random() * NODES.length)].id;
+      pulseNode(matrixEl, id);
+      logEvent(`pulseNode("${id}")`);
+    });
+
+    document.getElementById('btn-activate-edge').addEventListener('click', () => {
+      const id = EDGES[Math.floor(Math.random() * EDGES.length)].id;
+      activateEdge(matrixEl, id);
+      logEvent(`activateEdge("${id}")`);
+    });
+
+    document.getElementById('btn-deactivate-all').addEventListener('click', () => {
+      activateEdge(matrixEl, null);
+      logEvent('activateEdge(null) — deactivated all');
+    });
+
+    document.getElementById('btn-deselect').addEventListener('click', () => {
+      setActiveNode(matrixEl, null);
+    });
+
+    // Shuffle node positions
+    document.getElementById('btn-update').addEventListener('click', () => {
+      const shuffled = NODES.map((n) => ({
+        ...n,
+        x: Math.round(10 + Math.random() * 80),
+        y: Math.round(10 + Math.random() * 80),
+      }));
+      updateMatrix(matrixEl, { nodes: shuffled, edges: EDGES });
+      logEvent('updateMatrix — shuffled positions');
+    });
+
+    // Add/remove a temporary node
+    let tempNodeAdded = false;
+    document.getElementById('btn-add-node').addEventListener('click', () => {
+      if (!tempNodeAdded) {
+        const extNodes = [...NODES, { id: 'temp', x: 50, y: 50, label: 'TEMP.NODE' }];
+        const extEdges = [...EDGES, { id: 'e-temp', from: 'root', to: 'temp', active: true }];
+        updateMatrix(matrixEl, { nodes: extNodes, edges: extEdges });
+        logEvent('Added TEMP.NODE + active edge');
+        tempNodeAdded = true;
+      } else {
+        updateMatrix(matrixEl, { nodes: NODES, edges: EDGES });
+        logEvent('Removed TEMP.NODE');
+        tempNodeAdded = false;
+      }
+    });
+
+    document.getElementById('btn-destroy').addEventListener('click', () => {
+      destroyMatrix(matrixEl);
+      logEvent('destroyMatrix — reinitialising…');
+      setTimeout(() => {
+        initMatrix(matrixEl, { nodes: NODES, edges: EDGES });
+        tempNodeAdded = false;
+        logEvent('initMatrix — complete');
+      }, 200);
+    });
+
+    // ── Live pulse demo ───────────────────────────────────────
+    let pulseIndex = 0;
+    setInterval(() => {
+      const node = NODES[pulseIndex % NODES.length];
+      pulseNode(matrixEl, node.id);
+      pulseIndex++;
+    }, 2000);
+
+    // Activate one edge on load
+    setTimeout(() => activateEdge(matrixEl, 'e1'), 500);
+  </script>
+</body>
+</html>

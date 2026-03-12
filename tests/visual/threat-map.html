@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S9-OV — ThreatMap Visual Test</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet" />
+
+  <!-- Aesthetic system -->
+  <link rel="stylesheet" href="/aesthetic/index.css" />
+
+  <!-- Component CSS -->
+  <link rel="stylesheet" href="/components/panel-shell.css" />
+  <link rel="stylesheet" href="/components/threat-map.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--void);
+      color: var(--text-primary);
+      font-family: var(--font-terminal);
+    }
+
+    .demo-layout {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 8px;
+      padding: 16px;
+      height: 100vh;
+    }
+
+    .s9-panel {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .s9-panel__body {
+      flex: 1;
+      min-height: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .s9-threatmap {
+      height: 100%;
+    }
+
+    .demo-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 16px;
+      background: var(--panel-bg-solid);
+      border: 1px solid var(--panel-border);
+      font-family: var(--font-terminal);
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      overflow-y: auto;
+    }
+
+    .demo-controls h3 {
+      font-family: var(--font-holo);
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      color: var(--neon-cyan);
+      text-transform: uppercase;
+    }
+
+    .demo-btn {
+      font-family: var(--font-terminal);
+      font-size: 0.6rem;
+      color: var(--neon-amber);
+      background: color-mix(in srgb, var(--neon-amber) 10%, transparent);
+      border: 1px solid var(--neon-amber);
+      padding: 4px 10px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      width: 100%;
+      text-align: left;
+    }
+
+    .demo-btn:hover {
+      background: color-mix(in srgb, var(--neon-amber) 20%, transparent);
+    }
+
+    .demo-label {
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    .demo-slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .demo-slider-row label {
+      font-size: 0.55rem;
+      color: var(--text-dim);
+    }
+
+    .demo-slider-row input[type="range"] {
+      width: 100%;
+      accent-color: var(--neon-cyan);
+    }
+
+    .demo-log {
+      font-family: var(--font-terminal);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      border-top: 1px solid var(--panel-border-dim);
+      padding-top: 8px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .demo-log p { margin: 2px 0; }
+  </style>
+</head>
+
+<body>
+  <div class="demo-layout">
+
+    <!-- ── ThreatMap Panel ───────────────────────────────────── -->
+    <div class="s9-panel s9-panel--active"
+         role="region" aria-label="GLOBAL THREAT MAP"
+         tabindex="0" data-s9-id="threatmap-01" data-s9-state="active">
+      <div class="s9-panel__header">
+        <span class="s9-panel__header-label">GLOBAL THREAT MAP</span>
+        <span class="s9-panel__header-jp">グローバル脅威マップ</span>
+        <span class="s9-panel__header-status" aria-live="polite">● SCANNING</span>
+      </div>
+      <div class="s9-panel__body">
+        <div class="s9-threatmap" id="threatmap-01"></div>
+      </div>
+    </div>
+
+    <!-- ── Controls ───────────────────────────────────────────── -->
+    <div class="demo-controls">
+      <h3>ThreatMap — Visual Test Controls</h3>
+
+      <p class="demo-label">
+        Click a node on the globe to select it. Drag to rotate. Scroll to zoom.
+        The globe auto-rotates and resumes after 3s of inactivity.
+      </p>
+
+      <button class="demo-btn" id="btn-add-node">ADD RANDOM NODE</button>
+      <button class="demo-btn" id="btn-remove-node">REMOVE LAST NODE</button>
+      <button class="demo-btn" id="btn-add-edge">ADD ARC EDGE</button>
+      <button class="demo-btn" id="btn-remove-edge">REMOVE LAST EDGE</button>
+      <button class="demo-btn" id="btn-deselect">DESELECT NODE</button>
+      <button class="demo-btn" id="btn-destroy">DESTROY / REINIT</button>
+
+      <div class="demo-slider-row">
+        <label for="threat-slider">THREAT LEVEL: <span id="threat-val">0</span></label>
+        <input type="range" id="threat-slider" min="0" max="100" value="0" />
+      </div>
+
+      <div class="demo-log" id="event-log">
+        <p><em>Events will appear here…</em></p>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import {
+      initThreatMap,
+      destroyThreatMap,
+      addNode,
+      removeNode,
+      addEdge,
+      removeEdge,
+      setActiveNode,
+      setThreatLevel,
+    } from '/components/threat-map.js';
+
+    const mapEl = document.getElementById('threatmap-01');
+
+    // ── Seed data ─────────────────────────────────────────────
+    const SEED_NODES = [
+      { id: 'n-tokyo',   lat: 35.68,  lng: 139.69,  label: 'TOKYO NODE',     level: 25 },
+      { id: 'n-ny',      lat: 40.71,  lng: -74.01,  label: 'NEW YORK NODE',  level: 55 },
+      { id: 'n-london',  lat: 51.51,  lng: -0.12,   label: 'LONDON NODE',    level: 40 },
+      { id: 'n-moscow',  lat: 55.75,  lng: 37.62,   label: 'MOSCOW NODE',    level: 85 },
+      { id: 'n-beijing', lat: 39.91,  lng: 116.39,  label: 'BEIJING NODE',   level: 72 },
+      { id: 'n-sydney',  lat: -33.87, lng: 151.21,  label: 'SYDNEY NODE',    level: 15 },
+      { id: 'n-dubai',   lat: 25.20,  lng: 55.27,   label: 'DUBAI NODE',     level: 60 },
+      { id: 'n-sao',     lat: -23.55, lng: -46.63,  label: 'SAO PAULO NODE', level: 48 },
+    ];
+
+    // Init
+    initThreatMap(mapEl, { autoRotate: true, bloomStrength: 0.4 });
+
+    // Add seed nodes
+    SEED_NODES.forEach((n) => addNode(mapEl, n));
+
+    // Add a few edges
+    addEdge(mapEl, { id: 'e1', from: 'n-tokyo', to: 'n-beijing' });
+    addEdge(mapEl, { id: 'e2', from: 'n-ny',    to: 'n-london' });
+    addEdge(mapEl, { id: 'e3', from: 'n-moscow', to: 'n-london' });
+
+    // ── Event log ─────────────────────────────────────────────
+    const eventLog = document.getElementById('event-log');
+
+    function logEvent(msg) {
+      const p = document.createElement('p');
+      p.textContent = `[${new Date().toISOString().slice(11, 23)}] ${msg}`;
+      if (eventLog.querySelector('em')) eventLog.innerHTML = '';
+      eventLog.appendChild(p);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    mapEl.addEventListener('s9:threatmap-node-select', (e) => {
+      logEvent(`s9:threatmap-node-select → id="${e.detail.nodeId}" lat=${e.detail.lat.toFixed(2)} lng=${e.detail.lng.toFixed(2)} lvl=${e.detail.level}`);
+    });
+
+    mapEl.addEventListener('s9:threatmap-node-deselect', (e) => {
+      logEvent(`s9:threatmap-node-deselect → id="${e.detail.nodeId}"`);
+    });
+
+    // ── Buttons ───────────────────────────────────────────────
+    let dynNodeCount = 0;
+    const addedNodes = [];
+
+    document.getElementById('btn-add-node').addEventListener('click', () => {
+      dynNodeCount++;
+      const id = `dyn-${dynNodeCount}`;
+      const lat = Math.round((Math.random() * 160 - 80) * 100) / 100;
+      const lng = Math.round((Math.random() * 360 - 180) * 100) / 100;
+      const level = Math.floor(Math.random() * 100);
+      addNode(mapEl, { id, lat, lng, label: `DYN.NODE.${dynNodeCount}`, level });
+      addedNodes.push(id);
+      logEvent(`addNode("${id}") lat=${lat} lng=${lng} level=${level}`);
+    });
+
+    document.getElementById('btn-remove-node').addEventListener('click', () => {
+      if (addedNodes.length === 0) {
+        logEvent('No dynamic nodes to remove');
+        return;
+      }
+      const id = addedNodes.pop();
+      removeNode(mapEl, id);
+      logEvent(`removeNode("${id}")`);
+    });
+
+    let dynEdgeCount = 0;
+    const addedEdges = [];
+
+    document.getElementById('btn-add-edge').addEventListener('click', () => {
+      if (SEED_NODES.length < 2) return;
+      const from = SEED_NODES[Math.floor(Math.random() * SEED_NODES.length)].id;
+      let to = from;
+      while (to === from) {
+        to = SEED_NODES[Math.floor(Math.random() * SEED_NODES.length)].id;
+      }
+      dynEdgeCount++;
+      const edgeId = `dyn-edge-${dynEdgeCount}`;
+      addEdge(mapEl, { id: edgeId, from, to });
+      addedEdges.push(edgeId);
+      logEvent(`addEdge("${edgeId}") from="${from}" to="${to}"`);
+    });
+
+    document.getElementById('btn-remove-edge').addEventListener('click', () => {
+      if (addedEdges.length === 0) {
+        logEvent('No dynamic edges to remove');
+        return;
+      }
+      const edgeId = addedEdges.pop();
+      removeEdge(mapEl, edgeId);
+      logEvent(`removeEdge("${edgeId}")`);
+    });
+
+    document.getElementById('btn-deselect').addEventListener('click', () => {
+      setActiveNode(mapEl, null);
+    });
+
+    document.getElementById('btn-destroy').addEventListener('click', () => {
+      destroyThreatMap(mapEl);
+      addedNodes.length = 0;
+      addedEdges.length = 0;
+      dynNodeCount = 0;
+      dynEdgeCount = 0;
+      logEvent('destroyThreatMap — reinitialising…');
+      setTimeout(() => {
+        initThreatMap(mapEl, { autoRotate: true, bloomStrength: 0.4 });
+        SEED_NODES.forEach((n) => addNode(mapEl, n));
+        addEdge(mapEl, { id: 'e1', from: 'n-tokyo', to: 'n-beijing' });
+        addEdge(mapEl, { id: 'e2', from: 'n-ny',    to: 'n-london' });
+        addEdge(mapEl, { id: 'e3', from: 'n-moscow', to: 'n-london' });
+        logEvent('initThreatMap — complete');
+      }, 200);
+    });
+
+    // ── Threat level slider ───────────────────────────────────
+    const slider = document.getElementById('threat-slider');
+    const threatValEl = document.getElementById('threat-val');
+
+    slider.addEventListener('input', () => {
+      const val = parseInt(slider.value, 10);
+      threatValEl.textContent = val;
+      setThreatLevel(mapEl, val);
+    });
+
+    // ── Auto-pulse threat level demo ──────────────────────────
+    let threatDir = 1;
+    let threatLevel = 0;
+    setInterval(() => {
+      threatLevel += threatDir * 2;
+      if (threatLevel >= 80 || threatLevel <= 0) threatDir *= -1;
+      slider.value = threatLevel;
+      threatValEl.textContent = threatLevel;
+      setThreatLevel(mapEl, threatLevel);
+    }, 200);
+  </script>
+</body>
+</html>

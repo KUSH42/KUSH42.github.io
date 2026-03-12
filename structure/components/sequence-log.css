@@ -1,0 +1,102 @@
+/* ============================================================
+   structure/components/sequence-log.css
+   SequenceLog — STRUCTURE PLANE ONLY.
+   Layout, sizing, flex/grid, overflow, position. Zero color/effect.
+   ============================================================ */
+
+/* ── Container ──────────────────────────────────────────────── */
+
+.s9-sequence {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Entry row ──────────────────────────────────────────────── */
+
+.s9-sequence__entry {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 2.8rem;
+  overflow: hidden;
+}
+
+/* ── Indicator strip ────────────────────────────────────────── */
+
+.s9-sequence__indicator {
+  flex-shrink: 0;
+  width: 4px;
+  min-width: 4px;
+  overflow: hidden;
+}
+
+/* ── Right-side content ─────────────────────────────────────── */
+
+.s9-sequence__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.3rem 0.5rem;
+}
+
+/* ── Step ID ────────────────────────────────────────────────── */
+
+.s9-sequence__step-id {
+  font-size: 0.55rem;
+  letter-spacing: var(--letter-spacing-wide);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Step name ──────────────────────────────────────────────── */
+
+.s9-sequence__step-name {
+  font-size: 0.7rem;
+  letter-spacing: var(--letter-spacing-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Step JP label ──────────────────────────────────────────── */
+
+.s9-sequence__step-jp {
+  font-size: 0.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Step time / status row ─────────────────────────────────── */
+
+.s9-sequence__step-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.s9-sequence__step-time {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.s9-sequence__step-status {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

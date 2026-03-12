@@ -1,0 +1,70 @@
+/* ============================================================
+   aesthetic/components/command-terminal.css
+   CommandTerminal — AESTHETIC PLANE ONLY.
+   Color, border, shadow, font, animation. Zero layout properties.
+   Requires: aesthetic/variables/index.css, aesthetic/effects/index.css
+   ============================================================ */
+
+/* Component-local keyframe — do not move to effects/index.css */
+@keyframes terminal-line-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.s9-terminal__output {
+  scrollbar-width: thin;
+}
+
+.s9-terminal__line {
+  font-family: var(--font-terminal);
+  font-size: 0.65rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  opacity: 0;
+  animation: terminal-line-in 0.15s ease-out forwards;
+}
+
+/* > prefix is CSS-only — printLine() callers must NOT include it in text */
+.s9-terminal__line--cmd::before { content: '> '; }
+
+.s9-terminal__line--cmd  { color: var(--neon-green); }
+.s9-terminal__line--sys  { color: var(--text-primary); }
+.s9-terminal__line--err  { color: var(--text-alert); }
+.s9-terminal__line--info { color: var(--text-secondary); }
+
+.s9-terminal__input-row {
+  border-top: 1px solid var(--panel-border-dim);
+  transition: border-top-color 0.15s ease;
+}
+
+.s9-terminal__input-row:focus-within {
+  border-top-color: var(--panel-border-active);
+}
+
+.s9-terminal__prompt {
+  font-family: var(--font-terminal);
+  font-size: 0.65rem;
+  color: var(--neon-cyan);
+}
+
+.s9-terminal__input {
+  font-family: var(--font-terminal);
+  font-size: 0.65rem;
+  color: var(--text-primary);
+  caret-color: var(--neon-cyan);
+}
+
+.s9-terminal__input::placeholder {
+  color: var(--text-dim);
+}
+
+/* Reduced motion: suppress line animation; glitch disabled in JS via matchMedia */
+@media (prefers-reduced-motion: reduce) {
+  .s9-terminal__line {
+    animation: none;
+    opacity: 1;
+  }
+  .s9-terminal__input-row {
+    transition: none;
+  }
+}
