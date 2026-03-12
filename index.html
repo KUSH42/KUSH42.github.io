@@ -13,6 +13,7 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
+    html { font-size: 20px; } /* 16px × 1.25 — scales all rem-based UI text */
 
     /* ── Topbar content ─────────────────────────────── */
     .s9-ov__topbar {
@@ -765,7 +766,7 @@
     .s9-radar__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; }
     .s9-radar__overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
     .s9-radar__labels { position: absolute; inset: 0; }
-    .s9-radar__label { position: absolute; white-space: nowrap; font-family: var(--font-terminal); font-size: 0.48rem; color: var(--text-dim); text-shadow: 0 0 4px currentColor; }
+    .s9-radar__label { position: absolute; white-space: nowrap; font-family: var(--font-terminal); font-size: 0.384rem; color: var(--text-dim); text-shadow: 0 0 4px currentColor; }
     .s9-radar__label--hostile { color: var(--neon-magenta); }
     .s9-radar__label--friendly { color: var(--neon-green); }
     .s9-radar__label--neutral { color: var(--neon-amber); }
