@@ -926,7 +926,7 @@ async function _loadGeoLines(element) {
   const coastGlowMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.35,
+    opacity:     0.55,
     blending:    THREE.AdditiveBlending,
     depthWrite:  false,
   });
@@ -934,7 +934,7 @@ async function _loadGeoLines(element) {
   const coastGlowWideMat = new THREE.LineBasicMaterial({
     color:       lineColor,
     transparent: true,
-    opacity:     0.12,
+    opacity:     0.16,
     blending:    THREE.AdditiveBlending,
     depthWrite:  false,
   });
