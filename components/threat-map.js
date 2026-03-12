@@ -178,12 +178,12 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   globeFront.renderOrder = 2;
   scene.add(globeFront);
 
-  // Layer 3: glow wireframe — additively blended, bright enough to exceed bloom threshold
+  // Layer 3: glow wireframe — subtle additive luminance on wireframe lines
   const globeGlowMat = new THREE.MeshBasicMaterial({
     color: new THREE.Color('#00ffcc'),
     wireframe:   true,
     transparent: true,
-    opacity:     0.42,
+    opacity:     0.11,
     blending:    THREE.AdditiveBlending,
     depthTest:   false,
     depthWrite:  false,
@@ -211,7 +211,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
     bloomStrength,
     0.55,  // radius
-    0.40   // threshold — lowered to let wireframe glow catch bloom
+    0.65   // threshold
   );
   composer.addPass(bloomPass);
 
