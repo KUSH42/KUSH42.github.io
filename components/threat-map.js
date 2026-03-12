@@ -169,7 +169,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     color: new THREE.Color(colors.neonCyan || '#00d4b0'),
     wireframe: true,
     transparent: true,
-    opacity: 0.038,
+    opacity: 0.017,
     depthTest: true,
     depthWrite: false,
     side: THREE.FrontSide,

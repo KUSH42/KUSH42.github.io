@@ -114,3 +114,18 @@
   transition: width 0.4s steps(8);
   overflow: hidden;
 }
+
+/* ── EKG heartbeat ──────────────────────────────────────────── */
+
+.s9-neural__ekg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.s9-neural__ekg-canvas {
+  display: block;
+  width: 100%;
+  height: 30px;
+}
