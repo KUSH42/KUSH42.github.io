@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "vite",
-    "build": "vite build && cp dist/assets/* assets/",
-    "deploy": "vite build && cp dist/index.html . && cp dist/assets/* assets/",
+    "build": "vite build && rm -f assets/* && cp dist/assets/* assets/",
+    "deploy": "vite build && cp dist/index.html . && rm -f assets/* && cp dist/assets/* assets/",
     "preview": "vite preview"
   },
   "devDependencies": {
