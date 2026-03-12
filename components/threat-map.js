@@ -166,12 +166,12 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   // Layer 2: visible front wires — depth-tested against occluder
   const globeFrontMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color: new THREE.Color(colors.neonCyan || 'hsla(179, 100%, 42%, 0.020)'),
     wireframe: true,
     transparent: true,
-    opacity: 0.008,
+    opacity: 0.0002,
     depthTest: true,
-    depthWrite: false,
+    depthWrite: true,
     side: THREE.FrontSide,
   });
   const globeFront = new THREE.Mesh(globeGeo, globeFrontMat);
@@ -180,10 +180,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
 
   // Layer 3: glow wireframe — subtle additive luminance on wireframe lines
   const globeGlowMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#00ffcc'),
+    color: new THREE.Color('#00ffccb0'),
     wireframe:   true,
     transparent: true,
-    opacity:     0.11,
+    opacity:     0.025,
     blending:    THREE.AdditiveBlending,
     depthTest:   false,
     depthWrite:  false,
