@@ -913,48 +913,65 @@ async function _loadGeoLines(element) {
   const colors = _readCSSColors();
   const geoGroup = new THREE.Group();
 
+  const lineColor = new THREE.Color(colors.neonCyan || '#00d4b0');
+
   // ── Coastlines / land outline (brighter) ──────────────────
   const landBorders = topoMesh(topo, topo.objects.land);
   const coastMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color:       lineColor,
     transparent: true,
-    opacity: 0.75,
-    depthWrite: false,
+    opacity:     0.75,
+    depthWrite:  false,
   });
-  // Glow halo: duplicate coast lines at slightly higher radius, low opacity
+  // Inner glow halo
   const coastGlowMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color:       lineColor,
     transparent: true,
-    opacity: 0.22,
-    depthWrite: false,
+    opacity:     0.35,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+  });
+  // Outer soft halo
+  const coastGlowWideMat = new THREE.LineBasicMaterial({
+    color:       lineColor,
+    transparent: true,
+    opacity:     0.12,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
   });
   for (const coords of landBorders.coordinates) {
-    const points     = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const glowPoints = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
-    const geo     = new THREE.BufferGeometry().setFromPoints(points);
-    const glowGeo = new THREE.BufferGeometry().setFromPoints(glowPoints);
-    const glowLine = new THREE.Line(glowGeo, coastGlowMat);
-    glowLine.userData.geoType = 'coast';
-    const line = new THREE.Line(geo, coastMat);
-    line.userData.geoType = 'coast';
-    geoGroup.add(glowLine);
-    geoGroup.add(line);
+    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
+    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
+    const widePts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.011));
+    const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     coastMat);
+    const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), coastGlowMat);
+    const wideGlow = new THREE.Line(new THREE.BufferGeometry().setFromPoints(widePts), coastGlowWideMat);
+    line.userData.geoType = glow.userData.geoType = wideGlow.userData.geoType = 'coast';
+    geoGroup.add(wideGlow, glow, line);
   }
 
   // ── Interior country borders (dimmer) ─────────────────────
   const countryBorders = topoMesh(topo, topo.objects.countries, (a, b) => a !== b);
   const borderMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color:       lineColor,
     transparent: true,
-    opacity: 0.32,
-    depthWrite: false,
+    opacity:     0.32,
+    depthWrite:  false,
+  });
+  const borderGlowMat = new THREE.LineBasicMaterial({
+    color:       lineColor,
+    transparent: true,
+    opacity:     0.18,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
   });
   for (const coords of countryBorders.coordinates) {
-    const points = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const line = new THREE.Line(geo, borderMat);
-    line.userData.geoType = 'border';
-    geoGroup.add(line);
+    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
+    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
+    const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     borderMat);
+    const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), borderGlowMat);
+    line.userData.geoType = glow.userData.geoType = 'border';
+    geoGroup.add(glow, line);
   }
 
   state.scene.add(geoGroup);
