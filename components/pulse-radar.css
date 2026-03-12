@@ -1,0 +1,8 @@
+/* ============================================================
+   components/pulse-radar.css
+   Combined barrel — structure + aesthetic planes.
+   Matches the pattern of components/threat-map.css
+   ============================================================ */
+
+@import '../structure/components/pulse-radar.css';
+@import '../aesthetic/components/pulse-radar.css';

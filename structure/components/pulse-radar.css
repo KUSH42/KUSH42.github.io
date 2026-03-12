@@ -1,0 +1,44 @@
+/* ============================================================
+   structure/components/pulse-radar.css
+   GitS UI — Pulse Radar  (layout plane only)
+   ============================================================ */
+
+.s9-radar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.s9-radar__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  will-change: transform;
+}
+
+.s9-radar__overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.s9-radar__labels {
+  position: absolute;
+  inset: 0;
+}
+
+.s9-radar__label {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.s9-radar__ring-label,
+.s9-radar__cardinal-label {
+  position: absolute;
+  white-space: nowrap;
+  pointer-events: none;
+}
