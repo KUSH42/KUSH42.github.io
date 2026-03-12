@@ -530,7 +530,7 @@
       background: #000;
     }
 
-    /* Base image / canvas — desaturate + slight contrast boost for CRT base */
+    /* Base image — desaturate + slight blur for CRT soft focus */
     .s9-telescreen__img {
       position: absolute;
       inset: 0;
@@ -538,10 +538,25 @@
       height: 100%;
       object-fit: contain;
       object-position: center center;
-      filter: grayscale(0.75) contrast(1.25) brightness(0.7);
+      filter: grayscale(0.7) contrast(1.2) brightness(0.75) blur(0.6px);
       display: block;
-      image-rendering: pixelated;
       transform: scale(1.15);
+    }
+
+    /* Glow diffusion layer — blurred copy blended with screen for phosphor bloom */
+    .s9-telescreen__glow {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      filter: grayscale(1) brightness(1.2) blur(10px) saturate(3);
+      display: block;
+      transform: scale(1.15);
+      mix-blend-mode: screen;
+      opacity: 0.5;
+      pointer-events: none;
     }
 
     /* Theme-color tint overlay via mix-blend-mode */
@@ -773,7 +788,7 @@
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-C5qhq-ap.js"></script>
+  <script type="module" crossorigin src="/assets/index-Df2D_lHj.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-D_mHDXxc.css">
 </head>
 
@@ -941,12 +956,9 @@
               </defs>
             </svg>
 
-            <!-- Hidden source image — canvas draws low-res version from this -->
-            <img id="ts-feed-src" src="/assets/section-9-BXcJox27.jpg" alt="" aria-hidden="true"
-                 style="display:none" />
-
             <div class="s9-telescreen">
-              <canvas id="ts-feed-canvas" class="s9-telescreen__img" aria-label="SURVEILLANCE FEED"></canvas>
+              <img class="s9-telescreen__img" src="/assets/section-9-BXcJox27.jpg" alt="SURVEILLANCE FEED" draggable="false" />
+              <img class="s9-telescreen__glow" src="/assets/section-9-BXcJox27.jpg" alt="" aria-hidden="true" draggable="false" />
               <div class="s9-telescreen__tint"></div>
               <div class="s9-telescreen__static"></div>
               <div class="s9-telescreen__static-b"></div>
