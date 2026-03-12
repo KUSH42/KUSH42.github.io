@@ -216,7 +216,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
       varying vec3 vViewDir;
       void main() {
         float rim   = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-        float alpha = pow(rim, 2.2) * 0.85;
+        float alpha = pow(rim, 4.5) * 0.55;
         gl_FragColor = vec4(uColor * alpha, alpha);
       }
     `,
