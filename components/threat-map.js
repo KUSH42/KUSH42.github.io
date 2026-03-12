@@ -134,8 +134,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const occluderGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 0.999, 48, 48);
 
   // Layer 0: ghost back wires — drawn before any depth data, always faint
+  const cyanColor = new THREE.Color(colors.neonCyan || '#00d4b0');
+
   const globeBackMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || 'rgba(0, 192, 156, 225)'),
+    color: cyanColor,
     wireframe: true,
     transparent: true,
     opacity: 0.0015,
@@ -164,12 +166,25 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   occluder.renderOrder = 1;
   scene.add(occluder);
 
+  // Layer 1.5: semi-transparent dark surface — blocks back-hemisphere wireframe via depth
+  const globeSurfaceMat = new THREE.MeshBasicMaterial({
+    color:       new THREE.Color('#010e0b'),
+    transparent: true,
+    opacity:     0.5,
+    depthTest:   true,
+    depthWrite:  true,
+    side:        THREE.DoubleSide,
+  });
+  const globeSurface = new THREE.Mesh(globeGeo, globeSurfaceMat);
+  globeSurface.renderOrder = 1;
+  scene.add(globeSurface);
+
   // Layer 2: visible front wires — depth-tested against occluder
   const globeFrontMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color: cyanColor,
     wireframe: true,
     transparent: true,
-    opacity: 0.017,
+    opacity: 0.014,
     depthTest: true,
     depthWrite: false,
     side: THREE.FrontSide,
@@ -177,6 +192,55 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   const globeFront = new THREE.Mesh(globeGeo, globeFrontMat);
   globeFront.renderOrder = 2;
   scene.add(globeFront);
+
+  // Layer 3: glow wireframe — subtle additive luminance on wireframe lines
+  const globeGlowMat = new THREE.MeshBasicMaterial({
+    color: cyanColor,
+    wireframe:   true,
+    transparent: true,
+    opacity:     0.025,
+    blending:    THREE.AdditiveBlending,
+    depthTest:   true,
+    depthWrite:  false,
+  });
+  const globeGlow = new THREE.Mesh(globeGeo, globeGlowMat);
+  globeGlow.renderOrder = 3;
+  scene.add(globeGlow);
+
+  // Layer 4: fresnel rim glow — bright edge halo around globe silhouette
+  const rimGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 48, 48);
+  const rimMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Vector3(cyanColor.r, cyanColor.g, cyanColor.b) },
+    },
+    vertexShader: /* glsl */`
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vNormal  = normalize(normalMatrix * normal);
+        vec4 mv  = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        float rim   = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+        float alpha = pow(rim, 4.5) * 0.55;
+        gl_FragColor = vec4(uColor * alpha, alpha);
+      }
+    `,
+    transparent: true,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  true,
+    side:        THREE.FrontSide,
+  });
+  const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+  rimMesh.renderOrder = 4;
+  scene.add(rimMesh);
 
   // ── Orbit Controls ────────────────────────────────────────
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -197,7 +261,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
     bloomStrength,
     0.55,  // radius
-    0.75   // threshold — lower = more objects catch bloom
+    0.65   // threshold
   );
   composer.addPass(bloomPass);
 
@@ -322,11 +386,16 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     reducedMotion,
     activeNodeId: null,
     colors,
+    cyanColor,
     globeGeo,
     occluderGeo,
     globeBack,
     occluder,
+    globeSurface,
     globeFront,
+    globeGlow,
+    rimGeo,
+    rimMesh,
     geoGroup: null,
     cameraLerpTarget: null,
     lastOrbitInteraction: 0,
@@ -423,6 +492,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
  *
  * @param {HTMLElement} element - .s9-threatmap root
  */
+export function getCamera(element) {
+  return _state.get(element)?.camera ?? null;
+}
+
 export function destroyThreatMap(element) {
   const state = _state.get(element);
   if (!state) return;
@@ -454,8 +527,12 @@ export function destroyThreatMap(element) {
   if (state.globeGeo)    state.globeGeo.dispose();
   if (state.occluderGeo) state.occluderGeo.dispose();
   if (state.globeBack)  { state.scene.remove(state.globeBack);  state.globeBack.material.dispose(); }
-  if (state.occluder)   { state.scene.remove(state.occluder);   state.occluder.material.dispose(); }
-  if (state.globeFront) { state.scene.remove(state.globeFront); state.globeFront.material.dispose(); }
+  if (state.occluder)      { state.scene.remove(state.occluder);      state.occluder.material.dispose(); }
+  if (state.globeSurface)  { state.scene.remove(state.globeSurface);  state.globeSurface.material.dispose(); }
+  if (state.globeFront)    { state.scene.remove(state.globeFront);    state.globeFront.material.dispose(); }
+  if (state.globeGlow)  { state.scene.remove(state.globeGlow);  state.globeGlow.material.dispose(); }
+  if (state.rimMesh)    { state.scene.remove(state.rimMesh);    state.rimMesh.material.dispose(); }
+  if (state.rimGeo)     state.rimGeo.dispose();
 
   // Dispose satellite globe
   if (state.satelliteGroup) {
@@ -834,51 +911,66 @@ async function _loadGeoLines(element) {
   const state = _state.get(element);
   if (!state) return; // destroyed during fetch
 
-  const colors = _readCSSColors();
   const geoGroup = new THREE.Group();
+  const lineColor = state.cyanColor;
 
   // ── Coastlines / land outline (brighter) ──────────────────
   const landBorders = topoMesh(topo, topo.objects.land);
   const coastMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color:       lineColor,
     transparent: true,
-    opacity: 0.75,
-    depthWrite: false,
+    opacity:     0.75,
+    depthWrite:  false,
   });
-  // Glow halo: duplicate coast lines at slightly higher radius, low opacity
+  // Inner glow halo
   const coastGlowMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color:       lineColor,
     transparent: true,
-    opacity: 0.22,
-    depthWrite: false,
+    opacity:     0.35,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+  });
+  // Outer soft halo
+  const coastGlowWideMat = new THREE.LineBasicMaterial({
+    color:       lineColor,
+    transparent: true,
+    opacity:     0.12,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
   });
   for (const coords of landBorders.coordinates) {
-    const points     = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const glowPoints = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
-    const geo     = new THREE.BufferGeometry().setFromPoints(points);
-    const glowGeo = new THREE.BufferGeometry().setFromPoints(glowPoints);
-    const glowLine = new THREE.Line(glowGeo, coastGlowMat);
-    glowLine.userData.geoType = 'coast';
-    const line = new THREE.Line(geo, coastMat);
-    line.userData.geoType = 'coast';
-    geoGroup.add(glowLine);
-    geoGroup.add(line);
+    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
+    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
+    const widePts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.011));
+    const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     coastMat);
+    const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), coastGlowMat);
+    const wideGlow = new THREE.Line(new THREE.BufferGeometry().setFromPoints(widePts), coastGlowWideMat);
+    line.userData.geoType = glow.userData.geoType = wideGlow.userData.geoType = 'coast';
+    geoGroup.add(wideGlow, glow, line);
   }
 
   // ── Interior country borders (dimmer) ─────────────────────
   const countryBorders = topoMesh(topo, topo.objects.countries, (a, b) => a !== b);
   const borderMat = new THREE.LineBasicMaterial({
-    color: new THREE.Color(colors.neonCyan || '#00d4b0'),
+    color:       lineColor,
     transparent: true,
-    opacity: 0.32,
-    depthWrite: false,
+    opacity:     0.32,
+    depthWrite:  false,
+  });
+  const borderGlowMat = new THREE.LineBasicMaterial({
+    color:       lineColor,
+    transparent: true,
+    opacity:     0.18,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
   });
   for (const coords of countryBorders.coordinates) {
-    const points = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const line = new THREE.Line(geo, borderMat);
-    line.userData.geoType = 'border';
-    geoGroup.add(line);
+    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
+    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
+    const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     borderMat);
+    const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), borderGlowMat);
+    line.userData.geoType = glow.userData.geoType = 'border';
+    geoGroup.add(glow, line);
   }
 
   state.scene.add(geoGroup);
