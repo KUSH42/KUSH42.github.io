@@ -74,7 +74,7 @@ let _sonarAudio = null;
 function _playSonarPing(volume = 0.08) {
   try {
     if (!_sonarAudio) {
-      _sonarAudio = new Audio('./assets/sonar-ping.mp3');
+      _sonarAudio = new Audio('/sonar-ping.mp3');
     }
     _sonarAudio.volume = Math.min(1, Math.max(0, volume));
     _sonarAudio.currentTime = 0;
