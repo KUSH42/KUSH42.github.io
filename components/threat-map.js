@@ -423,6 +423,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
  *
  * @param {HTMLElement} element - .s9-threatmap root
  */
+export function getCamera(element) {
+  return _state.get(element)?.camera ?? null;
+}
+
 export function destroyThreatMap(element) {
   const state = _state.get(element);
   if (!state) return;

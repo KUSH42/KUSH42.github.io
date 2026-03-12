@@ -253,7 +253,7 @@ const _state = new Map();
 export function initMatrixRain(element, opts = {}) {
   if (_state.has(element)) destroyMatrixRain(element);
 
-  const { color = '#00ff70', opacity = 0.9 } = opts;
+  const { color = '#00ff70', opacity = 0.9, syncCamera = null } = opts;
   const rgb = new THREE.Color(color);
 
   // ── Atlas
@@ -313,12 +313,20 @@ export function initMatrixRain(element, opts = {}) {
   scene.add(mesh);
 
   // ── Animation loop
-  const s = { renderer, material, geom, atlas, colData, ro: null, animId: 0 };
+  const s = { renderer, material, geom, atlas, colData, ro: null, animId: 0, syncCamera };
   _state.set(element, s);
 
   function animate(ts) {
     s.animId = requestAnimationFrame(animate);
     uniforms.uTime.value = ts * 0.001;
+    if (s.syncCamera) {
+      camera.position.copy(s.syncCamera.position);
+      camera.quaternion.copy(s.syncCamera.quaternion);
+      camera.fov  = s.syncCamera.fov;
+      camera.near = s.syncCamera.near;
+      camera.far  = s.syncCamera.far;
+      camera.updateProjectionMatrix();
+    }
     renderer.render(scene, camera);
   }
   s.animId = requestAnimationFrame(animate);
