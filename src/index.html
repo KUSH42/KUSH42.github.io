@@ -841,8 +841,8 @@
     }
 
     /* ── Pulse Radar ───────────────────────────────────────── */
-    .s9-radar { position: relative; width: 100%; height: 100%; overflow: hidden; }
-    .s9-radar__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; }
+    .s9-radar { position: relative; width: 100%; height: 100%; padding: 0 6px; box-sizing: border-box; }
+    .s9-radar__canvas { position: relative; width: 100%; height: 100%; display: block; will-change: transform; }
     .s9-radar__overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
     .s9-radar__labels { position: absolute; inset: 0; }
     .s9-radar__label { position: absolute; white-space: nowrap; font-family: var(--font-terminal); font-size: 0.48rem; color: var(--text-dim); text-shadow: 0 0 4px currentColor; }

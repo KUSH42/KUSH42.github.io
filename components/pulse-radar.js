@@ -47,10 +47,12 @@ function _readTheme() {
   };
 }
 
+// Ring pop duration = sweepPeriod − 0.50s.  _ringHz is set once in initRadar.
+let _ringHzBase = 1.0;
 function _ringHz(type) {
-  if (type === 'friendly') return 0.6;
-  if (type === 'hostile')  return 1.5;
-  return 1.0;
+  if (type === 'friendly') return _ringHzBase * 0.6;
+  if (type === 'hostile')  return _ringHzBase * 1.5;
+  return _ringHzBase;
 }
 
 function _randomType(t) {
@@ -242,7 +244,7 @@ void main() {
   else if (vType < 1.5) color = uC1;
   else                  color = uC2;
 
-  float phaseAlpha = 1.0 - phase;
+  float phaseAlpha = pow(1.0 - phase, 2.5);
   gl_FragColor     = vec4(color, ring * vSweepFade * phaseAlpha * 0.75);
 }`;
 
@@ -530,8 +532,8 @@ function _repositionStaticLabels(state) {
   state.staticLabelEls = [];
 
   // Range labels at 3 o'clock of each ring
-  const KM     = [2, 4, 6, 8, 10];
-  const RADII  = [0.2, 0.4, 0.6, 0.8, 1.0];
+  const KM     = [2, 4, 6, 8];
+  const RADII  = [0.2, 0.4, 0.6, 0.8];
   RADII.forEach((r, i) => {
     const sp          = document.createElement('span');
     sp.className      = 's9-radar__ring-label';
@@ -582,14 +584,19 @@ function _recomputeContactPositions(state) {
     if (!c) {
       dummy.scale.setScalar(0);
       dummy.position.set(0, 0, 0);
+      dummy.updateMatrix();
+      contactDotsMesh.setMatrixAt(i, dummy.matrix);
+      contactRingsMesh.setMatrixAt(i, dummy.matrix);
     } else {
       const s = c.age < 0.08 ? _lerp(0, 8, c.age / 0.08) : 8;
       dummy.position.set(Math.sin(c.angle) * c.range * R, Math.cos(c.angle) * c.range * R, 0);
       dummy.scale.setScalar(s);
+      dummy.updateMatrix();
+      contactDotsMesh.setMatrixAt(i, dummy.matrix);
+      dummy.scale.setScalar(s > 0 ? R * 1.5 : 0);
+      dummy.updateMatrix();
+      contactRingsMesh.setMatrixAt(i, dummy.matrix);
     }
-    dummy.updateMatrix();
-    contactDotsMesh.setMatrixAt(i, dummy.matrix);
-    contactRingsMesh.setMatrixAt(i, dummy.matrix);
   });
   contactDotsMesh.instanceMatrix.needsUpdate  = true;
   contactRingsMesh.instanceMatrix.needsUpdate = true;
@@ -809,10 +816,15 @@ function _updateInstances(state) {
       const revealProgress = Math.min(1, (state.now - c.revealTime) / 300);
       scale = revealProgress * 8;
     }
-    dummy.position.set(Math.sin(c.angle) * c.range * R, Math.cos(c.angle) * c.range * R, 0);
+    const px = Math.sin(c.angle) * c.range * R;
+    const py = Math.cos(c.angle) * c.range * R;
+    dummy.position.set(px, py, 0);
     dummy.scale.setScalar(scale);
     dummy.updateMatrix();
     contactDotsMesh.setMatrixAt(i, dummy.matrix);
+    // Ring mesh: scale to 75% of radar radius so flash covers most of the circle
+    dummy.scale.setScalar(scale > 0 ? R * 1.5 : 0);
+    dummy.updateMatrix();
     contactRingsMesh.setMatrixAt(i, dummy.matrix);
 
     const tf = _typeFloat(c.type);
@@ -958,6 +970,7 @@ export function initRadar(element, opts = {}) {
     R:               0,
     sweepAngle:      Math.random() * TAU,
     sweepSpeed:      TAU / (options.sweepPeriod / 1000),
+    ringPopDuration: (options.sweepPeriod / 1000) - 0.50,
     threatLevel:     options.threatLevel,
     contacts:        new Array(POOL_SIZE).fill(null),
     dummy:           new THREE.Object3D(),
@@ -986,6 +999,7 @@ export function initRadar(element, opts = {}) {
   };
 
   _state.set(element, state);
+  _ringHzBase = 1.0 / state.ringPopDuration;
 
   // ── Boot animation ──
   const panel = element.closest('.s9-panel');

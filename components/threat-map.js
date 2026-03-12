@@ -1511,6 +1511,7 @@ export async function setSatelliteMode(element, enabled) {
     if (state.globeFront)   state.globeFront.visible   = false;
     if (state.globeSurface) state.globeSurface.visible  = false;
     if (state.globeGlow)    state.globeGlow.visible     = false;
+    if (state.rimMesh)      state.rimMesh.visible       = false;
     if (state.geoGroup)     state.geoGroup.visible      = false;
     // Tighten bloom so node halos don't bleed over the texture
     if (state.bloomPass) {
@@ -1529,6 +1530,7 @@ export async function setSatelliteMode(element, enabled) {
     if (state.globeFront)   state.globeFront.visible   = true;
     if (state.globeSurface) state.globeSurface.visible  = true;
     if (state.globeGlow)    state.globeGlow.visible     = true;
+    if (state.rimMesh)      state.rimMesh.visible       = true;
     if (state.geoGroup)     state.geoGroup.visible      = true;
     // Restore bloom
     if (state.bloomPass && state._bloomPrev) {
