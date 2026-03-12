@@ -755,7 +755,7 @@ function _updateContacts(state, dt) {
 
   // Fade to floor 220ms before next sweep pass
   const sweepPeriodMs = (TAU / state.sweepSpeed) * 1000;
-  const fadeTimeMs = Math.max(200, sweepPeriodMs - 220);
+  const fadeTimeMs = sweepPeriodMs;
   const nowMs = performance.now();
 
   contacts.forEach((c, i) => {
@@ -767,7 +767,7 @@ function _updateContacts(state, dt) {
       const floor = 0.05 + 0.10 * (c.range);
       const elapsed = nowMs - c.lastSweep;
       const t = Math.min(1, elapsed / fadeTimeMs);
-      c.sweepAlpha = floor + (1.0 - floor) * Math.pow(1.0 - t, 2.5);
+      c.sweepAlpha = floor + (1.0 - floor) * Math.pow(1.0 - t, 1.025);
     }
 
     if (c.type !== 'ghost') {
@@ -916,7 +916,7 @@ export function initRadar(element, opts = {}) {
   }
 
   const options = {
-    sweepPeriod:    Math.max(600,  Math.min(20000, opts.sweepPeriod    ?? 3690)),
+    sweepPeriod:    Math.max(600,  Math.min(20000, opts.sweepPeriod    ?? 2690)),
     contactDensity: Math.max(0,    Math.min(1,     opts.contactDensity ?? 0.5)),
     threatLevel:    Math.max(0,    Math.min(1,     opts.threatLevel    ?? 0)),
     primaryColor:   opts.primaryColor ?? null,
@@ -1052,7 +1052,8 @@ export function initRadar(element, opts = {}) {
   function setRadarThreatLevel(level) {
     const t = Math.max(0, Math.min(1, level));
     state.threatLevel = t;
-    state.sweepSpeed  = _lerp(TAU / 4, TAU / 1.2, t);
+    const basePeriod = state.opts.sweepPeriod / 1000;
+    state.sweepSpeed  = TAU / _lerp(basePeriod, basePeriod * 0.4, t);
     clearTimeout(state.spawnTimer);
     _scheduleNextSpawn(state);
   }
