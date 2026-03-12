@@ -530,7 +530,7 @@
       background: #000;
     }
 
-    /* Base image / canvas — desaturate + slight contrast boost for CRT base */
+    /* Base image — desaturate + slight blur for CRT soft focus */
     .s9-telescreen__img {
       position: absolute;
       inset: 0;
@@ -538,10 +538,25 @@
       height: 100%;
       object-fit: contain;
       object-position: center center;
-      filter: grayscale(0.75) contrast(1.25) brightness(0.7);
+      filter: grayscale(0.7) contrast(1.2) brightness(0.75) blur(1.2px);
       display: block;
-      image-rendering: pixelated;
       transform: scale(1.15);
+    }
+
+    /* Glow diffusion layer — blurred copy blended with screen for phosphor bloom */
+    .s9-telescreen__glow {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      filter: grayscale(1) brightness(1.2) blur(10px) saturate(3);
+      display: block;
+      transform: scale(1.15);
+      mix-blend-mode: screen;
+      opacity: 0.5;
+      pointer-events: none;
     }
 
     /* Theme-color tint overlay via mix-blend-mode */
@@ -940,12 +955,9 @@
               </defs>
             </svg>
 
-            <!-- Hidden source image — canvas draws low-res version from this -->
-            <img id="ts-feed-src" src="data/section-9.jpg" alt="" aria-hidden="true"
-                 style="display:none" />
-
             <div class="s9-telescreen">
-              <canvas id="ts-feed-canvas" class="s9-telescreen__img" aria-label="SURVEILLANCE FEED"></canvas>
+              <img class="s9-telescreen__img" src="data/section-9.jpg" alt="SURVEILLANCE FEED" draggable="false" />
+              <img class="s9-telescreen__glow" src="data/section-9.jpg" alt="" aria-hidden="true" draggable="false" />
               <div class="s9-telescreen__tint"></div>
               <div class="s9-telescreen__static"></div>
               <div class="s9-telescreen__static-b"></div>
@@ -2231,70 +2243,6 @@ function initNetworkMatrix() {
   document.getElementById('matrix-status').textContent = '● LIVE';
 }
 
-// ── Telescreen: SDR low-res canvas render ────────────────────
-(function () {
-  const src    = document.getElementById('ts-feed-src');
-  const canvas = document.getElementById('ts-feed-canvas');
-  if (!src || !canvas) return;
-
-  // SDR sim: render at QCIF-ish resolution then draw back at full size.
-  // The combination of a tiny internal canvas + image-rendering:pixelated
-  // in CSS gives authentic low-res macroblock appearance.
-  const SDR_W = 480;  // soft SDR, minimal blocking
-  const SDR_H = 270;
-
-  const off = document.createElement('canvas');
-  off.width  = SDR_W;
-  off.height = SDR_H;
-  const offCtx = off.getContext('2d');
-  offCtx.imageSmoothingEnabled = false;
-
-  function renderFeed() {
-    const dpr  = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const dw   = Math.round(rect.width  * dpr);
-    const dh   = Math.round(rect.height * dpr);
-    if (canvas.width !== dw || canvas.height !== dh) {
-      canvas.width  = dw;
-      canvas.height = dh;
-    }
-
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-
-    // Step 1 — draw source into tiny offscreen canvas (the "SDR encode")
-    const iw = src.naturalWidth  || SDR_W * 4;
-    const ih = src.naturalHeight || SDR_H * 4;
-    const aspect = iw / ih;
-    // Letterbox-fit into SDR_W × SDR_H
-    let sw = SDR_W, sh = Math.round(SDR_W / aspect);
-    if (sh > SDR_H) { sh = SDR_H; sw = Math.round(SDR_H * aspect); }
-    const sx = ((SDR_W - sw) / 2) | 0;
-    const sy = ((SDR_H - sh) / 2) | 0;
-
-    offCtx.clearRect(0, 0, SDR_W, SDR_H);
-    offCtx.drawImage(src, sx, sy, sw, sh);
-
-    // Step 2 — blit tiny canvas onto display canvas with pixelated upscale
-    ctx.clearRect(0, 0, dw, dh);
-    const scale = Math.min(dw / SDR_W, dh / SDR_H);
-    const dx = ((dw - SDR_W * scale) / 2) | 0;
-    const dy = ((dh - SDR_H * scale) / 2) | 0;
-    ctx.drawImage(off, dx, dy, SDR_W * scale, SDR_H * scale);
-  }
-
-  function init() {
-    renderFeed();
-    // Re-render on container resize
-    new ResizeObserver(renderFeed).observe(canvas);
-  }
-
-  if (src.complete && src.naturalWidth) {
-    init();
-  } else {
-    src.addEventListener('load', init, { once: true });
-  }
-}());
 
 // ── Telescreen grain animation ────────────────────────────────
 (function () {
