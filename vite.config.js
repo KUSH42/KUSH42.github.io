@@ -1,21 +1,22 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'path';
 
 export default defineConfig({
-  root: 'src',
-  publicDir: '../public',
   resolve: {
     dedupe: ['three'],
   },
+  server: {
+    open: '/src/index.html',
+  },
   build: {
-    outDir: '../dist',
-    emptyOutDir: true,
-    chunkSizeWarningLimit: 800,
     rollupOptions: {
+      input: resolve(__dirname, 'src/index.html'),
       output: {
         manualChunks: {
           three: ['three'],
         },
       },
     },
+    chunkSizeWarningLimit: 800,
   },
 });
