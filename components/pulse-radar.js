@@ -71,7 +71,9 @@ function _typeFloat(type) {
 
 // ── Sonar ping (MP3 sample) ──────────────────────────────────────
 let _sonarAudio = null;
+let _sonarMuted = false;
 function _playSonarPing(volume = 0.08) {
+  if (_sonarMuted) return;
   try {
     if (!_sonarAudio) {
       _sonarAudio = new Audio('/sonar-ping.mp3');
@@ -923,6 +925,12 @@ export function initRadar(element, opts = {}) {
   overlay.appendChild(labelsDiv);
   element.appendChild(canvas);
   element.appendChild(overlay);
+
+  // ── Click to toggle sonar mute ──
+  element.style.cursor = 'pointer';
+  element.addEventListener('click', () => {
+    _sonarMuted = !_sonarMuted;
+  });
 
   // ── Renderer ──
   let renderer;
