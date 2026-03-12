@@ -101,6 +101,8 @@ const GlobeGlitchShader = {
  * @param {{ autoRotate?: boolean, bloomStrength?: number }} [options]
  */
 export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 } = {}) {
+  if (_state.has(element)) destroyThreatMap(element);
+
   const ac = new AbortController();
   const { signal } = ac;
 
