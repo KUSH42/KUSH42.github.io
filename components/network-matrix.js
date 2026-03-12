@@ -60,9 +60,9 @@ export function initMatrix(element, { nodes = [], edges = [] } = {}) {
   svg.appendChild(nodeGroup);
   element.appendChild(svg);
 
-  // Render initial data
-  edges.forEach((edge) => _addEdge(element, edge));
+  // Nodes must be added before edges so _addEdge can resolve node positions
   nodes.forEach((node) => _addNode(element, node));
+  edges.forEach((edge) => _addEdge(element, edge));
 
   // Apply initial active states
   edges.forEach((edge) => {
@@ -199,7 +199,7 @@ export function pulseNode(element, nodeId) {
  * @param {HTMLElement} element - .s9-matrix root
  * @param {string|null} edgeId
  */
-export function activateEdge(element, edgeId) {
+export function activateEdge(element, edgeId, dotColor = null) {
   const state = _state.get(element);
   if (!state) return;
 
@@ -241,6 +241,10 @@ export function activateEdge(element, edgeId) {
     dot = document.createElementNS(SVG_NS, 'circle');
     dot.setAttribute('class', 's9-matrix__edge-dot');
     dot.setAttribute('r', '1.2');
+    if (dotColor) {
+      dot.style.fill = dotColor;
+      dot.style.filter = `drop-shadow(0 0 2px ${dotColor})`;
+    }
 
     const animateMotion = document.createElementNS(SVG_NS, 'animateMotion');
     animateMotion.setAttribute('dur', '2s');
@@ -401,18 +405,18 @@ function _addNode(element, { id, x, y, label, root = false }) {
   ring.setAttribute('class', 's9-matrix__node-ring');
   ring.setAttribute('cx', x);
   ring.setAttribute('cy', y);
-  ring.setAttribute('r', '5');
+  ring.setAttribute('r', '4');
 
   const core = document.createElementNS(SVG_NS, 'circle');
   core.setAttribute('class', 's9-matrix__node-core');
   core.setAttribute('cx', x);
   core.setAttribute('cy', y);
-  core.setAttribute('r', '3');
+  core.setAttribute('r', '2.5');
 
   const text = document.createElementNS(SVG_NS, 'text');
   text.setAttribute('class', 's9-matrix__node-label');
   text.setAttribute('x', x);
-  text.setAttribute('y', y + 4);
+  text.setAttribute('y', y + 3.5);
   text.textContent = label;
 
   g.appendChild(ring);

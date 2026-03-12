@@ -28,6 +28,8 @@
 
 .s9-sequence__indicator {
   flex-shrink: 0;
+  width: 4px;
+  min-width: 4px;
   overflow: hidden;
 }
 

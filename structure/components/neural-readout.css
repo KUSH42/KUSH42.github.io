@@ -102,6 +102,7 @@
 /* ── Status bar track ───────────────────────────────────────── */
 
 .s9-neural__status-bar-track {
+  height: 4px;
   overflow: hidden;
   position: relative;
 }
@@ -109,6 +110,7 @@
 /* ── Status bar fill ────────────────────────────────────────── */
 
 .s9-neural__status-bar-fill {
+  height: 100%;
   transition: width 0.4s steps(8);
   overflow: hidden;
 }

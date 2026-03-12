@@ -71,7 +71,8 @@
   font-weight: 600;
   letter-spacing: var(--letter-spacing-wide);
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px var(--neon-cyan);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

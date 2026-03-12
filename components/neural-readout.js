@@ -46,7 +46,7 @@ export function setStatusBarValue(barEl, value) {
   const clamped = Math.max(0, Math.min(100, value));
   barEl.style.width = `${clamped}%`;
 
-  if (clamped > 80) {
+  if (clamped < 20) {
     barEl.classList.add('s9-neural__status-bar-fill--critical');
   } else {
     barEl.classList.remove('s9-neural__status-bar-fill--critical');

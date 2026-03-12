@@ -82,6 +82,14 @@ export function printLine(element, text, type) {
   line.textContent = text;
 
   output.appendChild(line);
+
+  // Cap DOM size to prevent unbounded growth
+  const MAX_LINES = 200;
+  const lines = output.querySelectorAll('.s9-terminal__line');
+  if (lines.length > MAX_LINES) {
+    lines[0].remove();
+  }
+
   _scrollOutputToBottom(output);
 }
 

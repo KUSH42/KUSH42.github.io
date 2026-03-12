@@ -51,6 +51,7 @@
 /* ── Bar track ──────────────────────────────────────────────── */
 
 .s9-telemetry__bar {
+  height: 3px;
   position: relative;
   overflow: hidden;
 }
@@ -58,6 +59,7 @@
 /* ── Bar fill ───────────────────────────────────────────────── */
 
 .s9-telemetry__bar-fill {
+  height: 100%;
   transition: width 0.4s steps(8);
   overflow: hidden;
 }

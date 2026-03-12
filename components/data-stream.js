@@ -131,6 +131,12 @@ export function appendRow(element, { timestamp, source, message, alert = false }
 
   body.appendChild(row);
 
+  // Cap DOM size to prevent unbounded growth
+  const MAX_ROWS = 100;
+  if (body.children.length > MAX_ROWS) {
+    body.removeChild(body.firstChild);
+  }
+
   // Auto-scroll
   if (!state?.paused) {
     _scrollToBottom(body);

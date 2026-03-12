@@ -24,18 +24,32 @@
 
 .s9-threatmap__coords {
   font-family: var(--font-terminal);
-  font-size: 0.55rem;
-  color: var(--text-dim);
+  font-size: 0.75rem;
+  letter-spacing: var(--letter-spacing-normal);
+  color: var(--text-secondary);
 }
 
 .s9-threatmap__node-count {
   font-family: var(--font-terminal);
-  font-size: 0.55rem;
+  font-size: 0.6rem;
   color: var(--text-dim);
+}
+
+.s9-threatmap__crosshair-label {
+  font-family: var(--font-terminal);
+  font-size: 0.65rem;
+  letter-spacing: var(--letter-spacing-normal);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px var(--neon-cyan);
+  text-transform: uppercase;
 }
 
 .s9-threatmap__crosshair {
   opacity: 0;
+  border: 1px solid var(--neon-cyan);
+  box-shadow:
+    0 0 6px var(--neon-cyan),
+    inset 0 0 6px rgba(0, 212, 255, 0.08);
 }
 
 .s9-threatmap__crosshair--visible {
@@ -46,6 +60,7 @@
 .s9-threatmap__crosshair::before,
 .s9-threatmap__crosshair::after {
   background: var(--neon-cyan);
+  opacity: 0.5;
 }
 
 @media (prefers-reduced-motion: reduce) {
