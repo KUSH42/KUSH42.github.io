@@ -69,26 +69,16 @@ function _typeFloat(type) {
   return 3.0;
 }
 
-// ── Sonar ping (Web Audio) ────────────────────────────────────────
-let _audioCtx = null;
+// ── Sonar ping (MP3 sample) ──────────────────────────────────────
+let _sonarAudio = null;
 function _playSonarPing(volume = 0.08) {
   try {
-    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _audioCtx;
-    const now = ctx.currentTime;
-
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1320, now);
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(volume, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.4);
+    if (!_sonarAudio) {
+      _sonarAudio = new Audio('./assets/sonar-ping.mp3');
+    }
+    _sonarAudio.volume = Math.min(1, Math.max(0, volume));
+    _sonarAudio.currentTime = 0;
+    _sonarAudio.play().catch(() => {});
   } catch (_) { /* audio not available */ }
 }
 
@@ -658,6 +648,7 @@ function _addContact(state, angle, range, type, id) {
     instIdx:      slot,
     labelEl:      null,
     sweepAlpha:   isGhost ? 0.15 : 1.0,  // fades between sweep passes
+    fadeTimeMs:   4200 * (0.88 + Math.random() * 0.24),  // 3696–4704ms
     // Sweep-reveal: contacts are invisible until the sweep arm paints them
     revealed:     isGhost,   // ghost echoes appear immediately (created by the sweep event)
     revealTime:   isGhost ? performance.now() : null,
@@ -753,20 +744,17 @@ function _updateContacts(state, dt) {
   const { contacts, sweepAngle } = state;
   const now = performance.now();
 
-  // Fade to floor 220ms before next sweep pass
-  const sweepPeriodMs = (TAU / state.sweepSpeed) * 1000;
-  const fadeTimeMs = sweepPeriodMs;
   const nowMs = performance.now();
 
   contacts.forEach((c, i) => {
     if (!c) return;
     c.age += dt / c.maxAge;
 
-    // Direct time-based fade: guaranteed to reach floor by fadeTimeMs
+    // Per-contact fade: 3000ms ±12%
     if (c.type !== 'ghost' && c.revealed) {
       const floor = 0.05 + 0.10 * (c.range);
       const elapsed = nowMs - c.lastSweep;
-      const t = Math.min(1, elapsed / fadeTimeMs);
+      const t = Math.min(1, elapsed / c.fadeTimeMs);
       c.sweepAlpha = floor + (1.0 - floor) * Math.pow(1.0 - t, 1.025);
     }
 
@@ -916,7 +904,7 @@ export function initRadar(element, opts = {}) {
   }
 
   const options = {
-    sweepPeriod:    Math.max(600,  Math.min(20000, opts.sweepPeriod    ?? 2690)),
+    sweepPeriod:    2690,
     contactDensity: Math.max(0,    Math.min(1,     opts.contactDensity ?? 0.5)),
     threatLevel:    Math.max(0,    Math.min(1,     opts.threatLevel    ?? 0)),
     primaryColor:   opts.primaryColor ?? null,
