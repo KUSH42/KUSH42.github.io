@@ -463,7 +463,7 @@
       background: var(--panel-bg-solid);
       border: 1px solid var(--panel-border-active);
       padding: 8px 10px;
-      width: 158px;
+      width: 200px;
       pointer-events: none;
       opacity: 0;
       transform: translateX(8px);
@@ -517,9 +517,11 @@
     .node-popup__table td:last-child {
       color: var(--text-secondary);
       text-align: right;
-      word-break: break-all;
+      word-break: normal;
+      white-space: nowrap;
     }
-    .node-popup__table tr { line-height: 1.75; }
+    .node-popup__table tr { line-height: 1.6; }
+    .node-popup__table td { vertical-align: top; padding-bottom: 2px; }
 
     /* ── Telescreen ─────────────────────────────────────────── */
     .s9-telescreen {
