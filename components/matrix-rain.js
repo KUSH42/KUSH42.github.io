@@ -33,15 +33,17 @@ const GLYPHS = [
 ];
 
 // ── Scene constants ───────────────────────────────────────────
-const N_COLS     = 110;   // rain columns scattered in XZ
-const N_ROWS     = 55;    // character rows per column (sets max trail length)
-const CELL_W     = 0.28;  // world-unit width of one glyph
-const CELL_H     = 0.36;  // world-unit height of one glyph
+const N_COLS_BASE  = 148; // columns distributed across full X range
+const N_COLS_OUTER = 64;  // extra columns forced into outer two quarters (|x| > X_RANGE/2)
+const N_COLS       = N_COLS_BASE + N_COLS_OUTER;
+const N_ROWS     = 72;    // character rows per column (sets max trail length)
+const CELL_W     = 0.364; // world-unit width of one glyph  (+30%)
+const CELL_H     = 0.468; // world-unit height of one glyph (+30%)
 const WORLD_H    = 22;    // cycle range in Y (must exceed max visible height)
 const X_RANGE    = 16;    // columns scattered ±X_RANGE in X
 const Z_NEAR     = -0.6;  // closest column Z
 const Z_FAR      = -9.0;  // farthest column Z
-const ATLAS_PX   = 52;    // canvas pixels per glyph cell
+const ATLAS_PX   = 68;    // canvas pixels per glyph cell (scaled with +30% glyph size)
 
 // ── Glyph atlas ───────────────────────────────────────────────
 /**
@@ -78,11 +80,28 @@ function buildAtlas() {
 // ── Per-column DataTexture ────────────────────────────────────
 // RGBA Float32: [ x, z, speed (world-units/sec), seed (0..1) ]
 function buildColData() {
-  const data = new Float32Array(N_COLS * 4);
-  for (let i = 0; i < N_COLS; i++) {
-    data[i * 4 + 0] = (Math.random() - 0.5) * 2 * X_RANGE;
+  const data      = new Float32Array(N_COLS * 4);
+  const outerHalf = X_RANGE * 0.5;  // inner/outer boundary
+
+  // Base columns — full X range, normal speed
+  for (let i = 0; i < N_COLS_BASE; i++) {
+    const x       = (Math.random() - 0.5) * 2 * X_RANGE;
+    const isOuter = Math.abs(x) > outerHalf;
+    const baseSpd = 1.8 + Math.random() * 3.2;
+    data[i * 4 + 0] = x;
     data[i * 4 + 1] = Z_NEAR + Math.random() * (Z_FAR - Z_NEAR);
-    data[i * 4 + 2] = 1.8 + Math.random() * 3.2;   // world-units / sec
+    data[i * 4 + 2] = isOuter ? baseSpd * 2.0 : baseSpd;
+    data[i * 4 + 3] = Math.random();
+  }
+
+  // Extra outer columns — forced into |x| ∈ [X_RANGE/2, X_RANGE], layered at varied Z
+  for (let i = N_COLS_BASE; i < N_COLS; i++) {
+    const side    = Math.random() < 0.5 ? 1 : -1;
+    const x       = side * (outerHalf + Math.random() * outerHalf);
+    const baseSpd = 1.8 + Math.random() * 3.2;
+    data[i * 4 + 0] = x;
+    data[i * 4 + 1] = Z_NEAR + Math.random() * (Z_FAR - Z_NEAR);
+    data[i * 4 + 2] = baseSpd * 2.0;   // outer zone — 2× speed
     data[i * 4 + 3] = Math.random();
   }
   const tex       = new THREE.DataTexture(data, N_COLS, 1, THREE.RGBAFormat, THREE.FloatType);
@@ -224,8 +243,10 @@ void main() {
     if (dist < r) discard;
   }
 
-  // Trail brightness: max at head (vDist≈0), exponential falloff into trail
-  float trail = exp(-max(vDist, 0.0) * 0.14);
+  // Trail brightness: max at head (vDist≈0), exponential falloff into trail.
+  // Per-column decay rate gives natural length variation: ~0.07 (long) .. 0.21 (short).
+  float trailDecay = 0.07 + h2(vec2(vColIdx * 1.3, 77.1)) * 0.14;
+  float trail = exp(-max(vDist, 0.0) * trailDecay);
   if (trail < 0.012) discard;
 
   // Glyph identity: each cell has a stable character that flickers occasionally.

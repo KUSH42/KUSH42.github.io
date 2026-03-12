@@ -9,15 +9,15 @@
   /* ----------------------------------------------------------
      Layout constants  (referenced by structure plane)
   ---------------------------------------------------------- */
-  --topbar-height:    36px;
-  --statusbar-height: 28px;
-  --footer-height:    24px;
-  --sidebar-left:     280px;
-  --sidebar-right:    260px;
-  --panel-gap:        4px;
-  --panel-padding:    12px;
-  --header-height:    32px;
-  --header-gap:       8px;
+  --topbar-height:    48px;
+  --statusbar-height: 37px;
+  --footer-height:    32px;
+  --sidebar-left:     372px;
+  --sidebar-right:    346px;
+  --panel-gap:        5px;
+  --panel-padding:    16px;
+  --header-height:    43px;
+  --header-gap:       11px;
 
   /* ----------------------------------------------------------
      Typography
