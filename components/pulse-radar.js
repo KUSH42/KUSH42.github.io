@@ -69,26 +69,16 @@ function _typeFloat(type) {
   return 3.0;
 }
 
-// ── Sonar ping (Web Audio) ────────────────────────────────────────
-let _audioCtx = null;
+// ── Sonar ping (MP3 sample) ──────────────────────────────────────
+let _sonarAudio = null;
 function _playSonarPing(volume = 0.08) {
   try {
-    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _audioCtx;
-    const now = ctx.currentTime;
-
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1320, now);
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(volume, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.4);
+    if (!_sonarAudio) {
+      _sonarAudio = new Audio('./assets/sonar-ping.mp3');
+    }
+    _sonarAudio.volume = Math.min(1, Math.max(0, volume));
+    _sonarAudio.currentTime = 0;
+    _sonarAudio.play().catch(() => {});
   } catch (_) { /* audio not available */ }
 }
 
