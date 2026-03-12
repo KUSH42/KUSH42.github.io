@@ -114,3 +114,39 @@
   transition: width 0.4s steps(8);
   overflow: hidden;
 }
+
+/* ── EKG heartbeat ──────────────────────────────────────────── */
+
+.s9-neural__ekg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.s9-neural__ekg-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.s9-neural__ekg-label {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.s9-neural__ekg-bpm {
+  font-size: 0.65rem;
+  letter-spacing: var(--letter-spacing-normal);
+  flex-shrink: 0;
+}
+
+.s9-neural__ekg-canvas {
+  display: block;
+  width: 100%;
+  height: 30px;
+}

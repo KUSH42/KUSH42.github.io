@@ -44,6 +44,19 @@
   color: var(--text-primary);
 }
 
+/* ── EKG label / bpm ────────────────────────────────────────── */
+
+.s9-neural__ekg-label {
+  font-family: var(--font-terminal);
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.s9-neural__ekg-bpm {
+  font-family: var(--font-terminal);
+  color: var(--neon-cyan);
+}
+
 /* ── Status bar label ───────────────────────────────────────── */
 
 .s9-neural__status-bar-label {
