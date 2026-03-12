@@ -138,6 +138,7 @@ varying vec2  vUv;
 varying float vDist;   // distance from illumination head in row-units (0=head, +ve=trail)
 varying float vColIdx;
 varying float vRowIdx;
+varying float vColZ;   // world-space Z of the column (for occlusion depth test)
 
 void main() {
   vUv     = uv;
@@ -148,6 +149,7 @@ void main() {
   vec4  col  = texture2D(uColData, vec2((aColIdx + 0.5) / uNCols, 0.5));
   float colX = col.r;
   float colZ = col.g;
+  vColZ = colZ;
   float spd  = col.b;
   float seed = col.a;
 
@@ -192,17 +194,36 @@ uniform float     uGlyphCount;
 uniform float     uTime;
 uniform vec3      uColor;
 uniform float     uNRows;
+uniform vec2      uResolution;   // canvas size in pixels
+uniform float     uGlobeRadius;  // globe disc radius as fraction of screen half-height
 
 varying vec2  vUv;
 varying float vDist;
 varying float vColIdx;
 varying float vRowIdx;
+varying float vColZ;
 
 float h2(vec2 v) {
   return fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453);
 }
 
 void main() {
+  // Globe occlusion — columns deeper than the foremost 20% are hidden
+  // behind the globe's screen-space disc.
+  // Z range: Z_NEAR=-0.6 (close) .. Z_FAR=-9.0 (far).
+  // Foremost 20% threshold: -0.6 + 0.2*(-9.0-(-0.6)) = -2.28
+  const float Z_NEAR      = -0.6;
+  const float Z_FAR       = -9.0;
+  const float FORE_FRAC   = 0.2;
+  float zThreshold = Z_NEAR + FORE_FRAC * (Z_FAR - Z_NEAR); // -2.28
+  if (vColZ < zThreshold) {
+    // Column is in the occluded 80% — test against globe disc
+    vec2  sc   = uResolution * 0.5;                   // screen centre (pixels)
+    float dist = length(gl_FragCoord.xy - sc);
+    float r    = uGlobeRadius * uResolution.y * 0.5;  // globe pixel radius
+    if (dist < r) discard;
+  }
+
   // Trail brightness: max at head (vDist≈0), exponential falloff into trail
   float trail = exp(-max(vDist, 0.0) * 0.14);
   if (trail < 0.012) discard;
@@ -286,17 +307,28 @@ export function initMatrixRain(element, opts = {}) {
   const colData = buildColData();
   const geom    = buildGeometry();
 
+  const w0 = element.clientWidth  || 1;
+  const h0 = element.clientHeight || 1;
+
+  // uGlobeRadius: globe disc radius as a fraction of screen half-height.
+  // Derived from globe camera (FOV=45°, z=3, R=1.0):
+  //   NDC_r = (R/sqrt(d²-R²)) / tan(halfFov) = (1/√8) / tan(22.5°) ≈ 0.854
+  // Use 0.82 to leave a small margin and account for typical orbit distance.
+  const GLOBE_NDC_R = 0.82;
+
   const uniforms = {
-    uGlyphTex:   { value: atlas.tex },
-    uGlyphCount: { value: atlas.count },
-    uColData:    { value: colData },
-    uNCols:      { value: N_COLS },
-    uTime:       { value: 0 },
-    uCellW:      { value: CELL_W },
-    uCellH:      { value: CELL_H },
-    uWorldH:     { value: WORLD_H },
-    uNRows:      { value: N_ROWS },
-    uColor:      { value: new THREE.Vector3(rgb.r, rgb.g, rgb.b) },
+    uGlyphTex:    { value: atlas.tex },
+    uGlyphCount:  { value: atlas.count },
+    uColData:     { value: colData },
+    uNCols:       { value: N_COLS },
+    uTime:        { value: 0 },
+    uCellW:       { value: CELL_W },
+    uCellH:       { value: CELL_H },
+    uWorldH:      { value: WORLD_H },
+    uNRows:       { value: N_ROWS },
+    uColor:       { value: new THREE.Vector3(rgb.r, rgb.g, rgb.b) },
+    uResolution:  { value: new THREE.Vector2(w0, h0) },
+    uGlobeRadius: { value: GLOBE_NDC_R },
   };
 
   const material = new THREE.ShaderMaterial({
@@ -330,6 +362,7 @@ export function initMatrixRain(element, opts = {}) {
     renderer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    uniforms.uResolution.value.set(w, h);
   });
   s.ro.observe(element);
 
