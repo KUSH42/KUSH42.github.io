@@ -166,6 +166,17 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   occluder.renderOrder = 1;
   scene.add(occluder);
 
+  // Layer 1.5: opaque dark surface — blocks back-hemisphere content
+  const globeSurfaceMat = new THREE.MeshBasicMaterial({
+    color:      new THREE.Color('#010e0b'),
+    depthTest:  true,
+    depthWrite: true,
+    side:       THREE.FrontSide,
+  });
+  const globeSurface = new THREE.Mesh(globeGeo, globeSurfaceMat);
+  globeSurface.renderOrder = 1;
+  scene.add(globeSurface);
+
   // Layer 2: visible front wires — depth-tested against occluder
   const globeFrontMat = new THREE.MeshBasicMaterial({
     color: cyanColor,
@@ -377,6 +388,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     occluderGeo,
     globeBack,
     occluder,
+    globeSurface,
     globeFront,
     globeGlow,
     rimGeo,
@@ -512,8 +524,9 @@ export function destroyThreatMap(element) {
   if (state.globeGeo)    state.globeGeo.dispose();
   if (state.occluderGeo) state.occluderGeo.dispose();
   if (state.globeBack)  { state.scene.remove(state.globeBack);  state.globeBack.material.dispose(); }
-  if (state.occluder)   { state.scene.remove(state.occluder);   state.occluder.material.dispose(); }
-  if (state.globeFront) { state.scene.remove(state.globeFront); state.globeFront.material.dispose(); }
+  if (state.occluder)      { state.scene.remove(state.occluder);      state.occluder.material.dispose(); }
+  if (state.globeSurface)  { state.scene.remove(state.globeSurface);  state.globeSurface.material.dispose(); }
+  if (state.globeFront)    { state.scene.remove(state.globeFront);    state.globeFront.material.dispose(); }
   if (state.globeGlow)  { state.scene.remove(state.globeGlow);  state.globeGlow.material.dispose(); }
   if (state.rimMesh)    { state.scene.remove(state.rimMesh);    state.rimMesh.material.dispose(); }
   if (state.rimGeo)     state.rimGeo.dispose();
