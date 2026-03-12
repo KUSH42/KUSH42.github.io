@@ -235,7 +235,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     `,
     transparent: true,
     blending:    THREE.AdditiveBlending,
-    depthWrite:  false,
+    depthWrite:  true,
     side:        THREE.FrontSide,
   });
   const rimMesh = new THREE.Mesh(rimGeo, rimMat);
@@ -386,6 +386,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     reducedMotion,
     activeNodeId: null,
     colors,
+    cyanColor,
     globeGeo,
     occluderGeo,
     globeBack,
@@ -910,10 +911,8 @@ async function _loadGeoLines(element) {
   const state = _state.get(element);
   if (!state) return; // destroyed during fetch
 
-  const colors = _readCSSColors();
   const geoGroup = new THREE.Group();
-
-  const lineColor = new THREE.Color(colors.neonCyan || '#00d4b0');
+  const lineColor = state.cyanColor;
 
   // ── Coastlines / land outline (brighter) ──────────────────
   const landBorders = topoMesh(topo, topo.objects.land);
