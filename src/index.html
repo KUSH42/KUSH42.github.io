@@ -519,6 +519,7 @@
       border: 1px solid var(--panel-border-active);
       padding: 8px 10px;
       width: 158px;
+      overflow: hidden;
       pointer-events: none;
       opacity: 0;
       transform: translateX(8px);
@@ -562,6 +563,7 @@
       border-collapse: collapse;
       font-family: var(--font-terminal);
       font-size: 0.72rem;
+      table-layout: fixed;
     }
     .node-popup__table td {
       vertical-align: top;
@@ -571,12 +573,14 @@
       letter-spacing: 0.04em;
       padding-right: 6px;
       white-space: nowrap;
+      width: 38%;
     }
     .node-popup__table td:last-child {
       color: var(--text-secondary);
       text-align: right;
-      overflow-wrap: break-word;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .node-popup__table tr { line-height: 1.75; }
     .node-popup__table tr.np-group-gap td {
