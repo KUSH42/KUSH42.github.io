@@ -56,7 +56,6 @@ function _readCSSColors() {
     neonGreen:   style.getPropertyValue('--neon-green').trim(),
     neonAmber:   style.getPropertyValue('--neon-amber').trim(),
     neonMagenta: style.getPropertyValue('--neon-magenta').trim(),
-    panelBorder: style.getPropertyValue('--panel-border').trim(),
   };
 }
 
@@ -1072,8 +1071,7 @@ export function refreshThemeColors(element) {
   if (state.geoGroup) {
     state.geoGroup.traverse((obj) => {
       if (obj.isLine) {
-        const hex = obj.userData.geoType === 'coast' ? colors.neonCyan : colors.panelBorder;
-        obj.material.color.set(hex || '#ffffff');
+        obj.material.color.set(colors.neonCyan || '#00d4b0');
       }
     });
   }

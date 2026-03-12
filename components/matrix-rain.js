@@ -33,7 +33,7 @@ const GLYPHS = [
 ];
 
 // ── Scene constants ───────────────────────────────────────────
-const N_COLS     = 110;   // rain columns scattered in XZ
+const N_COLS     = 440;   // rain columns scattered in XZ
 const N_ROWS     = 55;    // character rows per column (sets max trail length)
 const CELL_W     = 0.28;  // world-unit width of one glyph
 const CELL_H     = 0.36;  // world-unit height of one glyph
@@ -79,13 +79,25 @@ function buildAtlas() {
 // RGBA Float32: [ x, z, speed (world-units/sec), seed (0..1) ]
 function buildColData() {
   const data = new Float32Array(N_COLS * 4);
+  const halfTan = Math.tan((70 * Math.PI / 180) / 2); // tan(35°) ≈ 0.7
+  const CAM_Z = 4;
+
   for (let i = 0; i < N_COLS; i++) {
-    data[i * 4 + 0] = (Math.random() - 0.5) * 2 * X_RANGE;
-    data[i * 4 + 1] = Z_NEAR + Math.random() * (Z_FAR - Z_NEAR);
-    data[i * 4 + 2] = 1.8 + Math.random() * 3.2;   // world-units / sec
+    // Evenly spaced angle with jitter for natural look
+    const theta = (i / N_COLS) * Math.PI * 2 + Math.random() * (Math.PI * 2 / N_COLS);
+    // Z depth: random between Z_NEAR and Z_FAR
+    const z = Z_NEAR + Math.random() * (Z_FAR - Z_NEAR);
+    const dist = CAM_Z - z; // positive depth from camera
+    // Screen-space radius: 0.05 to 1.0 (small inner hole avoids globe center)
+    const screenR = 0.05 + Math.pow(Math.random(), 0.4) * 0.95;
+    // Convert to world X
+    const x = Math.cos(theta) * screenR * halfTan * dist;
+    data[i * 4 + 0] = x;
+    data[i * 4 + 1] = z;
+    data[i * 4 + 2] = 1.8 + Math.random() * 3.2;
     data[i * 4 + 3] = Math.random();
   }
-  const tex       = new THREE.DataTexture(data, N_COLS, 1, THREE.RGBAFormat, THREE.FloatType);
+  const tex = new THREE.DataTexture(data, N_COLS, 1, THREE.RGBAFormat, THREE.FloatType);
   tex.needsUpdate = true;
   return tex;
 }
@@ -204,8 +216,8 @@ float h2(vec2 v) {
 
 void main() {
   // Trail brightness: max at head (vDist≈0), exponential falloff into trail
-  float trail = exp(-max(vDist, 0.0) * 0.14);
-  if (trail < 0.012) discard;
+  float trail = exp(-max(vDist, 0.0) * 0.09);
+  if (trail < 0.008) discard;
 
   // Glyph identity: each cell has a stable character that flickers occasionally.
   // Cells near the head flicker faster (higher rate).
