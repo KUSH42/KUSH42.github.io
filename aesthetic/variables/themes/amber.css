@@ -23,6 +23,9 @@
   --neon-magenta: #ff3218;
   --neon-amber:   #ff7c00;
 
+  /* Crosshair accent — contrasting theme color */
+  --crosshair-color: #00f0ff;  /* gits cyan */
+
   /* Text */
   --text-primary:   #ffb300;
   --text-secondary: rgba(255, 179, 0, 0.65);

@@ -42,20 +42,20 @@
   font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: var(--letter-spacing-normal);
-  color: var(--neon-cyan);
+  color: var(--crosshair-color);
   text-shadow:
-    0 0 8px var(--neon-cyan),
-    0 0 18px var(--neon-cyan),
-    0 0 32px var(--neon-cyan);
+    0 0 8px var(--crosshair-color),
+    0 0 18px var(--crosshair-color),
+    0 0 32px var(--crosshair-color);
   text-transform: uppercase;
 }
 
 .s9-threatmap__crosshair {
   opacity: 0;
-  border: 2px solid var(--neon-cyan);
+  border: 2px solid var(--crosshair-color);
   box-shadow:
-    0 0 8px var(--neon-cyan),
-    0 0 18px var(--neon-cyan),
+    0 0 8px var(--crosshair-color),
+    0 0 18px var(--crosshair-color),
     inset 0 0 10px rgba(0, 212, 255, 0.12);
 }
 
@@ -66,8 +66,8 @@
 
 .s9-threatmap__crosshair::before,
 .s9-threatmap__crosshair::after {
-  background: var(--neon-cyan);
-  box-shadow: 0 0 6px var(--neon-cyan), 0 0 14px var(--neon-cyan);
+  background: var(--crosshair-color);
+  box-shadow: 0 0 6px var(--crosshair-color), 0 0 14px var(--crosshair-color);
   opacity: 0.9;
 }
 

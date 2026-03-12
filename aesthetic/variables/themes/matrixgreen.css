@@ -26,6 +26,9 @@
   --neon-magenta: #ff8c00;
   --neon-amber:   #b0ff44;
 
+  /* Crosshair accent — contrasting theme color */
+  --crosshair-color: #ff1e1e;  /* blood red */
+
   /* Text */
   --text-primary:   #00d4b0;
   --text-secondary: rgba(0, 212, 176, 0.65);
