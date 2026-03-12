@@ -1,53 +1,37 @@
 /**
  * matrix-rain.js — Katakana matrix rain in true 3D space.
  *
- * Architecture (same insight as rezmason/matrix):
- *   Glyphs are stationary in a grid. Illumination waves sweep DOWN through
- *   each column — the characters don't move, the light does.
- *
- * Rendering:
- *   - Canvas glyph atlas  → CanvasTexture (katakana + symbols)
- *   - InstancedBufferGeometry: one quad per character cell (col × row)
- *   - PerspectiveCamera: columns scattered in XZ space give true depth parallax
- *   - Per-column state (x, z, speed, seed) in a DataTexture — zero CPU per frame
- *   - Vertex shader positions each quad; fragment shader samples atlas + applies
- *     illumination gradient
- *   - AdditiveBlending + CSS mix-blend-mode:screen → glows over globe, invisible
- *     where black (no overhead)
- *
- * Usage:
- *   import { initMatrixRain, destroyMatrixRain } from './components/matrix-rain.js';
- *   const rain = initMatrixRain(element, { color: '#00ff70' });
- *   rain.destroy();
+ * Columns are scattered in a spherical shell around the globe. Each column
+ * has randomized position, trail length, brightness, glyph scale, and speed.
+ * Billboarded quads always face the camera; depth-scaled for consistent
+ * screen presence. AdditiveBlending + CSS mix-blend-mode:screen composites
+ * over the globe.
  */
 
 import * as THREE from 'three';
 
-// ── Glyph set ─────────────────────────────────────────────────
-// Half-width katakana + numerals + symbols — authentic matrix palette
+// ── Glyph set (Matrix-Code.ttf — Rezmason/matrix, MIT license) ──
 const GLYPHS = [
-  ...'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ',
-  ...'ﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ',
-  ...'012345789',
-  ...':."=*+-<>¦|',
+  ...'アウエオカキケコサシスセソタツテナニヌネ',
+  ...'ハヒホマミムメモヤヨラリワー',
+  ...'012345789z',
+  ...':."*+<>|¦╌▪꞊',
 ];
+const ATLAS_PX = 96;  // canvas pixels per glyph cell
 
 // ── Scene constants ───────────────────────────────────────────
-const N_COLS     = 110;   // rain columns scattered in XZ
-const N_ROWS     = 55;    // character rows per column (sets max trail length)
-const CELL_W     = 0.28;  // world-unit width of one glyph
-const CELL_H     = 0.36;  // world-unit height of one glyph
-const WORLD_H    = 22;    // cycle range in Y (must exceed max visible height)
-const X_RANGE    = 16;    // columns scattered ±X_RANGE in X
-const Z_NEAR     = -0.6;  // closest column Z
-const Z_FAR      = -9.0;  // farthest column Z
-const ATLAS_PX   = 52;    // canvas pixels per glyph cell
+const N_COLS     = 2400;
+const N_ROWS     = 70;    // max trail length — long fading tails
+const CELL_W     = 0.12;  // base world-unit glyph width
+const CELL_H     = 0.08;  // base world-unit glyph height
+const WORLD_H    = 16;    // vertical sweep range per column
 
-// ── Glyph atlas ───────────────────────────────────────────────
-/**
- * Render all glyphs into a vertical strip canvas → THREE.CanvasTexture.
- * One glyph per row: glyph[i] occupies canvas y=[i*PX, (i+1)*PX].
- */
+// Spherical shell around globe (radius 1.0)
+// Camera orbits at ~3.0, columns must extend well past that
+const R_MIN      = 3.5;
+const R_MAX      = 8.0;
+
+// ── Canvas glyph atlas (vertical strip, one glyph per row) ──
 function buildAtlas() {
   const n   = GLYPHS.length;
   const px  = ATLAS_PX;
@@ -61,60 +45,89 @@ function buildAtlas() {
   ctx.fillStyle    = '#fff';
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  // Share Tech Mono may not be loaded yet; a monospace fallback still looks fine.
-  // The texture is rebuilt after fonts.ready (see initMatrixRain).
-  ctx.font = `${Math.round(px * 0.84)}px "Share Tech Mono", "Courier New", monospace`;
+  ctx.font = `${Math.round(px * 0.78)}px "Matrix-Code", "Share Tech Mono", monospace`;
 
   GLYPHS.forEach((g, i) => ctx.fillText(g, px / 2, px * i + px / 2));
 
   const tex        = new THREE.CanvasTexture(c);
-  tex.flipY        = false;   // keep atlas orientation predictable in shader
+  tex.flipY        = false;
   tex.minFilter    = THREE.LinearMipMapLinearFilter;
   tex.magFilter    = THREE.LinearFilter;
   tex.generateMipmaps = true;
   return { tex, count: n, canvas: c, ctx };
 }
 
-// ── Per-column DataTexture ────────────────────────────────────
-// RGBA Float32: [ x, z, speed (world-units/sec), seed (0..1) ]
-function buildColData() {
-  const data = new Float32Array(N_COLS * 4);
-  for (let i = 0; i < N_COLS; i++) {
-    data[i * 4 + 0] = (Math.random() - 0.5) * 2 * X_RANGE;
-    data[i * 4 + 1] = Z_NEAR + Math.random() * (Z_FAR - Z_NEAR);
-    data[i * 4 + 2] = 1.8 + Math.random() * 3.2;   // world-units / sec
-    data[i * 4 + 3] = Math.random();
-  }
-  const tex       = new THREE.DataTexture(data, N_COLS, 1, THREE.RGBAFormat, THREE.FloatType);
-  tex.needsUpdate = true;
-  return tex;
-}
-
 // ── InstancedBufferGeometry ───────────────────────────────────
-// One PlaneGeometry quad per cell, instanced N_COLS × N_ROWS times.
-// aColIdx and aRowIdx identify which cell each instance represents.
+// Per-column: position on sphere, speed, seed, Y offset, scale, brightness, trail length
 function buildGeometry() {
   const geom = new THREE.InstancedBufferGeometry();
   const base = new THREE.PlaneGeometry(1, 1);
-  // Clone attributes — do NOT dispose base before cloning or buffers are freed
   geom.index = base.index.clone();
   geom.setAttribute('position', base.getAttribute('position').clone());
   geom.setAttribute('uv',       base.getAttribute('uv').clone());
   base.dispose();
 
-  const total  = N_COLS * N_ROWS;
-  const colBuf = new Float32Array(total);
-  const rowBuf = new Float32Array(total);
+  const total     = N_COLS * N_ROWS;
+  const colBuf    = new Float32Array(total);
+  const rowBuf    = new Float32Array(total);
+  // Pack 3D world position per column (spherical shell placement)
+  const wxBuf     = new Float32Array(total);
+  const wzBuf     = new Float32Array(total);
+  const spdBuf    = new Float32Array(total);
+  const seedBuf   = new Float32Array(total);
+  const yOffBuf   = new Float32Array(total);
+  const scaleBuf  = new Float32Array(total);  // per-column glyph scale
+  const alphaBuf  = new Float32Array(total);  // per-column brightness
+  const trailBuf  = new Float32Array(total);  // per-column trail decay rate
 
   for (let c = 0; c < N_COLS; c++) {
+    // Spherical shell: uniform distribution on sphere surface
+    const theta = Math.random() * Math.PI * 2;           // azimuth 0..2π
+    const cosP  = 1 - 2 * Math.random();                 // cos(phi) uniform -1..1
+    const sinP  = Math.sqrt(1 - cosP * cosP);
+
+    // Radius: heavily biased toward outer shell (5–6 range)
+    const t      = Math.pow(Math.random(), 0.12);
+    const radius = R_MIN + t * (R_MAX - R_MIN);
+
+    const wx = sinP * Math.cos(theta) * radius;
+    const wz = sinP * Math.sin(theta) * radius;
+
+    // Y offset from sphere surface position + extra random scatter
+    const yBase  = cosP * radius;
+    const yOff   = yBase + (Math.random() - 0.5) * 2.0;
+
+    const speed  = 0.4 + Math.random() * 1.87;            // 0.4 – 2.27
+    const seed   = Math.random();
+    const scale  = 0.5 + Math.random() * 1.0;            // 0.5 – 1.5× size
+    const alpha  = 0.18 + Math.random() * 0.72;          // 0.18 – 0.90 brightness (higher floor, more visible)
+    const trail  = 0.004 + Math.random() * 0.03;           // 0.004 – 0.034 decay rate (ultra long trails)
+
     for (let r = 0; r < N_ROWS; r++) {
-      colBuf[c * N_ROWS + r] = c;
-      rowBuf[c * N_ROWS + r] = r;
+      const idx = c * N_ROWS + r;
+      colBuf[idx]   = c;
+      rowBuf[idx]   = r;
+      wxBuf[idx]    = wx;
+      wzBuf[idx]    = wz;
+      spdBuf[idx]   = speed;
+      seedBuf[idx]  = seed;
+      yOffBuf[idx]  = yOff;
+      scaleBuf[idx] = scale;
+      alphaBuf[idx] = alpha;
+      trailBuf[idx] = trail;
     }
   }
 
-  geom.setAttribute('aColIdx', new THREE.InstancedBufferAttribute(colBuf, 1));
-  geom.setAttribute('aRowIdx', new THREE.InstancedBufferAttribute(rowBuf, 1));
+  geom.setAttribute('aColIdx',  new THREE.InstancedBufferAttribute(colBuf, 1));
+  geom.setAttribute('aRowIdx',  new THREE.InstancedBufferAttribute(rowBuf, 1));
+  geom.setAttribute('aWX',      new THREE.InstancedBufferAttribute(wxBuf, 1));
+  geom.setAttribute('aWZ',      new THREE.InstancedBufferAttribute(wzBuf, 1));
+  geom.setAttribute('aSpeed',   new THREE.InstancedBufferAttribute(spdBuf, 1));
+  geom.setAttribute('aSeed',    new THREE.InstancedBufferAttribute(seedBuf, 1));
+  geom.setAttribute('aYOff',    new THREE.InstancedBufferAttribute(yOffBuf, 1));
+  geom.setAttribute('aScale',   new THREE.InstancedBufferAttribute(scaleBuf, 1));
+  geom.setAttribute('aAlpha',   new THREE.InstancedBufferAttribute(alphaBuf, 1));
+  geom.setAttribute('aTrail',   new THREE.InstancedBufferAttribute(trailBuf, 1));
   geom.instanceCount = total;
   return geom;
 }
@@ -125,61 +138,103 @@ precision highp float;
 
 attribute float aColIdx;
 attribute float aRowIdx;
+attribute float aWX;
+attribute float aWZ;
+attribute float aSpeed;
+attribute float aSeed;
+attribute float aYOff;
+attribute float aScale;
+attribute float aAlpha;
+attribute float aTrail;
 
-uniform sampler2D uColData;
-uniform float     uNCols;
-uniform float     uTime;
-uniform float     uCellW;
-uniform float     uCellH;
-uniform float     uWorldH;
-uniform float     uNRows;
+uniform float uTime;
+uniform float uCellW;
+uniform float uCellH;
+uniform float uWorldH;
+uniform float uNRows;
 
 varying vec2  vUv;
-varying float vDist;   // distance from illumination head in row-units (0=head, +ve=trail)
+varying float vDist;
 varying float vColIdx;
 varying float vRowIdx;
+varying float vAlpha;
+varying float vTrail;
+varying float vDepthDim;
+varying float vSpeed;
+
+float hash(vec2 v) {
+  vec2 s = fract(v * vec2(0.1031, 0.1030));
+  s += dot(s, s.yx + 33.33);
+  return fract((s.x + s.y) * s.x);
+}
 
 void main() {
   vUv     = uv;
   vColIdx = aColIdx;
   vRowIdx = aRowIdx;
+  vTrail  = aTrail;
+  vSpeed  = aSpeed;
 
-  // Fetch column config from DataTexture
-  vec4  col  = texture2D(uColData, vec2((aColIdx + 0.5) / uNCols, 0.5));
-  float colX = col.r;
-  float colZ = col.g;
-  float spd  = col.b;
-  float seed = col.a;
+  // Per-column spacing compression: 0–33% tighter
+  float spacingFactor = 1.0 - 0.33 * hash(vec2(aColIdx * 0.61, 0.29));
+  float cellStep = uCellH * aScale * spacingFactor;
 
-  // Static world-Y of this character cell (top → bottom as rowIdx increases)
-  float cellY = uWorldH * 0.5 - aRowIdx * uCellH;
+  // Per-glyph Y jitter: nudge upward only (decreases spacing)
+  float yJitter = hash(vec2(aColIdx * 0.43, aRowIdx * 0.89)) * 0.16 * cellStep;
 
-  // Illumination head sweeps from top to bottom, cycling continuously.
-  // headY decreases from +WORLD_H/2 toward -WORLD_H/2, then wraps.
-  float cycleH = uWorldH + uNRows * uCellH;
-  float headY  = uWorldH * 0.5 - mod(uTime * spd + seed * cycleH, cycleH);
+  // Per-glyph alpha variation: ±12% of column alpha
+  float alphaJitter = 1.0 + (hash(vec2(aColIdx * 0.67, aRowIdx * 0.31)) - 0.5) * 0.24;
+  vAlpha = aAlpha * alphaJitter;
 
-  // Distance from head in row-units:
-  //   < 0  → cell is below head  (not yet lit, invisible)
-  //   0    → head position       (brightest, white)
-  //   > 0  → above head          (trail, exponential fade)
-  vDist = (cellY - headY) / uCellH;
+  // Static world-Y of this cell, offset per column
+  float cellY = aYOff + uWorldH * 0.5 - aRowIdx * cellStep + yJitter;
 
-  // Cull cells that are not in the visible trail window
-  if (vDist < -0.5 || vDist > float(uNRows)) {
-    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);  // outside NDC cube → clipped
+  // Illumination head sweeps down
+  float cycleH = uWorldH + uNRows * cellStep;
+  float headY  = aYOff + uWorldH * 0.5 - mod(uTime * aSpeed + aSeed * cycleH, cycleH);
+
+  vDist = (cellY - headY) / cellStep;
+
+  // Cull cells ahead of the head or far enough behind that decay is invisible
+  if (vDist < -0.5) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+  if (vDist > uNRows * 1.2) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
 
-  // Place quad in world space.
-  // position is the base PlaneGeometry vertex in [-0.5, 0.5] unit space.
-  vec3 worldPos = vec3(
-    position.x * uCellW + colX,
-    position.y * uCellH + cellY,
-    colZ
-  );
+  // Transform column center to view space
+  vec4 viewCenter = modelViewMatrix * vec4(aWX, cellY, aWZ, 1.0);
 
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
+  // Camera proximity — cull within 1.0 of camera
+  float viewDist = -viewCenter.z;  // depth in front of camera
+  float sideDist = length(viewCenter.xy);  // lateral distance
+  float camDist3D = length(viewCenter.xyz);
+  if (camDist3D < 1.0) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+
+  // Proximity fade: sides within 0.8, front (toward globe) within 3.0
+  float sideFade  = smoothstep(0.0, 0.8, sideDist);
+  float frontFade = (viewDist > 0.0) ? smoothstep(0.0, 3.0, viewDist) : 1.0;
+  float proxFade  = sideFade * frontFade;
+
+  // Depth-based brightness: closer = brighter, far = dim
+  vDepthDim = clamp(viewDist / 6.0, 0.0, 1.0);
+  vDepthDim = (1.0 - vDepthDim * vDepthDim) * proxFade;  // quadratic falloff + proximity fade
+
+  // Per-glyph scale variation: ±10%
+  float scaleJitter = 1.0 + (hash(vec2(aColIdx * 0.53, aRowIdx * 0.17)) - 0.5) * 0.20;
+
+  // Depth-scaled billboard with per-column scale + per-glyph variation
+  float depthScale = clamp(viewDist / 3.0, 0.3, 3.0);
+  float s = aScale * scaleJitter * depthScale;
+  viewCenter.xy += position.xy * vec2(uCellW, uCellH) * s;
+
+  gl_Position = projectionMatrix * viewCenter;
 }
 `;
 
@@ -190,6 +245,7 @@ precision highp float;
 uniform sampler2D uGlyphTex;
 uniform float     uGlyphCount;
 uniform float     uTime;
+uniform float     uFrame;
 uniform vec3      uColor;
 uniform float     uNRows;
 
@@ -197,45 +253,64 @@ varying vec2  vUv;
 varying float vDist;
 varying float vColIdx;
 varying float vRowIdx;
+varying float vAlpha;
+varying float vTrail;
+varying float vDepthDim;
+varying float vSpeed;
 
+// Stable hash — keeps inputs small with fract() to avoid GPU sin() precision issues
 float h2(vec2 v) {
-  return fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453);
+  vec2 s = fract(v * vec2(0.1031, 0.1030));
+  s += dot(s, s.yx + 33.33);
+  return fract((s.x + s.y) * s.x);
 }
 
 void main() {
-  // Trail brightness: max at head (vDist≈0), exponential falloff into trail
-  float trail = exp(-max(vDist, 0.0) * 0.14);
-  if (trail < 0.012) discard;
+  // Per-column trail decay — smooth exponential fade, no hard cutoff
+  float trail = exp(-max(vDist, 0.0) * vTrail);
+  if (trail < 0.005) discard;
 
-  // Glyph identity: each cell has a stable character that flickers occasionally.
-  // Cells near the head flicker faster (higher rate).
-  float proximity = 1.0 - clamp(vDist / 8.0, 0.0, 1.0);
-  float rate      = 2.0 + proximity * 14.0 + h2(vec2(vColIdx, 0.5)) * 6.0;
-  float tick      = floor(uTime * rate);
+  // Snap to integer — varyings can have interpolation noise across the quad
+  vec2 cellId = vec2(floor(vColIdx + 0.5), floor(vRowIdx + 0.5));
+
+  float cellPhase = h2(cellId * 0.37);
+  float stability = h2(cellId * 0.91);
+
+  // Hold period in seconds (refresh-rate independent) — 3.3–11.7s, median ~7.5s
+  float holdSec    = 20.0 + h2(cellId * 0.29) * 40.0;
+  float changeTick = floor((cellPhase * holdSec + uTime) / holdSec);
+
+  // ~55% of cells are stable — keep base glyph, never change
+  float baseGlyph = floor(h2(cellId * 0.47 + 0.5) * uGlyphCount);
   float glyphIdx  = floor(
-    h2(vec2(vColIdx * 0.37 + tick * 0.11, vRowIdx * 0.73 + tick * 0.07)) * uGlyphCount
+    h2(cellId * 0.37 + changeTick * vec2(0.11, 0.07)) * uGlyphCount
   );
+  glyphIdx = stability < 0.9325 ? baseGlyph : glyphIdx;
 
-  // Sample atlas.
-  // flipY=false: UV.v=0 → canvas top, UV.v=1 → canvas bottom.
-  // PlaneGeometry: vUv.y=0 → quad bottom, vUv.y=1 → quad top.
-  // Glyph i canvas range: v=[i/n, (i+1)/n] top-to-bottom.
-  // Map quad top→glyph top, quad bottom→glyph bottom:
+  // Vertical strip atlas
   float atlasV = (glyphIdx + (1.0 - vUv.y)) / uGlyphCount;
   float mask   = texture2D(uGlyphTex, vec2(vUv.x, atlasV)).r;
+  if (mask < 0.06) discard;
 
-  if (mask < 0.07) discard;
+  // Film grain
+  float grain = h2(vec2(
+    gl_FragCoord.x * 0.73 + gl_FragCoord.y * 0.41,
+    uTime * 7.3 + vColIdx * 0.17
+  ));
+  grain = (grain - 0.5) * 0.08;
 
-  // Color: head → bright white; trail → theme color, fading
-  float headFrac = 1.0 - smoothstep(0.0, 1.8, vDist);
-  vec3  col      = mix(uColor * 1.3, vec3(0.82, 1.0, 0.88), headFrac);
+  // High-contrast color: head burns white, trail is deep saturated green
+  // baseBrightness equivalent: trail already decays to near-zero,
+  // plus depth dimming kills distant cells → dark grid with bright heads
+  float headFrac = 1.0 - smoothstep(0.0, 0.8, vDist);
+  vec3  col2     = mix(uColor * 1.6, uColor * 3.0 + vec3(0.3), headFrac);
+  col2          += grain;
 
-  // Second-brightest row: slightly elevated (classic matrix look)
-  float subHead  = 1.0 - smoothstep(1.0, 3.0, vDist);
-  col            = mix(col, uColor * 1.8, subHead * 0.35);
-
-  float alpha    = trail * mask;
-  gl_FragColor   = vec4(col * alpha, alpha);
+  // Moderate contrast: pow curve adds depth without killing trails
+  float rawBright = trail * mask * vAlpha * vDepthDim;
+  float contrast  = pow(rawBright, 1.05);
+  float alpha     = contrast;
+  gl_FragColor    = vec4(col2 * alpha, alpha);
 }
 `;
 
@@ -253,13 +328,10 @@ const _state = new Map();
 export function initMatrixRain(element, opts = {}) {
   if (_state.has(element)) destroyMatrixRain(element);
 
-  const { color = '#00ff70', opacity = 0.9, syncCamera = null } = opts;
+  const { color = '#00ff70', opacity = 0.82, syncCamera = null } = opts;
   const rgb = new THREE.Color(color);
 
-  // ── Atlas
   const atlas = buildAtlas();
-
-  // ── Renderer
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(element.clientWidth || 1, element.clientHeight || 1);
@@ -267,31 +339,39 @@ export function initMatrixRain(element, opts = {}) {
   const canvas = renderer.domElement;
   canvas.style.cssText =
     'position:absolute;inset:0;width:100%;height:100%;' +
-    'pointer-events:none;z-index:0;mix-blend-mode:screen;';
+    'pointer-events:none;z-index:0;mix-blend-mode:screen;' +
+    'filter:blur(0.15px) drop-shadow(0 0 3px rgba(0,255,112,0.3));';
   canvas.style.opacity = String(opacity);
   element.appendChild(canvas);
 
-  // ── Scene + Camera
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(
-    70,
+    45,
     (element.clientWidth || 1) / (element.clientHeight || 1),
-    0.1,
-    60
+    0.1, 60
   );
-  camera.position.set(0, 0, 4);
+  camera.position.set(0, 0, 3);
   camera.lookAt(0, 0, 0);
 
-  // ── Column data + geometry
-  const colData = buildColData();
-  const geom    = buildGeometry();
+  // Invisible occluder sphere — matches globe radius so rain behind the globe
+  // is depth-tested away. Renders first (renderOrder 0), writes depth only.
+  const occluderGeo = new THREE.SphereGeometry(1.0, 32, 32);
+  const occluderMat = new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    depthWrite: true,
+    depthTest:  true,
+  });
+  const occluder = new THREE.Mesh(occluderGeo, occluderMat);
+  occluder.renderOrder = 0;
+  scene.add(occluder);
+
+  const geom = buildGeometry();
 
   const uniforms = {
     uGlyphTex:   { value: atlas.tex },
     uGlyphCount: { value: atlas.count },
-    uColData:    { value: colData },
-    uNCols:      { value: N_COLS },
     uTime:       { value: 0 },
+    uFrame:      { value: 0 },
     uCellW:      { value: CELL_W },
     uCellH:      { value: CELL_H },
     uWorldH:     { value: WORLD_H },
@@ -310,15 +390,17 @@ export function initMatrixRain(element, opts = {}) {
   });
 
   const mesh = new THREE.Mesh(geom, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1;
   scene.add(mesh);
 
-  // ── Animation loop
-  const s = { renderer, material, geom, atlas, colData, ro: null, animId: 0, syncCamera };
+  const s = { renderer, material, geom, atlas, occluderGeo, occluderMat, ro: null, animId: 0, syncCamera };
   _state.set(element, s);
 
   function animate(ts) {
     s.animId = requestAnimationFrame(animate);
     uniforms.uTime.value = ts * 0.001;
+    uniforms.uFrame.value += 1;
     if (s.syncCamera) {
       camera.position.copy(s.syncCamera.position);
       camera.quaternion.copy(s.syncCamera.quaternion);
@@ -331,7 +413,6 @@ export function initMatrixRain(element, opts = {}) {
   }
   s.animId = requestAnimationFrame(animate);
 
-  // ── Resize
   s.ro = new ResizeObserver(() => {
     const w = element.clientWidth  || 1;
     const h = element.clientHeight || 1;
@@ -341,18 +422,17 @@ export function initMatrixRain(element, opts = {}) {
   });
   s.ro.observe(element);
 
-  // ── Rebuild atlas once custom font is loaded (for crisp katakana)
+  // Rebuild atlas once Matrix-Code font loads for authentic glyphs
   document.fonts.ready.then(() => {
-    const st = _state.get(element);
-    if (!st) return;
-    const { tex, count, canvas: ac, ctx } = atlas;
+    if (!_state.get(element)) return;
+    const { tex, canvas: ac, ctx } = atlas;
     ctx.clearRect(0, 0, ac.width, ac.height);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, ac.width, ac.height);
     ctx.fillStyle    = '#fff';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `${Math.round(ATLAS_PX * 0.84)}px "Share Tech Mono", monospace`;
+    ctx.font = `${Math.round(ATLAS_PX * 0.78)}px "Matrix-Code", "Share Tech Mono", monospace`;
     GLYPHS.forEach((g, i) => ctx.fillText(g, ATLAS_PX / 2, ATLAS_PX * i + ATLAS_PX / 2));
     tex.needsUpdate = true;
   });
@@ -374,8 +454,9 @@ export function destroyMatrixRain(element) {
   s.ro.disconnect();
   s.material.dispose();
   s.geom.dispose();
+  s.occluderGeo.dispose();
+  s.occluderMat.dispose();
   s.atlas.tex.dispose();
-  s.colData.dispose();
   s.renderer.dispose();
   s.renderer.domElement.remove();
   _state.delete(element);

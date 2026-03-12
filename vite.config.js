@@ -5,7 +5,7 @@ export default defineConfig({
     dedupe: ['three'],
   },
   build: {
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks: {
