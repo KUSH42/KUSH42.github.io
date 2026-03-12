@@ -166,12 +166,14 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   occluder.renderOrder = 1;
   scene.add(occluder);
 
-  // Layer 1.5: opaque dark surface — blocks back-hemisphere content
+  // Layer 1.5: semi-transparent dark surface — blocks back-hemisphere wireframe via depth
   const globeSurfaceMat = new THREE.MeshBasicMaterial({
-    color:      new THREE.Color('#010e0b'),
-    depthTest:  true,
-    depthWrite: true,
-    side:       THREE.FrontSide,
+    color:       new THREE.Color('#010e0b'),
+    transparent: true,
+    opacity:     0.5,
+    depthTest:   true,
+    depthWrite:  true,
+    side:        THREE.DoubleSide,
   });
   const globeSurface = new THREE.Mesh(globeGeo, globeSurfaceMat);
   globeSurface.renderOrder = 1;
@@ -198,7 +200,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     transparent: true,
     opacity:     0.025,
     blending:    THREE.AdditiveBlending,
-    depthTest:   false,
+    depthTest:   true,
     depthWrite:  false,
   });
   const globeGlow = new THREE.Mesh(globeGeo, globeGlowMat);
