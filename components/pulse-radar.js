@@ -133,9 +133,6 @@ void main() {
 }`;
 
 const _contactVert = /* glsl */`
-#ifdef USE_INSTANCING
-  attribute mat4 instanceMatrix;
-#endif
 attribute float a_type;
 attribute float a_age;
 attribute float a_phase;
