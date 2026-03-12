@@ -1,0 +1,89 @@
+/* ============================================================
+   structure/components/alert-banner.css
+   AlertBanner — STRUCTURE PLANE ONLY.
+   Layout, sizing, flex/grid, overflow, position. Zero color/effect.
+   ============================================================ */
+
+/* ── Banner container ───────────────────────────────────────── */
+
+.s9-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem var(--panel-padding, 12px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  overflow: hidden;
+  min-height: 3rem;
+}
+
+/* ── Icon ───────────────────────────────────────────────────── */
+
+.s9-alert__icon {
+  flex-shrink: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+/* ── Body (code + message) ──────────────────────────────────── */
+
+.s9-alert__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Alert code ─────────────────────────────────────────────── */
+
+.s9-alert__code {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Alert message ──────────────────────────────────────────── */
+
+.s9-alert__message {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Timestamp ──────────────────────────────────────────────── */
+
+.s9-alert__timestamp {
+  font-size: 0.6rem;
+  letter-spacing: var(--letter-spacing-normal);
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Dismiss button ─────────────────────────────────────────── */
+
+.s9-alert__dismiss {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  border: none;
+  padding: 0.25rem;
+}
+
+/* ── Dismissing state ───────────────────────────────────────── */
+
+.s9-alert--dismissing {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
