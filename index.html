@@ -158,8 +158,9 @@
 
     /* ── Left / right flex grow helpers ────────────── */
     .s9-ov__left .s9-panel:nth-child(1) { flex: 2; }
-    .s9-ov__left .s9-panel:nth-child(2) { flex: 1.5; }
+    .s9-ov__left .s9-panel:nth-child(2) { flex: 0 0 auto; }
     .s9-ov__left .s9-panel:nth-child(3) { flex: 1; }
+    [data-s9-id="neural-readout-1"] .s9-panel__body { flex: 0 0 auto; overflow-y: visible; }
     .s9-ov__right .s9-panel:nth-child(1) { flex: 1; }
     .s9-ov__right .s9-panel:nth-child(2) { flex: 2; }
 
@@ -519,7 +520,7 @@
     }
     .node-popup__table tr { line-height: 1.75; }
   </style>
-  <script type="module" crossorigin src="/assets/index-9GgbpaFm.js"></script>
+  <script type="module" crossorigin src="/assets/index-Cg8-a3kU.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-D_mHDXxc.css">
 </head>
 
@@ -551,7 +552,7 @@
   <aside class="s9-ov__left">
 
     <!-- DataStream -->
-    <div class="s9-panel" data-s9-id="data-stream-1">
+    <div class="s9-panel" data-s9-id="data-stream-1" style="flex:2;min-height:0;">
       <div class="s9-panel__header">
         <span class="s9-panel__header-label">DATA STREAM</span>
         <span class="s9-panel__header-jp">データストリーム</span>
@@ -597,7 +598,7 @@
     </div>
 
     <!-- SIGINT News Feed -->
-    <div class="s9-panel" data-s9-id="operative-log">
+    <div class="s9-panel" data-s9-id="operative-log" style="flex:1;min-height:0;">
       <div class="s9-panel__header">
         <span class="s9-panel__header-label">OPERATIVE LOG</span>
         <span class="s9-panel__header-jp">工作員記録</span>
@@ -621,6 +622,8 @@
            aria-label="GLOBAL THREAT VISUALIZATION"
            data-s9-id="threatmap-1" data-threat-level="0">
         <!-- canvas + overlay injected by initThreatMap() -->
+        <!-- Matrix rain: screen-blended overlay — additive in void, invisible on globe -->
+        <div id="matrix-rain-host" style="position:absolute;inset:0;z-index:1;pointer-events:none;"></div>
         <label class="globe-mode-toggle" title="Toggle satellite overlay">
           <input type="checkbox" id="sat-toggle" autocomplete="off" />
           <span class="globe-mode-toggle__track">
@@ -786,7 +789,7 @@
     </div>
 
     <!-- SYS METRICS -->
-    <div class="s9-panel" data-s9-id="sys-metrics">
+    <div class="s9-panel" data-s9-id="sys-metrics" style="flex:none;">
       <div class="s9-panel__header">
         <span class="s9-panel__header-label">SYS METRICS</span>
         <span class="s9-panel__header-jp">システム</span>
