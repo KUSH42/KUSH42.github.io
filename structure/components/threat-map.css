@@ -40,14 +40,14 @@
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 40px;
+  gap: 80px;
   white-space: nowrap;
 }
 
 /* Label displayed below the crosshair box */
 .s9-threatmap__crosshair-label {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 26px);
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -58,8 +58,8 @@
    transform: translate(-50%, -50%) centers the box on the projected node. */
 .s9-threatmap__crosshair {
   position: absolute;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   transform: translate(-50%, -50%);
   pointer-events: none;
   overflow: visible;
@@ -69,7 +69,7 @@
 .s9-threatmap__crosshair::before {
   content: '';
   position: absolute;
-  width: 1px;
+  width: 2px;
   height: 200%;
   left: 50%;
   top: -50%;
@@ -80,7 +80,7 @@
 .s9-threatmap__crosshair::after {
   content: '';
   position: absolute;
-  height: 1px;
+  height: 2px;
   width: 200%;
   top: 50%;
   left: -50%;
