@@ -178,6 +178,20 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
   globeFront.renderOrder = 2;
   scene.add(globeFront);
 
+  // Layer 3: glow wireframe — additively blended, bright enough to exceed bloom threshold
+  const globeGlowMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color('#00ffcc'),
+    wireframe:   true,
+    transparent: true,
+    opacity:     0.42,
+    blending:    THREE.AdditiveBlending,
+    depthTest:   false,
+    depthWrite:  false,
+  });
+  const globeGlow = new THREE.Mesh(globeGeo, globeGlowMat);
+  globeGlow.renderOrder = 3;
+  scene.add(globeGlow);
+
   // ── Orbit Controls ────────────────────────────────────────
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -197,7 +211,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
     bloomStrength,
     0.55,  // radius
-    0.75   // threshold — lower = more objects catch bloom
+    0.40   // threshold — lowered to let wireframe glow catch bloom
   );
   composer.addPass(bloomPass);
 
@@ -327,6 +341,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 0.4 
     globeBack,
     occluder,
     globeFront,
+    globeGlow,
     geoGroup: null,
     cameraLerpTarget: null,
     lastOrbitInteraction: 0,
@@ -460,6 +475,7 @@ export function destroyThreatMap(element) {
   if (state.globeBack)  { state.scene.remove(state.globeBack);  state.globeBack.material.dispose(); }
   if (state.occluder)   { state.scene.remove(state.occluder);   state.occluder.material.dispose(); }
   if (state.globeFront) { state.scene.remove(state.globeFront); state.globeFront.material.dispose(); }
+  if (state.globeGlow)  { state.scene.remove(state.globeGlow);  state.globeGlow.material.dispose(); }
 
   // Dispose satellite globe
   if (state.satelliteGroup) {

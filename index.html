@@ -406,6 +406,21 @@
     .s9-ov__right .s9-panel:nth-child(2) { flex: 3;    min-height: 0; }
     .s9-ov__right .s9-panel:nth-child(3) { flex: none; }
 
+    /* ── Mission timeline: distribute entries to fill panel height ── */
+    [data-s9-id="seq-log-right"] .s9-panel__body {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    [data-s9-id="seq-log-right"] .s9-sequence {
+      flex: 1;
+      height: 100%;
+    }
+    [data-s9-id="seq-log-right"] .s9-sequence__entry {
+      flex: 1;
+      min-height: 0;
+    }
+
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
       content: '';
