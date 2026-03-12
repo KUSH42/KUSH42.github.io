@@ -24,9 +24,11 @@
 
 .s9-threatmap__coords {
   font-family: var(--font-terminal);
-  font-size: 0.75rem;
-  letter-spacing: var(--letter-spacing-normal);
-  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-wide);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 6px var(--neon-cyan);
 }
 
 .s9-threatmap__node-count {
@@ -37,19 +39,24 @@
 
 .s9-threatmap__crosshair-label {
   font-family: var(--font-terminal);
-  font-size: 0.65rem;
+  font-size: 1.1rem;
+  font-weight: 700;
   letter-spacing: var(--letter-spacing-normal);
   color: var(--neon-cyan);
-  text-shadow: 0 0 6px var(--neon-cyan);
+  text-shadow:
+    0 0 8px var(--neon-cyan),
+    0 0 18px var(--neon-cyan),
+    0 0 32px var(--neon-cyan);
   text-transform: uppercase;
 }
 
 .s9-threatmap__crosshair {
   opacity: 0;
-  border: 1px solid var(--neon-cyan);
+  border: 2px solid var(--neon-cyan);
   box-shadow:
-    0 0 6px var(--neon-cyan),
-    inset 0 0 6px rgba(0, 212, 255, 0.08);
+    0 0 8px var(--neon-cyan),
+    0 0 18px var(--neon-cyan),
+    inset 0 0 10px rgba(0, 212, 255, 0.12);
 }
 
 .s9-threatmap__crosshair--visible {
@@ -60,7 +67,8 @@
 .s9-threatmap__crosshair::before,
 .s9-threatmap__crosshair::after {
   background: var(--neon-cyan);
-  opacity: 0.5;
+  box-shadow: 0 0 6px var(--neon-cyan), 0 0 14px var(--neon-cyan);
+  opacity: 0.9;
 }
 
 @media (prefers-reduced-motion: reduce) {

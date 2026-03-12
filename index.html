@@ -402,6 +402,67 @@
     }
 
 
+    /* ── Globe mode toggle ───────────────────────────────── */
+    .globe-mode-toggle {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      user-select: none;
+      padding: 4px 8px;
+      border: 1px solid var(--panel-border-dim);
+      background: rgba(0,0,0,0.45);
+      transition: border-color 0.15s;
+    }
+    .globe-mode-toggle:hover { border-color: var(--panel-border); }
+    .globe-mode-toggle input { display: none; }
+    .globe-mode-toggle__track {
+      width: 34px;
+      height: 16px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg-solid);
+      position: relative;
+      display: block;
+      flex-shrink: 0;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .globe-mode-toggle__knob {
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 10px; height: 10px;
+      background: var(--text-dim);
+      transition: transform 0.15s, background 0.15s;
+    }
+    .globe-mode-toggle input:checked ~ .globe-mode-toggle__track {
+      border-color: var(--neon-cyan);
+      background: color-mix(in srgb, var(--neon-cyan) 15%, transparent);
+    }
+    .globe-mode-toggle input:checked ~ .globe-mode-toggle__track .globe-mode-toggle__knob {
+      transform: translateX(18px);
+      background: var(--neon-cyan);
+      box-shadow: 0 0 6px var(--neon-cyan);
+    }
+    .globe-mode-toggle__label {
+      font-family: var(--font-terminal);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: var(--letter-spacing-wide);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      transition: color 0.15s, text-shadow 0.15s;
+    }
+    .globe-mode-toggle:has(input:checked) {
+      border-color: var(--panel-border-active);
+    }
+    .globe-mode-toggle:has(input:checked) .globe-mode-toggle__label {
+      color: var(--neon-cyan);
+      text-shadow: 0 0 6px var(--neon-cyan);
+    }
+
     /* ── Node detail popup ───────────────────────────────── */
     #node-popup {
       position: absolute;
@@ -535,10 +596,10 @@
             <span class="s9-neural__stat-label">CYBER INDEX</span>
             <span class="s9-neural__stat-value" id="cyber-index">98.4%</span>
           </div>
-          <div class="s9-neural__status-bar">
-            <div class="s9-neural__status-bar-label">GHOST INTEGRITY</div>
-            <div class="s9-neural__status-bar-track">
-              <div class="s9-neural__status-bar-fill" id="ghost-bar" style="width:98%"></div>
+          <div class="s9-neural__ekg">
+            <div class="s9-neural__ekg-header">
+              <span class="s9-neural__ekg-label">EKG BPM</span>
+              <span class="s9-neural__ekg-bpm"><span id="ekg-bpm">72</span> BPM</span>
             </div>
           </div>
         </div>
@@ -570,6 +631,13 @@
            aria-label="GLOBAL THREAT VISUALIZATION"
            data-s9-id="threatmap-1" data-threat-level="0">
         <!-- canvas + overlay injected by initThreatMap() -->
+        <label class="globe-mode-toggle" title="Toggle satellite overlay">
+          <input type="checkbox" id="sat-toggle" autocomplete="off" />
+          <span class="globe-mode-toggle__track">
+            <span class="globe-mode-toggle__knob"></span>
+          </span>
+          <span class="globe-mode-toggle__label">SAT</span>
+        </label>
       </div>
 
       <!-- Node detail popup — sibling of threatmap so it renders above the WebGL canvas -->
@@ -771,7 +839,7 @@ import { initMatrix, activateEdge, deactivateEdge, pulseNode,
 import { initThreatMap, addNode, removeNode, setActiveNode,
          setThreatLevel, updateNodeLevel, focusNode,
          pulseNode as pulseGlobeNode, spawnArc,
-         refreshThemeColors } from '/components/threat-map.js';
+         setSatelliteMode, refreshThemeColors } from '/components/threat-map.js';
 import { mountPanel }               from '/components/panel-shell.js';
 import { setStepState }             from '/components/sequence-log.js';
 
@@ -1238,7 +1306,11 @@ setInterval(stepNeural, 3000);
 
 // ── ThreatMap ─────────────────────────────────────────────────
 const threatEl = document.querySelector('.s9-threatmap');
-initThreatMap(threatEl, { autoRotate: true, bloomStrength: 0.5 });
+initThreatMap(threatEl, { autoRotate: true, bloomStrength: 0.9 });
+
+document.getElementById('sat-toggle').addEventListener('change', (e) => {
+  setSatelliteMode(threatEl, e.target.checked);
+});
 
 // Full city pool — initial set + reserve cities for dynamic add/remove
 const CITY_POOL = [
