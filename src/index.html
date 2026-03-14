@@ -606,7 +606,7 @@
       top: -13.25%;
       object-fit: contain;
       object-position: center center;
-      filter: grayscale(0.7) contrast(1.2) brightness(0.75) blur(0.36px);
+      filter: grayscale(0.7) contrast(1.2) brightness(0.75);
       display: block;
     }
 
@@ -616,21 +616,15 @@
       inset: 0;
       background: var(--neon-cyan);
       mix-blend-mode: color;
-      opacity: 0.45;
+      opacity: 0.05;
       pointer-events: none;
       z-index: 1;
     }
 
     /* ── Scanlines — slow drift downward with subtle opacity pulse ── */
-    @keyframes ts-scanlines-drift {
-      0%   { background-position: 0 0;   opacity: 0.38; }
-      30%  {                              opacity: 0.42; }
-      65%  {                              opacity: 0.36; }
-      100% { background-position: 0 8px; opacity: 0.38; }
-    }
     .s9-telescreen__scanlines {
       position: absolute;
-      inset: 0;
+      inset: -4px 0 0 0;
       background: repeating-linear-gradient(
         to bottom,
         transparent 0px,
@@ -641,7 +635,7 @@
       background-size: 100% 4px;
       pointer-events: none;
       z-index: 2;
-      animation: ts-scanlines-drift 3.2s linear infinite;
+      display: none;
     }
 
     /* Vignette */
@@ -663,12 +657,11 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      filter: grayscale(1) brightness(1.2) blur(7.2px) saturate(3);
-      mix-blend-mode: screen;
-      opacity: 0.5;
+      filter: sepia(0.4) blur(28px) brightness(1.6) saturate(1.4);
+      mix-blend-mode: soft-light;
+      opacity: 1.0;
       pointer-events: none;
-      z-index: 1;
-      transform: scale(1.265);
+      z-index: 5;
     }
 
     .s9-telescreen__bloom {
@@ -747,28 +740,28 @@
 
     /* ── Static scatter — three noise tiles at diff speeds/sizes ── */
     @keyframes ts-static-a {
-      0%   { transform: translate(0,    0);    opacity: 0.035; }
-      20%  { transform: translate(-3px, 2px);  opacity: 0.028; }
-      40%  { transform: translate(2px,  -1px); opacity: 0.040; }
-      60%  { transform: translate(-1px, 3px);  opacity: 0.030; }
-      80%  { transform: translate(3px,  -2px); opacity: 0.036; }
-      100% { transform: translate(0,    0);    opacity: 0.035; }
+      0%   { transform: translate(0,    0);    opacity: 0.015; }
+      20%  { transform: translate(-3px, 2px);  opacity: 0.012; }
+      40%  { transform: translate(2px,  -1px); opacity: 0.018; }
+      60%  { transform: translate(-1px, 3px);  opacity: 0.013; }
+      80%  { transform: translate(3px,  -2px); opacity: 0.016; }
+      100% { transform: translate(0,    0);    opacity: 0.015; }
     }
     @keyframes ts-static-b {
-      0%   { background-position: 0   0;   opacity: 0.022; }
-      25%  { background-position: 40px 10px; opacity: 0.018; }
-      50%  { background-position: 10px 30px; opacity: 0.026; }
-      75%  { background-position: 50px 20px; opacity: 0.020; }
-      100% { background-position: 0   0;   opacity: 0.022; }
+      0%   { background-position: 0   0;   opacity: 0.010; }
+      25%  { background-position: 40px 10px; opacity: 0.008; }
+      50%  { background-position: 10px 30px; opacity: 0.012; }
+      75%  { background-position: 50px 20px; opacity: 0.009; }
+      100% { background-position: 0   0;   opacity: 0.010; }
     }
     @keyframes ts-static-burst {
       /* rare opacity spike simulating static burst */
-      0%,  94%  { opacity: 0.015; }
-      95%       { opacity: 0.12; }
-      96%       { opacity: 0.04; }
-      97%       { opacity: 0.10; }
-      98%       { opacity: 0.015; }
-      100%      { opacity: 0.015; }
+      0%,  94%  { opacity: 0.008; }
+      95%       { opacity: 0.06; }
+      96%       { opacity: 0.02; }
+      97%       { opacity: 0.05; }
+      98%       { opacity: 0.008; }
+      100%      { opacity: 0.008; }
     }
     .s9-telescreen__static {
       position: absolute;
@@ -776,7 +769,7 @@
       overflow: hidden;
       pointer-events: none;
       z-index: 3;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='320' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.98' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='320' filter='url(%23n)'/%3E%3C/svg%3E");
       background-repeat: repeat;
       animation: ts-static-a 0.55s steps(3) infinite, ts-static-burst 23s steps(1) infinite;
       animation-delay: 0s, -7.2s;
@@ -787,23 +780,14 @@
       overflow: hidden;
       pointer-events: none;
       z-index: 3;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='480'%3E%3Cfilter id='n2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='480' filter='url(%23n2)'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2020/svg' width='240' height='480'%3E%3Cfilter id='n2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.88' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='480' filter='url(%23n2)'/%3E%3C/svg%3E");
       background-repeat: repeat;
       animation: ts-static-b 1.1s steps(2) infinite;
       animation-delay: -0.4s;
     }
 
-    /* ── Grain filter overlay ───────────────────────────────── */
-    .s9-telescreen__grain {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 4;
-      opacity: 0.28;
-      filter: url(#ts-grain-filter);
-      background: #888; /* neutral mid-gray — grain renders as luminance variation */
-      mix-blend-mode: overlay;
-    }
+    /* ── Grain filter overlay — hidden, grain drawn on canvas ── */
+    .s9-telescreen__grain { display: none; }
 
     /* Feed ID label bottom-left */
     .s9-telescreen__feed-id {
@@ -1032,6 +1016,7 @@
               <div class="s9-telescreen__phase-b"></div>
               <div class="s9-telescreen__phase-c"></div>
               <div class="s9-telescreen__grain"></div>
+              <canvas id="ts-glow-canvas" class="s9-telescreen__glow" aria-hidden="true"></canvas>
               <div class="s9-telescreen__rec">REC</div>
               <div class="s9-telescreen__feed-id">CH-04 // SEC9-FEED // ENCRYPTED</div>
             </div>
@@ -1657,6 +1642,237 @@ function _dynamicStream() {
   setInterval(emitStreamRow, _rnd(1200, 2800));
 }
 _dynamicStream();
+
+// ── Telescreen Feed — WebGL CRT shader (Timothy Lottes, public domain) ──
+{
+  const srcImg  = document.getElementById('ts-feed-src');
+  const feedCvs = document.getElementById('ts-feed-canvas');
+  const glowCvs = document.getElementById('ts-glow-canvas');
+  const glowCtx = glowCvs.getContext('2d');
+  const gl      = feedCvs.getContext('webgl');
+
+  const VS = `
+    attribute vec2 a_pos;
+    varying vec2 vUv;
+    void main() {
+      vUv = vec2(a_pos.x * 0.5 + 0.5, 0.5 - a_pos.y * 0.5);
+      gl_Position = vec4(a_pos, 0.0, 1.0);
+    }`;
+
+  // PUBLIC DOMAIN CRT STYLED SCAN-LINE SHADER by Timothy Lottes
+  const FS = `
+    precision mediump float;
+    uniform sampler2D tDiffuse;
+    uniform vec2  iResolution;
+    uniform float uTime;
+    uniform vec2  uImgOffset;
+    uniform vec2  uImgScale;
+    varying vec2  vUv;
+
+    const float hardScan  = -8.0;
+    const float hardPix   = -3.0;
+    const vec2  warp      = vec2(1.0/96.0, 1.0/72.0);
+    const float maskDark  = 0.5;
+    const float maskLight = 1.5;
+    const float scrollRate = 0.325; // scanlines/sec
+
+    float ToLinear1(float c) {
+      return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+    }
+    vec3 ToLinear(vec3 c) {
+      return vec3(ToLinear1(c.r), ToLinear1(c.g), ToLinear1(c.b));
+    }
+    float ToSrgb1(float c) {
+      return c < 0.0031308 ? c * 12.92 : 1.055 * pow(c, 0.41666) - 0.055;
+    }
+    vec3 ToSrgb(vec3 c) {
+      return vec3(ToSrgb1(c.r), ToSrgb1(c.g), ToSrgb1(c.b));
+    }
+
+    vec3 Fetch(vec2 pos, vec2 off) {
+      pos = floor(pos * iResolution + off) / iResolution;
+      if (max(abs(pos.x - 0.5), abs(pos.y - 0.5)) > 0.5) return vec3(0.0);
+      vec2 uv = (pos - uImgOffset) / uImgScale;
+      return ToLinear(texture2D(tDiffuse, uv, -16.0).rgb);
+    }
+
+    vec2 Dist(vec2 pos) {
+      pos = pos * iResolution;
+      pos.y += uTime * scrollRate;
+      return -((pos - floor(pos)) - vec2(0.5));
+    }
+
+    float Gaus(float pos, float scale) { return exp2(scale * pos * pos); }
+
+    vec3 Horz3(vec2 pos, float off) {
+      vec3 b = Fetch(pos, vec2(-1.0, off));
+      vec3 c = Fetch(pos, vec2( 0.0, off));
+      vec3 d = Fetch(pos, vec2( 1.0, off));
+      float dst = Dist(pos).x;
+      float wb = Gaus(dst - 1.0, hardPix);
+      float wc = Gaus(dst + 0.0, hardPix);
+      float wd = Gaus(dst + 1.0, hardPix);
+      return (b*wb + c*wc + d*wd) / (wb + wc + wd);
+    }
+
+    vec3 Horz5(vec2 pos, float off) {
+      vec3 a = Fetch(pos, vec2(-2.0, off));
+      vec3 b = Fetch(pos, vec2(-1.0, off));
+      vec3 c = Fetch(pos, vec2( 0.0, off));
+      vec3 d = Fetch(pos, vec2( 1.0, off));
+      vec3 e = Fetch(pos, vec2( 2.0, off));
+      float dst = Dist(pos).x;
+      float wa = Gaus(dst - 2.0, hardPix);
+      float wb = Gaus(dst - 1.0, hardPix);
+      float wc = Gaus(dst + 0.0, hardPix);
+      float wd = Gaus(dst + 1.0, hardPix);
+      float we = Gaus(dst + 2.0, hardPix);
+      return (a*wa + b*wb + c*wc + d*wd + e*we) / (wa + wb + wc + wd + we);
+    }
+
+    float Scan(vec2 pos, float off) {
+      return Gaus(Dist(pos).y + off, hardScan);
+    }
+
+    vec3 Tri(vec2 pos) {
+      vec3 a = Horz3(pos, -1.0);
+      vec3 b = Horz5(pos,  0.0);
+      vec3 c = Horz3(pos,  1.0);
+      return a * Scan(pos, -1.0) + b * Scan(pos, 0.0) + c * Scan(pos, 1.0);
+    }
+
+    vec2 Warp(vec2 pos) {
+      pos = pos * 2.0 - 1.0;
+      pos *= vec2(1.0 + pos.y * pos.y * warp.x, 1.0 + pos.x * pos.x * warp.y);
+      return pos * 0.5 + 0.5;
+    }
+
+    vec3 Mask(vec2 pos) {
+      pos.x += pos.y * 3.0;
+      vec3 mask = vec3(maskDark);
+      pos.x = fract(pos.x / 6.0);
+      if      (pos.x < 0.333) mask.r = maskLight;
+      else if (pos.x < 0.666) mask.g = maskLight;
+      else                    mask.b = maskLight;
+      return mask;
+    }
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+
+    void main() {
+      vec2 pos = Warp(vUv);
+      vec3 col = Tri(pos) * Mask(gl_FragCoord.xy);
+      float grain = (hash(gl_FragCoord.xy + fract(uTime * 73.0)) * 2.0 - 1.0) * 0.04;
+      col += grain;
+      gl_FragColor = vec4(ToSrgb(col), 1.0);
+    }`;
+
+  function makeShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+  }
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, makeShader(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, makeShader(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  // Fullscreen quad
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const uLocs = {
+    res:       gl.getUniformLocation(prog, 'iResolution'),
+    time:      gl.getUniformLocation(prog, 'uTime'),
+    imgOffset: gl.getUniformLocation(prog, 'uImgOffset'),
+    imgScale:  gl.getUniformLocation(prog, 'uImgScale'),
+    diffuse:   gl.getUniformLocation(prog, 'tDiffuse'),
+  };
+
+  // Image texture
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.uniform1i(uLocs.diffuse, 0);
+
+  let texReady  = false;
+  let startTime = null;
+
+  function uploadTexture() {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcImg);
+    texReady = true;
+  }
+
+  function imgRect(cw, ch, sw, sh) {
+    const scale = Math.max(cw / sw, ch / sh) * 0.8;
+    const dw = sw * scale, dh = sh * scale;
+    return { ox: (cw - dw) / 2 / cw, oy: (ch - dh) / 2 / ch, sx: dw / cw, sy: dh / ch };
+  }
+
+  function sizeFeed() {
+    const w = feedCvs.clientWidth  || 576;
+    const h = feedCvs.clientHeight || 432;
+    feedCvs.width = w;  feedCvs.height = h;
+    glowCvs.width = w;  glowCvs.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+
+  function drawGlow() {
+    if (!srcImg.naturalWidth) return;
+    const cw = glowCvs.width, ch = glowCvs.height;
+    const sw = srcImg.naturalWidth, sh = srcImg.naturalHeight;
+    const scale = Math.max(cw / sw, ch / sh) * 0.8;
+    const dw = sw * scale, dh = sh * scale;
+    glowCtx.clearRect(0, 0, cw, ch);
+    glowCtx.drawImage(srcImg, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+  }
+
+  function render(ts) {
+    if (!startTime) startTime = ts;
+    const t = (ts - startTime) / 1000;
+
+    if (texReady) {
+      const cw = feedCvs.width, ch = feedCvs.height;
+      const sw = srcImg.naturalWidth, sh = srcImg.naturalHeight;
+      // iResolution: ch/2 → one scanline per 2 canvas pixels
+      const resY = ch / 2, resX = (cw / ch) * resY;
+      gl.uniform2f(uLocs.res, resX, resY);
+      gl.uniform1f(uLocs.time, t);
+      const r = imgRect(cw, ch, sw, sh);
+      gl.uniform2f(uLocs.imgOffset, r.ox, r.oy);
+      gl.uniform2f(uLocs.imgScale,  r.sx, r.sy);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    drawGlow();
+    requestAnimationFrame(render);
+  }
+
+  function boot() {
+    sizeFeed();
+    uploadTexture();
+    requestAnimationFrame(render);
+  }
+
+  if (srcImg.complete && srcImg.naturalWidth) boot();
+  else srcImg.addEventListener('load', boot);
+
+  new ResizeObserver(() => { sizeFeed(); drawGlow(); }).observe(feedCvs);
+}
 
 // ── Telemetry metrics ──────────────────────────────────────────
 const metrics = { cpu: 42, mem: 61, net: 12, ghost: 77, enc: 96 };
@@ -2310,25 +2526,6 @@ function initNetworkMatrix() {
 }
 
 
-// ── Telescreen grain animation ────────────────────────────────
-(function () {
-  const grainTurb = document.getElementById('ts-grain-turb');
-  if (!grainTurb) return;
-  let frame = 0;
-  let lastSeed = 2;
-  function tickGrain() {
-    frame++;
-    const interval = 2 + (frame % 3 === 0 ? 1 : 0) + (frame % 7 === 0 ? 1 : 0);
-    if (frame % interval === 0) {
-      let seed;
-      do { seed = (Math.random() * 999 + 1) | 0; } while (seed === lastSeed);
-      lastSeed = seed;
-      grainTurb.setAttribute('seed', seed);
-    }
-    requestAnimationFrame(tickGrain);
-  }
-  requestAnimationFrame(tickGrain);
-}());
 </script>
 </body>
 

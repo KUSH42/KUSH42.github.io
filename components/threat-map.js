@@ -47,16 +47,23 @@ function latLngToVec3(lat, lng, radius = 1.03) {
   );
 }
 
-// ── CSS color reader ───────────────────────────────────────────
+// ── CSS color reader (cached) ──────────────────────────────────
 
-function _readCSSColors() {
+let _colorCache = null;
+let _colorCacheTime = 0;
+
+function _readCSSColors(force = false) {
+  const now = Date.now();
+  if (!force && _colorCache && now - _colorCacheTime < 500) return _colorCache;
   const style = getComputedStyle(document.documentElement);
-  return {
+  _colorCache = {
     neonCyan:    style.getPropertyValue('--neon-cyan').trim(),
     neonGreen:   style.getPropertyValue('--neon-green').trim(),
     neonAmber:   style.getPropertyValue('--neon-amber').trim(),
     neonMagenta: style.getPropertyValue('--neon-magenta').trim(),
   };
+  _colorCacheTime = now;
+  return _colorCache;
 }
 
 // ── Node color by threat level ────────────────────────────────
@@ -67,26 +74,55 @@ function _levelColor(level, colors) {
   return colors.neonMagenta;
 }
 
-// ── GlobeShiftShader ──────────────────────────────────────────
-// Subtle horizontal RGB channel shift — barely-there at rest,
-// gentle pulse on events. Clean, not CRT-glitchy.
+// ── HoloShader ────────────────────────────────────────────────
+// Combined holographic display post-process pass:
+//   - Edge-weighted chromatic aberration (lens distortion aesthetic)
+//   - Subtle scanlines (military CRT monitor look)
+//   - Radial vignette darkening edges
+// Replaces the old per-frame CSS filter which forced CPU compositing.
 
-const GlobeGlitchShader = {
+const HoloShader = {
   uniforms: {
-    tDiffuse:  { value: null },
-    shiftAmt:  { value: 0.9 },
+    tDiffuse:         { value: null },
+    time:             { value: 0.0 },
+    vignetteStrength: { value: 0.50 },
+    scanlineOpacity:  { value: 0.035 },
+    aberrationAmt:    { value: 0.0022 },
   },
-  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
   fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
-    uniform float shiftAmt;
-    varying vec2 vUv;
-    void main(){
-      float s = shiftAmt * 0.0012;
-      float r = texture2D(tDiffuse, vec2(vUv.x + s, vUv.y)).r;
-      float g = texture2D(tDiffuse, vUv).g;
-      float b = texture2D(tDiffuse, vec2(vUv.x - s, vUv.y)).b;
-      gl_FragColor = vec4(vec3(r, g, b), 1.0);
+    uniform float     time;
+    uniform float     vignetteStrength;
+    uniform float     scanlineOpacity;
+    uniform float     aberrationAmt;
+    varying vec2      vUv;
+
+    void main() {
+      // Edge-weighted chromatic aberration — stronger at corners, zero at center
+      vec2  ctr    = vUv - 0.5;
+      float edgeSq = dot(ctr, ctr) * 4.0;   // 0 at center → 1 at corners
+      float s      = aberrationAmt * edgeSq;
+
+      vec2 uvR = clamp(vUv + ctr * s,       0.001, 0.999);
+      vec2 uvB = clamp(vUv - ctr * s,       0.001, 0.999);
+
+      float r = texture2D(tDiffuse, uvR).r;
+      float g = texture2D(tDiffuse, vUv ).g;
+      float b = texture2D(tDiffuse, uvB ).b;
+
+      vec3 col = vec3(r, g, b);
+
+      // Scanlines — thin horizontal bands, very low opacity
+      float scan = sin(vUv.y * 640.0) * 0.5 + 0.5;
+      col *= 1.0 - scanlineOpacity * (1.0 - scan);
+
+      // Radial vignette
+      float vig = 1.0 - edgeSq * vignetteStrength;
+      col *= vig;
+
+      // Preserve original alpha — critical for alpha:true renderer transparent canvas
+      gl_FragColor = vec4(col, texture2D(tDiffuse, vUv).a);
     }
   `,
 };
@@ -107,11 +143,10 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
   const colors = _readCSSColors();
 
   // ── Renderer ─────────────────────────────────────────────
-  const renderer = new THREE.WebGLRenderer({ E: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(element.clientWidth || 800, element.clientHeight || 600);
   renderer.domElement.classList.add('s9-threatmap__canvas');
-  renderer.domElement.style.filter = 'blur(0.66px) drop-shadow(0 1 4px rgba(0,200,255,0.84))';
   element.appendChild(renderer.domElement);
 
   // ── Scene + Camera ────────────────────────────────────────
@@ -235,7 +270,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
     `,
     transparent: true,
     blending:    THREE.AdditiveBlending,
-    depthWrite:  true,
+    depthWrite:  false,
     side:        THREE.FrontSide,
   });
   const rimMesh = new THREE.Mesh(rimGeo, rimMat);
@@ -261,15 +296,17 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
-    bloomStrength * 1.8,
-    1.525, // radius
-    0.45   // threshold
+    bloomStrength * 1.8,  // preserve original effective strength (1.7 default → 3.06)
+    1.2,                  // radius: slightly tighter than original 1.525, still wide enough for wireframe glow
+    0.40                  // threshold: close to original 0.45
   );
   composer.addPass(bloomPass);
 
-  const glitchPass = new ShaderPass(GlobeGlitchShader);
-  glitchPass.enabled = false;
-  composer.addPass(glitchPass);
+  // Holographic display effects — vignette + scanlines + chromatic aberration
+  // OutputPass intentionally omitted: renderer.outputColorSpace handles sRGB conversion,
+  // and OutputPass with alpha:true renderer would overwrite alpha→1 (opaque black canvas).
+  const holoPass = new ShaderPass(HoloShader);
+  composer.addPass(holoPass);
 
   // ── Overlay DOM ───────────────────────────────────────────
   const overlay = document.createElement('div');
@@ -289,16 +326,6 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
     <div class="s9-threatmap__node-count">NODES: 0</div>
   `;
   element.appendChild(overlay);
-
-  // ── Animation loop ────────────────────────────────────────
-  let animFrameId = null;
-
-  function animate() {
-    animFrameId = requestAnimationFrame(animate);
-    controls.update();
-    composer.render();
-  }
-  animate();
 
   // ── Auto-rotate pause on user interaction ─────────────────
   let resumeTimer = null;
@@ -373,7 +400,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
 
   // ── Store state ───────────────────────────────────────────
   _state.set(element, {
-    animFrameId,
+    animFrameId: null,
     renderer,
     composer,
     bloomPass,
@@ -405,18 +432,11 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
     satelliteMode: false,
     sunAngle: Math.random() * Math.PI * 2,
     satelliteGroup: null,
-    glitchPass,
-    glitchActive: null,
-    glitchNext: performance.now() + 8000 + Math.random() * 12000,
+    holoPass,
+    nodeGeo: new THREE.SphereGeometry(0.02, 8, 8),
   });
 
-  // Store animFrameId after initial call
   const state = _state.get(element);
-  state.animFrameId = animFrameId;
-
-  // Patch: keep animFrameId updated in the closure
-  // Re-assign the animate fn to capture live state
-  cancelAnimationFrame(animFrameId);
 
   function animateLoop() {
     const s = _state.get(element);
@@ -461,8 +481,8 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
       ).normalize();
     }
 
-    // Tick glitch cycle
-    _tickGlitch(s);
+    // Update holo pass time uniform for animated effects
+    if (s.holoPass) s.holoPass.uniforms.time.value = performance.now() * 0.001;
 
     // Track crosshair to active node via 3D→2D projection
     if (s.activeNodeId !== null) {
@@ -511,12 +531,12 @@ export function destroyThreatMap(element) {
   state.resizeObserver.disconnect();
   state.abortController.abort();
 
-  // Dispose nodes
+  // Dispose nodes (geometry is shared — dispose it once below, not per-mesh)
   for (const [, record] of state.nodeMap) {
-    record.mesh.geometry.dispose();
     record.mesh.material.dispose();
     state.scene.remove(record.mesh);
   }
+  if (state.nodeGeo) state.nodeGeo.dispose();
 
   // Dispose edges
   for (const [, record] of state.edgeMap) {
@@ -568,6 +588,7 @@ export function destroyThreatMap(element) {
     state.scene.remove(state.geoGroup);
   }
 
+  if (state.holoPass) state.holoPass.material.dispose();
   state.composer.dispose();
   state.renderer.dispose();
 
@@ -601,9 +622,11 @@ export function addNode(element, { id, lat, lng, label, level }) {
   const colors = _readCSSColors();
   const colorHex = _levelColor(level, colors);
 
-  const geo = new THREE.SphereGeometry(0.02, 8, 8);
+  // Reuse shared node geometry — all nodes are the same sphere
   const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorHex) });
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(state.nodeGeo, mat);
+
+  mesh.renderOrder = 5;
 
   const pos = latLngToVec3(lat, lng);
   mesh.position.copy(pos);
@@ -650,8 +673,7 @@ export function removeNode(element, nodeId) {
     }
   }
 
-  record.mesh.geometry.dispose();
-  record.mesh.material.dispose();
+  record.mesh.material.dispose();  // geometry is shared — only dispose material
   state.scene.remove(record.mesh);
   state.nodeMap.delete(nodeId);
 
@@ -916,64 +938,44 @@ async function _loadGeoLines(element) {
   const geoGroup = new THREE.Group();
   const lineColor = state.cyanColor;
 
-  // ── Coastlines / land outline (brighter) ──────────────────
+  // ── Coastlines / land outline ─────────────────────────────
+  // Merged into 3 LineSegments draw calls (vs thousands of Line objects).
   const landBorders = topoMesh(topo, topo.objects.land);
+
   const coastMat = new THREE.LineBasicMaterial({
-    color:       lineColor,
-    transparent: true,
-    opacity:     0.85,
-    depthWrite:  true,
+    color: lineColor, transparent: true, opacity: 0.85, depthWrite: true,
   });
-  // Inner glow halo
   const coastGlowMat = new THREE.LineBasicMaterial({
-    color:       lineColor,
-    transparent: true,
-    opacity:     0.8,
-    blending:    THREE.AdditiveBlending,
-    depthWrite:  true,
+    color: lineColor, transparent: true, opacity: 0.8,
+    blending: THREE.AdditiveBlending, depthWrite: true,
   });
-  // Outer soft halo
   const coastGlowWideMat = new THREE.LineBasicMaterial({
-    color:       lineColor,
-    transparent: true,
-    opacity:     0.45,
-    blending:    THREE.AdditiveBlending,
-    depthWrite:  false,
+    color: lineColor, transparent: true, opacity: 0.45,
+    blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  for (const coords of landBorders.coordinates) {
-    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.002));
-    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.006));
-    const widePts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.011));
-    const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     coastMat);
-    const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), coastGlowMat);
-    const wideGlow = new THREE.Line(new THREE.BufferGeometry().setFromPoints(widePts), coastGlowWideMat);
-    line.userData.geoType = glow.userData.geoType = wideGlow.userData.geoType = 'coast';
-    geoGroup.add(wideGlow, glow, line);
-  }
+
+  const coastLine     = new THREE.LineSegments(_ringsToSegments(landBorders.coordinates, 1.002), coastMat);
+  const coastGlow     = new THREE.LineSegments(_ringsToSegments(landBorders.coordinates, 1.006), coastGlowMat);
+  const coastWideGlow = new THREE.LineSegments(_ringsToSegments(landBorders.coordinates, 1.011), coastGlowWideMat);
+  coastLine.userData.geoType = coastGlow.userData.geoType = coastWideGlow.userData.geoType = 'coast';
+  geoGroup.add(coastWideGlow, coastGlow, coastLine);
 
   // ── Interior country borders (dimmer) ─────────────────────
+  // Merged into 2 LineSegments draw calls.
   const countryBorders = topoMesh(topo, topo.objects.countries, (a, b) => a !== b);
+
   const borderMat = new THREE.LineBasicMaterial({
-    color:       lineColor,
-    transparent: true,
-    opacity:     0.35,
-    depthWrite:  true,
+    color: lineColor, transparent: true, opacity: 0.35, depthWrite: true,
   });
   const borderGlowMat = new THREE.LineBasicMaterial({
-    color:       lineColor,
-    transparent: true,
-    opacity:     0.15,
-    blending:    THREE.AdditiveBlending,
-    depthWrite:  false,
+    color: lineColor, transparent: true, opacity: 0.15,
+    blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  for (const coords of countryBorders.coordinates) {
-    const pts      = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.012));
-    const glowPts  = coords.map(([lng, lat]) => latLngToVec3(lat, lng, 1.022));
-    const line     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),     borderMat);
-    const glow     = new THREE.Line(new THREE.BufferGeometry().setFromPoints(glowPts), borderGlowMat);
-    line.userData.geoType = glow.userData.geoType = 'border';
-    geoGroup.add(glow, line);
-  }
+
+  const borderLine = new THREE.LineSegments(_ringsToSegments(countryBorders.coordinates, 1.012), borderMat);
+  const borderGlow = new THREE.LineSegments(_ringsToSegments(countryBorders.coordinates, 1.022), borderGlowMat);
+  borderLine.userData.geoType = borderGlow.userData.geoType = 'border';
+  geoGroup.add(borderGlow, borderLine);
 
   state.scene.add(geoGroup);
   // If satellite mode was enabled before geo lines finished loading, keep them hidden
@@ -991,17 +993,25 @@ function _updateNodeCount(element) {
   }
 }
 
-// ── _tickGlitch ───────────────────────────────────────────────
-// Drives the subtle RGB-shift cycle.
-// At rest: near-zero constant base that slowly breathes.
-// Events: gentle pulse every 8–20 s, smooth bell envelope.
+// ── _ringsToSegments ──────────────────────────────────────────
+// Convert an array of polygon rings (each a [[lng,lat]...] array) into a
+// single merged LineSegments BufferGeometry. Each consecutive pair of ring
+// vertices becomes one segment. This collapses N*rings draw calls into one.
 
-function _tickGlitch(state) {
-  const gp = state.glitchPass;
-  if (!gp) return;
-  const t = performance.now() * 0.001;
-  // Constant slow-breathing shift — no pulse events
-  gp.uniforms.shiftAmt.value = 0.4 + Math.sin(t * 0.6) * 0.2;
+function _ringsToSegments(coordsList, radius) {
+  const verts = [];
+  for (const coords of coordsList) {
+    for (let i = 0; i < coords.length - 1; i++) {
+      const [lng0, lat0] = coords[i];
+      const [lng1, lat1] = coords[i + 1];
+      const p0 = latLngToVec3(lat0, lng0, radius);
+      const p1 = latLngToVec3(lat1, lng1, radius);
+      verts.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+  return geo;
 }
 
 // ── pulseNode ─────────────────────────────────────────────────
@@ -1034,6 +1044,7 @@ export function pulseNode(element, nodeId) {
     depthWrite: false,
   });
   const ring = new THREE.LineLoop(geo, mat);
+  ring.renderOrder = 5;
   ring.position.copy(record.mesh.position);
   const outward = record.mesh.position.clone().normalize();
   ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), outward);
@@ -1062,7 +1073,7 @@ export function refreshThemeColors(element) {
   const state = _state.get(element);
   if (!state) return;
 
-  const colors = _readCSSColors();
+  const colors = _readCSSColors(true);  // force-refresh on theme change
   state.colors = colors;
 
   // Globe wireframe layers

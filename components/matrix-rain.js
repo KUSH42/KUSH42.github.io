@@ -9,6 +9,10 @@
  */
 
 import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }      from 'three/addons/postprocessing/ShaderPass.js';
 
 // ── Glyph set (Matrix-Code.ttf — Rezmason/matrix, MIT license) ──
 const GLYPHS = [
@@ -18,6 +22,49 @@ const GLYPHS = [
   ...':."*+<>|¦╌▪꞊',
 ];
 const ATLAS_PX = 96;  // canvas pixels per glyph cell
+
+// ── RainHoloShader ────────────────────────────────────────────
+// Post-process pass mirroring the threat-map HoloShader:
+//   chromatic aberration (edge-weighted) + scanlines + vignette.
+// mix-blend-mode:screen on the canvas makes the black background invisible,
+// so bloom and holo effects work cleanly without alpha compositing issues.
+
+const RainHoloShader = {
+  uniforms: {
+    tDiffuse:         { value: null },
+    time:             { value: 0.0 },
+    vignetteStrength: { value: 0.42 },
+    scanlineOpacity:  { value: 0.045 },
+    aberrationAmt:    { value: 0.0025 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float     time;
+    uniform float     vignetteStrength;
+    uniform float     scanlineOpacity;
+    uniform float     aberrationAmt;
+    varying vec2      vUv;
+    void main() {
+      vec2  ctr    = vUv - 0.5;
+      float edgeSq = dot(ctr, ctr) * 4.0;
+      float s      = aberrationAmt * edgeSq;
+      vec2 uvR = clamp(vUv + ctr * s, 0.001, 0.999);
+      vec2 uvB = clamp(vUv - ctr * s, 0.001, 0.999);
+      float r = texture2D(tDiffuse, uvR).r;
+      float g = texture2D(tDiffuse, vUv ).g;
+      float b = texture2D(tDiffuse, uvB ).b;
+      vec3 col = vec3(r, g, b);
+      float scan = sin(vUv.y * 640.0) * 0.5 + 0.5;
+      col *= 1.0 - scanlineOpacity * (1.0 - scan);
+      float vig = 1.0 - edgeSq * vignetteStrength;
+      col *= vig;
+      // Preserve alpha from render target — transparent background stays transparent
+      // so mix-blend-mode:screen on the canvas correctly composites over the globe.
+      gl_FragColor = vec4(col, texture2D(tDiffuse, vUv).a);
+    }
+  `,
+};
 
 // ── Scene constants ───────────────────────────────────────────
 const N_COLS     = 2400;
@@ -160,7 +207,6 @@ varying float vRowIdx;
 varying float vAlpha;
 varying float vTrail;
 varying float vDepthDim;
-varying float vSpeed;
 
 float hash(vec2 v) {
   vec2 s = fract(v * vec2(0.1031, 0.1030));
@@ -173,7 +219,6 @@ void main() {
   vColIdx = aColIdx;
   vRowIdx = aRowIdx;
   vTrail  = aTrail;
-  vSpeed  = aSpeed;
 
   // Per-column spacing compression: 0–33% tighter
   float spacingFactor = 1.0 - 0.33 * hash(vec2(aColIdx * 0.61, 0.29));
@@ -196,11 +241,7 @@ void main() {
   vDist = (cellY - headY) / cellStep;
 
   // Cull cells ahead of the head or far enough behind that decay is invisible
-  if (vDist < -0.5) {
-    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-    return;
-  }
-  if (vDist > uNRows * 1.2) {
+  if (vDist < -0.5 || vDist > uNRows * 1.2) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
@@ -245,9 +286,9 @@ precision highp float;
 uniform sampler2D uGlyphTex;
 uniform float     uGlyphCount;
 uniform float     uTime;
-uniform float     uFrame;
 uniform vec3      uColor;
 uniform float     uNRows;
+uniform float     uGlobalAlpha;
 
 varying vec2  vUv;
 varying float vDist;
@@ -256,7 +297,6 @@ varying float vRowIdx;
 varying float vAlpha;
 varying float vTrail;
 varying float vDepthDim;
-varying float vSpeed;
 
 // Stable hash — keeps inputs small with fract() to avoid GPU sin() precision issues
 float h2(vec2 v) {
@@ -292,10 +332,10 @@ void main() {
   float mask   = texture2D(uGlyphTex, vec2(vUv.x, atlasV)).r;
   if (mask < 0.06) discard;
 
-  // Film grain
+  // Film grain — UV-based so it moves with the geometry, not screen-fixed
   float grain = h2(vec2(
-    gl_FragCoord.x * 0.73 + gl_FragCoord.y * 0.41,
-    uTime * 7.3 + vColIdx * 0.17
+    vUv.x * 47.3 + vUv.y * 31.7 + vColIdx * 0.53,
+    uTime * 7.3 + vRowIdx * 0.19
   ));
   grain = (grain - 0.5) * 0.08;
 
@@ -309,7 +349,7 @@ void main() {
   // Moderate contrast: pow curve adds depth without killing trails
   float rawBright = trail * mask * vAlpha * vDepthDim;
   float contrast  = pow(rawBright, 1.05);
-  float alpha     = contrast;
+  float alpha     = contrast * uGlobalAlpha;
   gl_FragColor    = vec4(col2 * alpha, alpha);
 }
 `;
@@ -332,16 +372,19 @@ export function initMatrixRain(element, opts = {}) {
   const rgb = new THREE.Color(color);
 
   const atlas = buildAtlas();
+  // alpha:true preserves transparent background — mix-blend-mode:screen on the canvas
+  // composites glyphs additively over the globe while background stays transparent.
+  // (alpha:false + screen blend would work mathematically but OutputPass/EffectComposer
+  // intermediate passes force alpha=1, making the canvas opaque and occluding the globe.)
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(element.clientWidth || 1, element.clientHeight || 1);
 
   const canvas = renderer.domElement;
+  // No CSS filter — bloom + holo pass handle all glow/aberration GPU-side
   canvas.style.cssText =
     'position:absolute;inset:0;width:100%;height:100%;' +
-    'pointer-events:none;z-index:0;mix-blend-mode:screen;' +
-    'filter:blur(0.15px) drop-shadow(0 0 3px rgba(0,255,112,0.3));';
-  canvas.style.opacity = String(opacity);
+    'pointer-events:none;z-index:0;mix-blend-mode:screen;';
   element.appendChild(canvas);
 
   const scene  = new THREE.Scene();
@@ -368,15 +411,15 @@ export function initMatrixRain(element, opts = {}) {
   const geom = buildGeometry();
 
   const uniforms = {
-    uGlyphTex:   { value: atlas.tex },
-    uGlyphCount: { value: atlas.count },
-    uTime:       { value: 0 },
-    uFrame:      { value: 0 },
-    uCellW:      { value: CELL_W },
-    uCellH:      { value: CELL_H },
-    uWorldH:     { value: WORLD_H },
-    uNRows:      { value: N_ROWS },
-    uColor:      { value: new THREE.Vector3(rgb.r, rgb.g, rgb.b) },
+    uGlyphTex:    { value: atlas.tex },
+    uGlyphCount:  { value: atlas.count },
+    uTime:        { value: 0 },
+    uCellW:       { value: CELL_W },
+    uCellH:       { value: CELL_H },
+    uWorldH:      { value: WORLD_H },
+    uNRows:       { value: N_ROWS },
+    uColor:       { value: new THREE.Vector3(rgb.r, rgb.g, rgb.b) },
+    uGlobalAlpha: { value: opacity },
   };
 
   const material = new THREE.ShaderMaterial({
@@ -394,13 +437,34 @@ export function initMatrixRain(element, opts = {}) {
   mesh.renderOrder = 1;
   scene.add(mesh);
 
-  const s = { renderer, material, geom, atlas, occluderGeo, occluderMat, ro: null, animId: 0, syncCamera };
+  // ── Post-processing pipeline ─────────────────────────────
+  const w0 = element.clientWidth  || 1;
+  const h0 = element.clientHeight || 1;
+
+  const composer  = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(w0, h0),
+    1.15,  // strength — amplify glyph glow
+    0.45,  // radius — tight halos, not diffuse smear
+    0.08   // low threshold — catch dim trail glyphs too
+  );
+  composer.addPass(bloomPass);
+
+  const holoPass = new ShaderPass(RainHoloShader);
+  composer.addPass(holoPass);
+  // OutputPass intentionally omitted: it forces alpha=1 on every pixel, which would
+  // make the transparent canvas opaque and occlude the globe behind it.
+
+  const s = { renderer, composer, bloomPass, holoPass, material, geom, atlas, occluderGeo, occluderMat, ro: null, animId: 0, syncCamera };
   _state.set(element, s);
 
   function animate(ts) {
     s.animId = requestAnimationFrame(animate);
-    uniforms.uTime.value = ts * 0.001;
-    uniforms.uFrame.value += 1;
+    const t = ts * 0.001;
+    uniforms.uTime.value       = t;
+    holoPass.uniforms.time.value = t;
     if (s.syncCamera) {
       camera.position.copy(s.syncCamera.position);
       camera.quaternion.copy(s.syncCamera.quaternion);
@@ -409,7 +473,7 @@ export function initMatrixRain(element, opts = {}) {
       camera.far  = s.syncCamera.far;
       camera.updateProjectionMatrix();
     }
-    renderer.render(scene, camera);
+    s.composer.render();
   }
   s.animId = requestAnimationFrame(animate);
 
@@ -417,6 +481,8 @@ export function initMatrixRain(element, opts = {}) {
     const w = element.clientWidth  || 1;
     const h = element.clientHeight || 1;
     renderer.setSize(w, h);
+    s.composer.setSize(w, h);
+    s.bloomPass.resolution.set(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   });
@@ -443,7 +509,7 @@ export function initMatrixRain(element, opts = {}) {
       const c = new THREE.Color(hex);
       uniforms.uColor.value.set(c.r, c.g, c.b);
     },
-    setOpacity(v) { canvas.style.opacity = String(v); },
+    setOpacity(v) { uniforms.uGlobalAlpha.value = v; },
   };
 }
 
@@ -452,6 +518,8 @@ export function destroyMatrixRain(element) {
   if (!s) return;
   cancelAnimationFrame(s.animId);
   s.ro.disconnect();
+  if (s.holoPass) s.holoPass.material.dispose();
+  s.composer.dispose();
   s.material.dispose();
   s.geom.dispose();
   s.occluderGeo.dispose();
