@@ -602,8 +602,7 @@
       position: absolute;
       inset: 0;
       width: 100%;
-      height: 126.5%;
-      top: -13.25%;
+      height: 100%;
       object-fit: contain;
       object-position: center center;
       filter: grayscale(0.7) contrast(1.2) brightness(0.75);
@@ -991,20 +990,12 @@
             <span class="s9-panel__header-status" id="telescreen-status">● FEED ACTIVE</span>
           </div>
           <div class="s9-panel__body" style="padding:0;position:relative;">
-            <!-- SVG grain filter — seed updated by JS each frame -->
-            <svg width="0" height="0" style="position:absolute">
-              <defs>
-                <filter id="ts-grain-filter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
-                  <feTurbulence id="ts-grain-turb" type="fractalNoise" baseFrequency="0.72 0.68" numOctaves="4" seed="2" stitchTiles="stitch" result="noise"/>
-                  <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
-                  <feBlend in="SourceGraphic" in2="gray" mode="overlay"/>
-                </filter>
-              </defs>
-            </svg>
+            <!-- Hidden source image — canvas draws low-res version from this -->
+            <img id="ts-feed-src" src="/data/section-9.jpg" alt="" aria-hidden="true"
+                 style="display:none" />
 
             <div class="s9-telescreen">
-              <img id="ts-feed-src" src="/data/section-9.jpg" alt="SURVEILLANCE FEED"
-                   class="s9-telescreen__img" />
+              <canvas id="ts-feed-canvas" class="s9-telescreen__img" aria-label="SURVEILLANCE FEED"></canvas>
               <canvas id="ts-glow-canvas" class="s9-telescreen__glow" aria-hidden="true"></canvas>
               <div class="s9-telescreen__tint"></div>
               <div class="s9-telescreen__static"></div>
@@ -1016,7 +1007,6 @@
               <div class="s9-telescreen__phase-b"></div>
               <div class="s9-telescreen__phase-c"></div>
               <div class="s9-telescreen__grain"></div>
-              <canvas id="ts-glow-canvas" class="s9-telescreen__glow" aria-hidden="true"></canvas>
               <div class="s9-telescreen__rec">REC</div>
               <div class="s9-telescreen__feed-id">CH-04 // SEC9-FEED // ENCRYPTED</div>
             </div>
