@@ -175,7 +175,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
     color: cyanColor,
     wireframe: true,
     transparent: true,
-    opacity: 0.005,
+    opacity: 0.014,
     depthTest: true,
     depthWrite: true,
     side: THREE.BackSide,
@@ -219,7 +219,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
     color: cyanColor,
     wireframe: true,
     transparent: true,
-    opacity: 0.002,
+    opacity: 0.007,
     depthTest: true,
     depthWrite: false,
     side: THREE.FrontSide,
@@ -233,7 +233,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
     color: cyanColor,
     wireframe:   true,
     transparent: true,
-    opacity:     0.0061,
+    opacity:     0.015,
     blending:    THREE.AdditiveBlending,
     depthTest:   true,
     depthWrite:  false,
@@ -264,7 +264,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
       varying vec3 vViewDir;
       void main() {
         float rim   = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-        float alpha = pow(rim, 4.5) * 0.55;
+        float alpha = pow(rim, 3.5) * 0.75;
         gl_FragColor = vec4(uColor * alpha, alpha);
       }
     `,
@@ -296,9 +296,9 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7 
 
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(element.clientWidth || 800, element.clientHeight || 600),
-    bloomStrength * 1.8,  // preserve original effective strength (1.7 default → 3.06)
-    1.2,                  // radius: slightly tighter than original 1.525, still wide enough for wireframe glow
-    0.40                  // threshold: close to original 0.45
+    bloomStrength * 2.0,  // increased multiplier for overall brightness
+    1.2,                  // radius
+    0.30                  // lower threshold picks up dimmer wireframe layers
   );
   composer.addPass(bloomPass);
 
@@ -943,14 +943,14 @@ async function _loadGeoLines(element) {
   const landBorders = topoMesh(topo, topo.objects.land);
 
   const coastMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.85, depthWrite: true,
+    color: lineColor, transparent: true, opacity: 1.0, depthWrite: true,
   });
   const coastGlowMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.8,
+    color: lineColor, transparent: true, opacity: 1.0,
     blending: THREE.AdditiveBlending, depthWrite: true,
   });
   const coastGlowWideMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.45,
+    color: lineColor, transparent: true, opacity: 0.70,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
 
@@ -965,10 +965,10 @@ async function _loadGeoLines(element) {
   const countryBorders = topoMesh(topo, topo.objects.countries, (a, b) => a !== b);
 
   const borderMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.35, depthWrite: true,
+    color: lineColor, transparent: true, opacity: 0.55, depthWrite: true,
   });
   const borderGlowMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.15,
+    color: lineColor, transparent: true, opacity: 0.30,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
 
