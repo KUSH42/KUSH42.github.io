@@ -1161,8 +1161,7 @@ export function initRadar(element, opts = {}) {
   function setRadarThreatLevel(level) {
     const t = Math.max(0, Math.min(1, level));
     state.threatLevel = t;
-    const basePeriod = state.opts.sweepPeriod / 1000;
-    state.sweepSpeed  = TAU / _lerp(basePeriod, basePeriod * 0.4, t);
+    // Sweep speed is fixed — only spawn rate responds to threat level
     clearTimeout(state.spawnTimer);
     _scheduleNextSpawn(state);
   }
