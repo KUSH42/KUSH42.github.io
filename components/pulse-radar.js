@@ -725,11 +725,27 @@ function _addContact(state, angle, range, type, id) {
   for (let i = 0; i < POOL_SIZE; i++) { if (!state.contacts[i]) { slot = i; break; } }
   if (slot < 0) return null;
 
-  const isGhost = type === 'ghost';
+  const isGhost   = type === 'ghost';
+  const normAngle = ((angle % TAU) + TAU) % TAU;
+  const normRange = Math.max(0, Math.min(1, range));
+
+  // World-space position (radius=1 unit = radar edge)
+  const wx = Math.sin(normAngle) * normRange;
+  const wy = Math.cos(normAngle) * normRange;
+
+  // Slow drift velocity for real targets; ghosts are static echoes
+  const speed = isGhost ? 0 : (0.010 + Math.random() * 0.025);
+  const hdg   = Math.random() * TAU;
+
   const contact = {
     id:           id || `T-${String(++_contactCounter).padStart(2, '0')}`,
-    angle:        ((angle % TAU) + TAU) % TAU,
-    range:        Math.max(0, Math.min(1, range)),
+    // Displayed position — only updated when sweep arm passes over world pos
+    angle:        normAngle,
+    range:        normRange,
+    // World position: updates every frame
+    wx, wy,
+    wvx: isGhost ? 0 : Math.sin(hdg) * speed,
+    wvy: isGhost ? 0 : Math.cos(hdg) * speed,
     type,
     age:          isGhost ? 0.85 : 0.0,
     maxAge:       isGhost ? 3000 : 8000 + Math.random() * 10000,
@@ -741,10 +757,9 @@ function _addContact(state, angle, range, type, id) {
     ghostSpawned: false,
     instIdx:      slot,
     labelEl:      null,
-    sweepAlpha:   isGhost ? 0.15 : 1.0,  // fades between sweep passes
-    fadeTimeMs:   4200 * (0.88 + Math.random() * 0.24),  // 3696–4704ms
-    // Sweep-reveal: contacts are invisible until the sweep arm paints them
-    revealed:     isGhost,   // ghost echoes appear immediately (created by the sweep event)
+    sweepAlpha:   isGhost ? 0.15 : 1.0,
+    fadeTimeMs:   4200 * (0.88 + Math.random() * 0.24),
+    revealed:     isGhost,
     revealTime:   isGhost ? performance.now() : null,
   };
 
@@ -781,9 +796,23 @@ function _scheduleNextSpawn(state) {
 function _spawnAutoContact(state) {
   const existing = state.contacts.filter(c => c && c.type !== 'ghost');
   const cluster  = existing.length > 0 && Math.random() < 0.3;
-  const base     = cluster ? existing[Math.floor(Math.random() * existing.length)] : null;
-  const angle    = base ? base.angle + (Math.random() - 0.5) * 0.4 : Math.random() * TAU;
-  const range    = 0.15 + Math.random() * 0.82;
+
+  let angle, range;
+  if (cluster) {
+    // Cluster near a target's current world position (not stale displayed angle)
+    const base = existing[Math.floor(Math.random() * existing.length)];
+    let wx = base.wx + (Math.random() - 0.5) * 0.3;
+    let wy = base.wy + (Math.random() - 0.5) * 0.3;
+    const r = Math.hypot(wx, wy);
+    // Keep inside disc, enforce minimum range
+    if (r > 0.97) { wx *= 0.97 / r; wy *= 0.97 / r; }
+    else if (r < 0.15) { const s = 0.15 / Math.max(r, 0.001); wx *= s; wy *= s; }
+    angle = Math.atan2(wx, wy);
+    range = Math.hypot(wx, wy);
+  } else {
+    angle = Math.random() * TAU;
+    range = 0.15 + Math.random() * 0.82;
+  }
   _addContact(state, angle, range, _randomType(state.threatLevel));
 }
 
@@ -840,38 +869,51 @@ function _updateContacts(state, dt) {
 
   contacts.forEach((c, i) => {
     if (!c) return;
-    c.age += dt / c.maxAge;
 
-    // Per-contact fade: 3000ms ±12%
-    if (c.type !== 'ghost' && c.revealed) {
-      const floor = 0.05 + 0.10 * (c.range);
-      const elapsed = now - c.lastSweep;
-      const t = Math.min(1, elapsed / c.fadeTimeMs);
-      c.sweepAlpha = floor + (1.0 - floor) * Math.pow(1.0 - t, 1.025);
+    // ── World-space movement (real targets only; ghosts are static echoes) ──
+    if (c.type !== 'ghost') {
+      c.wx += c.wvx * dt / 1000;
+      c.wy += c.wvy * dt / 1000;
+      // Target drifted outside radar coverage — release the slot
+      if (Math.hypot(c.wx, c.wy) > 1.02) { _freeSlot(state, i); return; }
     }
 
+    c.age += dt / c.maxAge;
+
+    // ── Sweep detection: use real-time world position, not stale display ──
+    if (c.type !== 'ghost' && !state.reducedMotion) {
+      const worldAngle = ((Math.atan2(c.wx, c.wy) % TAU) + TAU) % TAU;
+      const diff = Math.abs(_angleDiff(sweepAngle, worldAngle));
+      if (diff < 0.12 && now - c.lastSweep > 800) {
+        // Snap displayed position to where target actually is right now
+        c.angle      = worldAngle;
+        c.range      = Math.hypot(c.wx, c.wy);
+        c.phase      = 0;        // fire one-shot ring pulse
+        c.lastSweep  = now;
+        c.sweepAlpha = 1.0;
+        if (!c.revealed) { c.revealed = true; c.revealTime = now; }
+      }
+    }
+
+    // ── Ring pulse: one-shot per sweep pass — stops at 1.0 until next hit ──
     if (c.type !== 'ghost') {
-      const inFading = c.age > 0.65 && c.age < 0.85;
-      c.phase += _ringHz(state, c.type) * (inFading ? 0.5 : 1.0) * dt / 1000;
+      if (c.phase < 1.0) {
+        const inFading = c.age > 0.65 && c.age < 0.85;
+        c.phase = Math.min(1.0, c.phase + _ringHz(state, c.type) * (inFading ? 0.5 : 1.0) * dt / 1000);
+      }
     } else {
       c.phase += _ringHz(state, 'neutral') * dt / 1000;
     }
 
-    // Sweep-reveal: contacts are invisible until the sweep arm paints them
-    if (c.type !== 'ghost' && !state.reducedMotion) {
-      const diff = Math.abs(_angleDiff(sweepAngle, c.angle));
-      if (diff < 0.12 && now - c.lastSweep > 800) {
-        c.phase      = 0;
-        c.lastSweep  = now;
-        c.sweepAlpha = 1.0;  // full brightness on sweep refresh
-        if (!c.revealed) {
-          c.revealed    = true;
-          c.revealTime  = now;
-        }
-      }
+    // ── Phosphor fade between sweep passes ──
+    if (c.type !== 'ghost' && c.revealed) {
+      const floor   = 0.05 + 0.10 * c.range;
+      const elapsed = now - c.lastSweep;
+      const t       = Math.min(1, elapsed / c.fadeTimeMs);
+      c.sweepAlpha  = floor + (1.0 - floor) * Math.pow(1.0 - t, 1.025);
     }
 
-    // Ghost spawn at FADING transition (only for revealed contacts)
+    // ── Ghost echo at fading transition ──
     if (c.type !== 'ghost' && !c.ghostSpawned && c.age >= 0.65 && c.revealed) {
       c.ghostAngle   = c.angle;
       c.ghostRange   = c.range;
