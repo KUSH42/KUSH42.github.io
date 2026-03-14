@@ -797,20 +797,14 @@ function _spawnAutoContact(state) {
   const existing = state.contacts.filter(c => c && c.type !== 'ghost');
   const cluster  = existing.length > 0 && Math.random() < 0.3;
 
-  let angle, range;
+  // Always spawn at the current sweep position so the arm paints the
+  // contact immediately — no waiting up to a full revolution to appear.
+  const angle = state.sweepAngle;
+  let range;
   if (cluster) {
-    // Cluster near a target's current world position (not stale displayed angle)
     const base = existing[Math.floor(Math.random() * existing.length)];
-    let wx = base.wx + (Math.random() - 0.5) * 0.3;
-    let wy = base.wy + (Math.random() - 0.5) * 0.3;
-    const r = Math.hypot(wx, wy);
-    // Keep inside disc, enforce minimum range
-    if (r > 0.97) { wx *= 0.97 / r; wy *= 0.97 / r; }
-    else if (r < 0.15) { const s = 0.15 / Math.max(r, 0.001); wx *= s; wy *= s; }
-    angle = Math.atan2(wx, wy);
-    range = Math.hypot(wx, wy);
+    range = Math.max(0.15, Math.min(0.97, base.range + (Math.random() - 0.5) * 0.3));
   } else {
-    angle = Math.random() * TAU;
     range = 0.15 + Math.random() * 0.82;
   }
   _addContact(state, angle, range, _randomType(state.threatLevel));
