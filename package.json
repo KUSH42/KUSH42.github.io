@@ -6,7 +6,7 @@
   "scripts": {
     "start": "vite --open /src/index.html",
     "build": "vite build",
-    "deploy": "vite build && cp dist/src/index.html . && rm -f assets/*.js assets/*.css assets/*.ttf assets/*.jpg && cp dist/assets/* assets/ && cp dist/sonar-ping.mp3 . 2>/dev/null; true",
+    "deploy": "vite build && cp dist/src/index.html . && rm -f assets/*.js assets/*.css assets/*.ttf assets/*.jpg && cp dist/assets/* assets/ && cp dist/sonar-ping.mp3 . 2>/dev/null; cp -r dist/data . 2>/dev/null; true",
     "preview": "vite preview"
   },
   "devDependencies": {

@@ -12,7 +12,7 @@
   <style>
     @font-face {
       font-family: 'Matrix-Code';
-      src: url('/assets/Matrix-Code-Bme_c6c4.ttf') format('truetype');
+      src: url('/data/Matrix-Code.ttf') format('truetype');
       font-display: swap;
     }
   </style>
@@ -20,71 +20,6 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
-
-    /* ── Glow ×1.125 override ─────────────────────────────── */
-    :root {
-      --s9-panel-glow: 0 0 6px rgba(0, 212, 176, .22), 0 0 1.5px rgba(0, 212, 176, .45);
-      --glow-cyan: 0 0 9.0px #00d4b0, 0 0 22.5px rgba(0, 212, 176, .5);
-      --glow-text-cyan: 0 0 5.6px #00d4b0, 0 0 11.2px #00d4b0, 0 0 22.5px #00d4b0;
-      --glow-green: 0 0 9.0px #00ff70, 0 0 22.5px rgba(0, 255, 112, .5);
-      --glow-text-green: 0 0 5.6px #00ff70, 0 0 11.2px #00ff70, 0 0 22.5px #00ff70;
-      --glow-magenta: 0 0 9.0px #ff8c00, 0 0 22.5px rgba(255, 140, 0, .5);
-      --glow-text-magenta: 0 0 5.6px #ff8c00, 0 0 11.2px #ff8c00, 0 0 22.5px #ff8c00;
-      --glow-amber: 0 0 9.0px #b0ff44, 0 0 22.5px rgba(176, 255, 68, .5);
-      --glow-text-amber: 0 0 5.6px #b0ff44, 0 0 11.2px #b0ff44, 0 0 22.5px #b0ff44;
-    }
-    [data-theme="gits"] {
-      --s9-panel-glow: 0 0 6px rgba(0, 240, 255, .22), 0 0 1.5px rgba(0, 240, 255, .45);
-      --glow-cyan: 0 0 9.0px #00f0ff, 0 0 22.5px rgba(0, 240, 255, .5);
-      --glow-text-cyan: 0 0 5.6px #00f0ff, 0 0 11.2px #00f0ff, 0 0 22.5px #00f0ff;
-      --glow-green: 0 0 9.0px #00ff9d, 0 0 22.5px rgba(0, 255, 157, .5);
-      --glow-text-green: 0 0 5.6px #00ff9d, 0 0 11.2px #00ff9d, 0 0 22.5px #00ff9d;
-      --glow-magenta: 0 0 9.0px #ff00cc, 0 0 22.5px rgba(255, 0, 204, .5);
-      --glow-text-magenta: 0 0 5.6px #ff00cc, 0 0 11.2px #ff00cc, 0 0 22.5px #ff00cc;
-      --glow-amber: 0 0 9.0px #ffb300, 0 0 22.5px rgba(255, 179, 0, .5);
-      --glow-text-amber: 0 0 5.6px #ffb300, 0 0 11.2px #ffb300, 0 0 22.5px #ffb300;
-    }
-    [data-theme="amber"] {
-      --s9-panel-glow: 0 0 6px rgba(255, 179, 0, .22), 0 0 1.5px rgba(255, 179, 0, .45);
-      --glow-cyan: 0 0 9.0px #ffb300, 0 0 22.5px rgba(255, 179, 0, .5);
-      --glow-text-cyan: 0 0 5.6px #ffb300, 0 0 11.2px #ffb300, 0 0 22.5px #ffb300;
-      --glow-green: 0 0 9.0px #e8ff00, 0 0 22.5px rgba(232, 255, 0, .5);
-      --glow-text-green: 0 0 5.6px #e8ff00, 0 0 11.2px #e8ff00, 0 0 22.5px #e8ff00;
-      --glow-magenta: 0 0 9.0px #ff3218, 0 0 22.5px rgba(255, 50, 24, .5);
-      --glow-text-magenta: 0 0 5.6px #ff3218, 0 0 11.2px #ff3218, 0 0 22.5px #ff3218;
-      --glow-amber: 0 0 9.0px #ff7c00, 0 0 22.5px rgba(255, 124, 0, .5);
-      --glow-text-amber: 0 0 5.6px #ff7c00, 0 0 11.2px #ff7c00, 0 0 22.5px #ff7c00;
-    }
-    [data-theme="phosphor"] {
-      --s9-panel-glow: 0 0 6px rgba(0, 255, 80, .22), 0 0 1.5px rgba(0, 255, 80, .45);
-      --glow-cyan: 0 0 9.0px #00ff50, 0 0 22.5px rgba(0, 255, 80, .5);
-      --glow-text-cyan: 0 0 5.6px #00ff50, 0 0 11.2px #00ff50, 0 0 22.5px #00ff50;
-      --glow-green: 0 0 9.0px #80ffaa, 0 0 22.5px rgba(128, 255, 170, .5);
-      --glow-text-green: 0 0 5.6px #80ffaa, 0 0 11.2px #80ffaa, 0 0 22.5px #80ffaa;
-      --glow-magenta: 0 0 9.0px #ff3c00, 0 0 22.5px rgba(255, 60, 0, .5);
-      --glow-text-magenta: 0 0 5.6px #ff3c00, 0 0 11.2px #ff3c00, 0 0 22.5px #ff3c00;
-      --glow-amber: 0 0 9.0px #aaff40, 0 0 22.5px rgba(170, 255, 64, .5);
-      --glow-text-amber: 0 0 5.6px #aaff40, 0 0 11.2px #aaff40, 0 0 22.5px #aaff40;
-    }
-    [data-theme="blood"] {
-      --s9-panel-glow: 0 0 6px rgba(255, 30, 30, .22), 0 0 1.5px rgba(255, 30, 30, .45);
-      --glow-cyan: 0 0 9.0px #ff1e1e, 0 0 22.5px rgba(255, 30, 30, .5);
-      --glow-text-cyan: 0 0 5.6px #ff1e1e, 0 0 11.2px #ff1e1e, 0 0 22.5px #ff1e1e;
-      --glow-green: 0 0 9.0px #ff6600, 0 0 22.5px rgba(255, 102, 0, .5);
-      --glow-text-green: 0 0 5.6px #ff6600, 0 0 11.2px #ff6600, 0 0 22.5px #ff6600;
-      --glow-magenta: 0 0 9.0px #ff8c00, 0 0 22.5px rgba(255, 140, 0, .5);
-      --glow-text-magenta: 0 0 5.6px #ff8c00, 0 0 11.2px #ff8c00, 0 0 22.5px #ff8c00;
-      --glow-amber: 0 0 9.0px #ff4400, 0 0 22.5px rgba(255, 68, 0, .5);
-      --glow-text-amber: 0 0 5.6px #ff4400, 0 0 11.2px #ff4400, 0 0 22.5px #ff4400;
-    }
-
-    /* ── Neural readout glow tweaks ───────────────────── */
-    .s9-neural__id {
-      text-shadow: 0 0 4px var(--neon-cyan), 0 0 8px var(--neon-cyan);
-    }
-    .s9-neural__avatar {
-      box-shadow: 0 0 6px color-mix(in srgb, var(--neon-cyan) 60%, transparent);
-    }
 
     /* ── Topbar content ─────────────────────────────── */
     .s9-ov__topbar {
@@ -361,7 +296,7 @@
     }
     .sigint-item__class {
       font-size: 0.7rem;
-      letter-spacing: 0.08em;
+      letter-spacing: var(--letter-spacing-mid);
       text-transform: uppercase;
       margin-bottom: 1px;
     }
@@ -377,14 +312,14 @@
     }
     .sigint-item--sigint { border-left-color: var(--neon-cyan); }
     .sigint-item--sigint .sigint-item__class { color: var(--neon-cyan); }
-    .sigint-item--humint { border-left-color: var(--neon-amber); }
-    .sigint-item--humint .sigint-item__class { color: var(--neon-amber); }
+    .sigint-item--humint { border-left-color: var(--neon-warn); }
+    .sigint-item--humint .sigint-item__class { color: var(--neon-warn); }
     .sigint-item--cyber  { border-left-color: var(--text-alert); }
     .sigint-item--cyber  .sigint-item__class { color: var(--text-alert); }
     .sigint-item--ghost  { border-left-color: var(--neon-green); }
     .sigint-item--ghost  .sigint-item__class { color: var(--neon-green); }
-    .sigint-item--elint  { border-left-color: var(--neon-magenta); }
-    .sigint-item--elint  .sigint-item__class { color: var(--neon-magenta); }
+    .sigint-item--elint  { border-left-color: var(--neon-alert); }
+    .sigint-item--elint  .sigint-item__class { color: var(--neon-alert); }
     .intel-item { border-left-color: var(--panel-border-active); }
     .intel-item__class {
       font-size: 0.7rem;
@@ -429,8 +364,8 @@
       filter: drop-shadow(0 0 1.5px var(--text-alert));
     }
     .s9-matrix__node--threat-high .s9-matrix__node-label { fill: var(--text-alert); }
-    .s9-matrix__node--threat-mid .s9-matrix__node-core { stroke: var(--neon-amber); }
-    .s9-matrix__node--threat-mid .s9-matrix__node-label { fill: var(--neon-amber); }
+    .s9-matrix__node--threat-mid .s9-matrix__node-core { stroke: var(--neon-warn); }
+    .s9-matrix__node--threat-mid .s9-matrix__node-label { fill: var(--neon-warn); }
 
     /* ── Alert host stack ────────────────────────────────── */
     #alert-host {
@@ -518,6 +453,7 @@
       border: 1px solid var(--panel-border-active);
       padding: 8px 10px;
       width: 158px;
+      overflow: hidden;
       pointer-events: none;
       opacity: 0;
       transform: translateX(8px);
@@ -561,19 +497,30 @@
       border-collapse: collapse;
       font-family: var(--font-terminal);
       font-size: 0.72rem;
+      table-layout: fixed;
+    }
+    .node-popup__table td {
+      vertical-align: top;
     }
     .node-popup__table td:first-child {
       color: var(--text-dim);
-      letter-spacing: 0.04em;
+      letter-spacing: calc(var(--letter-spacing-mid) / 2);
       padding-right: 6px;
       white-space: nowrap;
+      width: 38%;
     }
     .node-popup__table td:last-child {
       color: var(--text-secondary);
       text-align: right;
-      word-break: break-all;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .node-popup__table tr { line-height: 1.75; }
+    .node-popup__table tr.np-group-gap td {
+      padding-top: 4px;
+      border-top: 1px solid var(--panel-border-dim);
+    }
 
     /* ── Telescreen ─────────────────────────────────────────── */
     .s9-telescreen {
@@ -592,9 +539,8 @@
       height: 100%;
       object-fit: contain;
       object-position: center center;
-      filter: grayscale(0.7) contrast(1.2) brightness(0.75) blur(0.36px);
+      filter: grayscale(0.7) contrast(1.2) brightness(0.75);
       display: block;
-      transform: scale(1.265);
     }
 
     /* Theme-color tint overlay via mix-blend-mode */
@@ -603,21 +549,15 @@
       inset: 0;
       background: var(--neon-cyan);
       mix-blend-mode: color;
-      opacity: 0.45;
+      opacity: 0.05;
       pointer-events: none;
       z-index: 1;
     }
 
     /* ── Scanlines — slow drift downward with subtle opacity pulse ── */
-    @keyframes ts-scanlines-drift {
-      0%   { background-position: 0 0;   opacity: 0.38; }
-      30%  {                              opacity: 0.42; }
-      65%  {                              opacity: 0.36; }
-      100% { background-position: 0 8px; opacity: 0.38; }
-    }
     .s9-telescreen__scanlines {
       position: absolute;
-      inset: 0;
+      inset: -4px 0 0 0;
       background: repeating-linear-gradient(
         to bottom,
         transparent 0px,
@@ -628,7 +568,7 @@
       background-size: 100% 4px;
       pointer-events: none;
       z-index: 2;
-      animation: ts-scanlines-drift 3.2s linear infinite;
+      display: none;
     }
 
     /* Vignette */
@@ -650,12 +590,11 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      filter: grayscale(1) brightness(1.2) blur(7.2px) saturate(3);
-      mix-blend-mode: screen;
-      opacity: 0.5;
+      filter: sepia(0.4) blur(28px) brightness(1.6) saturate(1.4);
+      mix-blend-mode: soft-light;
+      opacity: 1.0;
       pointer-events: none;
-      z-index: 1;
-      transform: scale(1.265);
+      z-index: 5;
     }
 
     .s9-telescreen__bloom {
@@ -734,28 +673,28 @@
 
     /* ── Static scatter — three noise tiles at diff speeds/sizes ── */
     @keyframes ts-static-a {
-      0%   { transform: translate(0,    0);    opacity: 0.035; }
-      20%  { transform: translate(-3px, 2px);  opacity: 0.028; }
-      40%  { transform: translate(2px,  -1px); opacity: 0.040; }
-      60%  { transform: translate(-1px, 3px);  opacity: 0.030; }
-      80%  { transform: translate(3px,  -2px); opacity: 0.036; }
-      100% { transform: translate(0,    0);    opacity: 0.035; }
+      0%   { transform: translate(0,    0);    opacity: 0.015; }
+      20%  { transform: translate(-3px, 2px);  opacity: 0.012; }
+      40%  { transform: translate(2px,  -1px); opacity: 0.018; }
+      60%  { transform: translate(-1px, 3px);  opacity: 0.013; }
+      80%  { transform: translate(3px,  -2px); opacity: 0.016; }
+      100% { transform: translate(0,    0);    opacity: 0.015; }
     }
     @keyframes ts-static-b {
-      0%   { background-position: 0   0;   opacity: 0.022; }
-      25%  { background-position: 40px 10px; opacity: 0.018; }
-      50%  { background-position: 10px 30px; opacity: 0.026; }
-      75%  { background-position: 50px 20px; opacity: 0.020; }
-      100% { background-position: 0   0;   opacity: 0.022; }
+      0%   { background-position: 0   0;   opacity: 0.010; }
+      25%  { background-position: 40px 10px; opacity: 0.008; }
+      50%  { background-position: 10px 30px; opacity: 0.012; }
+      75%  { background-position: 50px 20px; opacity: 0.009; }
+      100% { background-position: 0   0;   opacity: 0.010; }
     }
     @keyframes ts-static-burst {
       /* rare opacity spike simulating static burst */
-      0%,  94%  { opacity: 0.015; }
-      95%       { opacity: 0.12; }
-      96%       { opacity: 0.04; }
-      97%       { opacity: 0.10; }
-      98%       { opacity: 0.015; }
-      100%      { opacity: 0.015; }
+      0%,  94%  { opacity: 0.008; }
+      95%       { opacity: 0.06; }
+      96%       { opacity: 0.02; }
+      97%       { opacity: 0.05; }
+      98%       { opacity: 0.008; }
+      100%      { opacity: 0.008; }
     }
     .s9-telescreen__static {
       position: absolute;
@@ -763,7 +702,7 @@
       overflow: hidden;
       pointer-events: none;
       z-index: 3;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='320' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.98' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='320' filter='url(%23n)'/%3E%3C/svg%3E");
       background-repeat: repeat;
       animation: ts-static-a 0.55s steps(3) infinite, ts-static-burst 23s steps(1) infinite;
       animation-delay: 0s, -7.2s;
@@ -774,23 +713,14 @@
       overflow: hidden;
       pointer-events: none;
       z-index: 3;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='480'%3E%3Cfilter id='n2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='480' filter='url(%23n2)'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='480'%3E%3Cfilter id='n2'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.88' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='240' height='480' filter='url(%23n2)'/%3E%3C/svg%3E");
       background-repeat: repeat;
       animation: ts-static-b 1.1s steps(2) infinite;
       animation-delay: -0.4s;
     }
 
-    /* ── Grain filter overlay ───────────────────────────────── */
-    .s9-telescreen__grain {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 4;
-      opacity: 0.28;
-      filter: url(#ts-grain-filter);
-      background: #888; /* neutral mid-gray — grain renders as luminance variation */
-      mix-blend-mode: overlay;
-    }
+    /* ── Grain filter overlay — hidden, grain drawn on canvas ── */
+    .s9-telescreen__grain { display: none; }
 
     /* Feed ID label bottom-left */
     .s9-telescreen__feed-id {
@@ -814,8 +744,8 @@
       font-family: var(--font-terminal);
       font-size: 0.62rem;
       letter-spacing: 0.08em;
-      color: var(--neon-magenta);
-      text-shadow: 0 0 6px var(--neon-magenta);
+      color: var(--neon-alert);
+      text-shadow: 0 0 6px var(--neon-alert);
       display: flex;
       align-items: center;
       gap: 3px;
@@ -828,20 +758,20 @@
     }
 
     /* ── Pulse Radar ───────────────────────────────────────── */
-    .s9-radar { position: relative; width: 100%; height: 100%; overflow: hidden; }
-    .s9-radar__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; }
+    .s9-radar { position: relative; width: 100%; height: 100%; padding: 0 6px; box-sizing: border-box; }
+    .s9-radar__canvas { position: relative; width: 100%; height: 100%; display: block; will-change: transform; }
     .s9-radar__overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
     .s9-radar__labels { position: absolute; inset: 0; }
     .s9-radar__label { position: absolute; white-space: nowrap; font-family: var(--font-terminal); font-size: 0.48rem; color: var(--text-dim); text-shadow: 0 0 4px currentColor; }
-    .s9-radar__label--hostile { color: var(--neon-magenta); }
+    .s9-radar__label--hostile { color: var(--neon-alert); }
     .s9-radar__label--friendly { color: var(--neon-green); }
-    .s9-radar__label--neutral { color: var(--neon-amber); }
+    .s9-radar__label--neutral { color: var(--neon-warn); }
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-C86CEwLv.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/three-D9Cdoq1N.js">
-  <link rel="stylesheet" crossorigin href="/assets/index-Cuq5Hxlg.css">
+  <script type="module" crossorigin src="/assets/index-BjaluEr6.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/three-BJA8G7W0.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-DC1yr3Y5.css">
 </head>
 
 <body>
@@ -943,7 +873,7 @@
            data-s9-id="threatmap-1" data-threat-level="0">
         <!-- canvas + overlay injected by initThreatMap() -->
         <!-- Matrix rain: screen-blended overlay — additive in void, invisible on globe -->
-        <div id="matrix-rain-host" style="position:absolute;inset:0;z-index:1;pointer-events:none;"></div>
+        <div id="matrix-rain-host" style="position:absolute;inset:0;z-index:1;pointer-events:none;mix-blend-mode:screen;"></div>
         <label class="globe-mode-toggle" title="Toggle satellite overlay">
           <input type="checkbox" id="sat-toggle" autocomplete="off" />
           <span class="globe-mode-toggle__track">
@@ -961,7 +891,7 @@
           <tr><td>COUNTRY</td><td id="np-country">—</td></tr>
           <tr><td>POP</td><td id="np-pop">—</td></tr>
           <tr><td>COORDS</td><td id="np-coords">—</td></tr>
-          <tr><td>THREAT LVL</td><td id="np-threat">—</td></tr>
+          <tr class="np-group-gap"><td>THREAT</td><td id="np-threat">—</td></tr>
           <tr><td>STATUS</td><td id="np-status">—</td></tr>
         </table>
       </div>
@@ -997,19 +927,8 @@
             <span class="s9-panel__header-status" id="telescreen-status">● FEED ACTIVE</span>
           </div>
           <div class="s9-panel__body" style="padding:0;position:relative;">
-            <!-- SVG grain filter — seed updated by JS each frame -->
-            <svg width="0" height="0" style="position:absolute">
-              <defs>
-                <filter id="ts-grain-filter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
-                  <feTurbulence id="ts-grain-turb" type="fractalNoise" baseFrequency="0.72 0.68" numOctaves="4" seed="2" stitchTiles="stitch" result="noise"/>
-                  <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
-                  <feBlend in="SourceGraphic" in2="gray" mode="overlay"/>
-                </filter>
-              </defs>
-            </svg>
-
             <!-- Hidden source image — canvas draws low-res version from this -->
-            <img id="ts-feed-src" src="/assets/section-9-BXcJox27.jpg" alt="" aria-hidden="true"
+            <img id="ts-feed-src" src="/data/section-9.jpg" alt="" aria-hidden="true"
                  style="display:none" />
 
             <div class="s9-telescreen">
@@ -1210,8 +1129,6 @@
 
 </div>
 
-
-</body>
 
 </body>
 </html>
