@@ -1,4 +1,0 @@
-# Always keep our version of index.html during merges/rebases.
-# Prevents automated build processes from overwriting the source
-# index.html with the dist bundle version.
-index.html merge=keepours

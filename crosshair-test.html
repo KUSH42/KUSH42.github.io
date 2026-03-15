@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crosshair Test — Threat Map</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/theme.css" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #030a05;
+      color: var(--text-primary);
+      font-family: var(--font-terminal);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 24px 120px;
+      gap: 56px;
+    }
+
+    h1 {
+      font-family: var(--font-holo);
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .4em;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 12px var(--neon-cyan);
+      text-transform: uppercase;
+    }
+
+    .section-title {
+      font-family: var(--font-terminal);
+      font-size: .55rem;
+      letter-spacing: .28em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    /* ── Viewport: simulated globe window ──────── */
+
+    .viewports {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      width: 100%;
+      max-width: 900px;
+    }
+
+    /*
+     * The .vp container replicates the .s9-threatmap overlay:
+     *   position: relative so the crosshair (position: absolute) positions within it.
+     *   The crosshair gets left/top set in pixels just as animateLoop does.
+     */
+    .vp {
+      position: relative;
+      height: 360px;
+      overflow: hidden;          /* clamp scanlines/vignette; crosshair overflow is fine via z-index */
+      background: #010e0b;
+    }
+
+    /* Globe simulation: wireframe disc + radial glow */
+    .vp__bg {
+      position: absolute;
+      inset: 0;
+      /* Globe disc */
+      background:
+        /* Subtle radial glow at node position (centre) */
+        radial-gradient(circle 60px at 50% 50%,
+          color-mix(in srgb, var(--neon-cyan) 8%, transparent),
+          transparent 70%),
+        /* Lat lines */
+        repeating-linear-gradient(
+          0deg,
+          transparent 0px, transparent 28px,
+          color-mix(in srgb, var(--neon-cyan) 4%, transparent) 28px,
+          color-mix(in srgb, var(--neon-cyan) 4%, transparent) 29px
+        ),
+        /* Lng lines */
+        repeating-linear-gradient(
+          90deg,
+          transparent 0px, transparent 28px,
+          color-mix(in srgb, var(--neon-cyan) 4%, transparent) 28px,
+          color-mix(in srgb, var(--neon-cyan) 4%, transparent) 29px
+        ),
+        #010e0b;
+    }
+
+    /* Scanlines (matches .holographic:after) */
+    .vp__scanlines {
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent 0px, transparent 2px,
+        color-mix(in srgb, var(--neon-cyan) 3%, transparent) 2px,
+        color-mix(in srgb, var(--neon-cyan) 3%, transparent) 4px
+      );
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    /* Vignette (matches .vignette:before) */
+    .vp__vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.85) 100%);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    /* Chromatic fringe at corners (simulate HoloShader aberration) */
+    .vp__aberration {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 0% 0%,   color-mix(in srgb, #ff0000 3%, transparent), transparent 30%),
+        radial-gradient(ellipse at 100% 0%,  color-mix(in srgb, #0000ff 3%, transparent), transparent 30%),
+        radial-gradient(ellipse at 0% 100%,  color-mix(in srgb, #0000ff 3%, transparent), transparent 30%),
+        radial-gradient(ellipse at 100% 100%,color-mix(in srgb, #ff0000 3%, transparent), transparent 30%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* Node dot — represents the city node mesh */
+    .vp__node {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--neon-cyan);
+      transform: translate(-50%, -50%);
+      box-shadow:
+        0 0 4px  var(--neon-cyan),
+        0 0 12px var(--neon-cyan),
+        0 0 30px color-mix(in srgb, var(--neon-cyan) 60%, transparent),
+        0 0 60px color-mix(in srgb, var(--neon-cyan) 25%, transparent);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* When selected, node turns cyan (--neon-select) — same as Three.js mesh */
+    .vp__node--selected {
+      background: var(--neon-select, #00ffff);
+      box-shadow:
+        0 0 4px  var(--neon-select, #00ffff),
+        0 0 14px var(--neon-select, #00ffff),
+        0 0 40px color-mix(in srgb, var(--neon-select, #00ffff) 70%, transparent),
+        0 0 80px color-mix(in srgb, var(--neon-select, #00ffff) 35%, transparent);
+    }
+
+    /*
+     * Crosshair lives at z-index 5 so it renders above scanlines/vignette.
+     * It is positioned with left/top matching the node (50%, 50%) — exactly
+     * how animateLoop projects the node position and sets the crosshair style.
+     */
+    .vp .s9-threatmap__crosshair {
+      z-index: 5;
+    }
+
+    /* Coordinate display — mirrors .s9-threatmap__coords */
+    .vp__coords {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 40px;
+      white-space: nowrap;
+      font-family: var(--font-terminal);
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .18em;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 6px var(--neon-cyan);
+      opacity: .7;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* Caption below each viewport */
+    .vp__label {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 8px 0;
+      text-align: center;
+      font-size: .55rem;
+      letter-spacing: .18em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      background: linear-gradient(transparent, rgba(1,14,11,.8));
+      z-index: 6;
+      pointer-events: none;
+    }
+
+    /* State badge */
+    .vp__badge {
+      position: absolute;
+      top: 8px; right: 8px;
+      font-size: .5rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border: 1px solid currentColor;
+      z-index: 7;
+      pointer-events: none;
+      display: none;
+    }
+    .vp__badge--in  { color: var(--neon-green);  display: block; }
+    .vp__badge--out { color: var(--neon-alert);  display: block; }
+    .vp__badge--vis { color: var(--neon-select, #00ffff); display: block; }
+
+    /* Click hint */
+    .vp__hint {
+      position: absolute;
+      bottom: 28px; left: 0; right: 0;
+      text-align: center;
+      font-size: .5rem;
+      letter-spacing: .1em;
+      color: var(--text-dim);
+      opacity: .6;
+      z-index: 6;
+      pointer-events: none;
+      transition: opacity .3s;
+    }
+    .vp:hover .vp__hint { opacity: 1; }
+    .vp--active .vp__hint { display: none; }
+
+    /* ── Controls ─────────────────────────────── */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .btn {
+      font-family: var(--font-terminal);
+      font-size: .62rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      padding: 6px 18px;
+      cursor: pointer;
+      transition: background .12s, box-shadow .12s;
+    }
+    .btn:hover {
+      background: rgba(0, 212, 176, .08);
+      box-shadow: 0 0 8px var(--neon-cyan);
+    }
+    .btn.danger {
+      border-color: var(--neon-alert);
+      color: var(--neon-alert);
+    }
+    .btn.danger:hover { background: rgba(255,140,0,.08); box-shadow: 0 0 8px var(--neon-alert); }
+
+    /* ── Theme strip ──────────────────────────── */
+    .theme-strip {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .theme-btn {
+      font-family: var(--font-terminal);
+      font-size: .58rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid var(--panel-border);
+      color: var(--text-secondary);
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+    .theme-btn.active {
+      border-color: var(--crosshair-color);
+      color: var(--crosshair-color);
+      box-shadow: 0 0 6px var(--crosshair-color);
+    }
+
+    .divider {
+      width: 100%;
+      max-width: 900px;
+      border: none;
+      border-top: 1px solid var(--panel-border);
+    }
+  </style>
+</head>
+<body>
+
+<h1>Crosshair Test — Threat Map</h1>
+
+<!-- Theme switcher -->
+<div>
+  <div class="section-title">Theme</div>
+  <div class="theme-strip" id="themeStrip">
+    <button class="theme-btn active" data-theme="">Default</button>
+    <button class="theme-btn" data-theme="gits">GITS</button>
+    <button class="theme-btn" data-theme="amber">Amber</button>
+    <button class="theme-btn" data-theme="phosphor">Phosphor</button>
+    <button class="theme-btn" data-theme="blood">Blood</button>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- Interactive viewports -->
+<div style="width:100%;max-width:900px">
+  <div class="section-title">Click a viewport to lock on — click again to release</div>
+
+  <div class="viewports">
+
+    <!-- BOX -->
+    <div class="vp" id="vp-box" style="cursor:crosshair">
+      <div class="vp__bg"></div>
+      <div class="vp__aberration"></div>
+      <div class="vp__scanlines"></div>
+      <div class="vp__vignette"></div>
+
+      <!-- Node dot — at 50%, 50% of viewport -->
+      <div class="vp__node" id="node-box"></div>
+
+      <!--
+        Crosshair: left/top match the node position exactly, just as animateLoop
+        writes crosshair.style.left / crosshair.style.top from the projected node.
+        The CSS transform: translate(-50%,-50%) centres it on that point.
+      -->
+      <div class="s9-threatmap__crosshair s9-threatmap__crosshair--shape-box"
+           id="ch-box" style="left:50%;top:50%" aria-hidden="true">
+        <span class="s9-threatmap__crosshair-label" id="lbl-box"></span>
+      </div>
+
+      <div class="vp__coords">
+        <span class="coords-lat">LAT: --.-°</span>
+        <span class="coords-lng">LNG: --.-°</span>
+      </div>
+      <div class="vp__badge" id="badge-box"></div>
+      <div class="vp__hint">click to select</div>
+      <div class="vp__label">box</div>
+    </div>
+
+    <!-- BRACKET -->
+    <div class="vp" id="vp-bracket" style="cursor:crosshair">
+      <div class="vp__bg"></div>
+      <div class="vp__aberration"></div>
+      <div class="vp__scanlines"></div>
+      <div class="vp__vignette"></div>
+
+      <div class="vp__node" id="node-bracket"></div>
+
+      <div class="s9-threatmap__crosshair s9-threatmap__crosshair--shape-bracket"
+           id="ch-bracket" style="left:50%;top:50%" aria-hidden="true">
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--tl"></span>
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--tr"></span>
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--bl"></span>
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--br"></span>
+        <span class="s9-threatmap__crosshair-label" id="lbl-bracket"></span>
+      </div>
+
+      <div class="vp__coords">
+        <span class="coords-lat">LAT: --.-°</span>
+        <span class="coords-lng">LNG: --.-°</span>
+      </div>
+      <div class="vp__badge" id="badge-bracket"></div>
+      <div class="vp__hint">click to select</div>
+      <div class="vp__label">bracket</div>
+    </div>
+
+    <!-- DIAMOND -->
+    <div class="vp" id="vp-diamond" style="cursor:crosshair">
+      <div class="vp__bg"></div>
+      <div class="vp__aberration"></div>
+      <div class="vp__scanlines"></div>
+      <div class="vp__vignette"></div>
+
+      <div class="vp__node" id="node-diamond"></div>
+
+      <div class="s9-threatmap__crosshair s9-threatmap__crosshair--shape-diamond"
+           id="ch-diamond" style="left:50%;top:50%" aria-hidden="true">
+        <span class="s9-threatmap__crosshair-label" id="lbl-diamond"></span>
+      </div>
+
+      <div class="vp__coords">
+        <span class="coords-lat">LAT: --.-°</span>
+        <span class="coords-lng">LNG: --.-°</span>
+      </div>
+      <div class="vp__badge" id="badge-diamond"></div>
+      <div class="vp__hint">click to select</div>
+      <div class="vp__label">diamond</div>
+    </div>
+
+  </div>
+
+  <div class="controls" style="margin-top:16px">
+    <button class="btn" id="btn-all-in">▶ Select All</button>
+    <button class="btn danger" id="btn-all-out">■ Deselect All</button>
+    <button class="btn" id="btn-reset">↺ Reset</button>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- Static state reference row -->
+<div style="width:100%;max-width:900px">
+  <div class="section-title">Static Reference — visible state, no animation</div>
+
+  <div class="viewports">
+
+    <!-- BOX static -->
+    <div class="vp">
+      <div class="vp__bg"></div>
+      <div class="vp__aberration"></div>
+      <div class="vp__scanlines"></div>
+      <div class="vp__vignette"></div>
+      <div class="vp__node vp__node--selected"></div>
+      <div class="s9-threatmap__crosshair s9-threatmap__crosshair--shape-box s9-threatmap__crosshair--visible"
+           style="left:50%;top:50%" aria-hidden="true">
+        <span class="s9-threatmap__crosshair-label">TOKYO</span>
+      </div>
+      <div class="vp__label">box — visible</div>
+    </div>
+
+    <!-- BRACKET static -->
+    <div class="vp">
+      <div class="vp__bg"></div>
+      <div class="vp__aberration"></div>
+      <div class="vp__scanlines"></div>
+      <div class="vp__vignette"></div>
+      <div class="vp__node vp__node--selected"></div>
+      <div class="s9-threatmap__crosshair s9-threatmap__crosshair--shape-bracket s9-threatmap__crosshair--visible"
+           style="left:50%;top:50%" aria-hidden="true">
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--tl"></span>
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--tr"></span>
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--bl"></span>
+        <span class="s9-threatmap__crosshair-corner s9-threatmap__crosshair-corner--br"></span>
+        <span class="s9-threatmap__crosshair-label">SEOUL</span>
+      </div>
+      <div class="vp__label">bracket — visible</div>
+    </div>
+
+    <!-- DIAMOND static -->
+    <div class="vp">
+      <div class="vp__bg"></div>
+      <div class="vp__aberration"></div>
+      <div class="vp__scanlines"></div>
+      <div class="vp__vignette"></div>
+      <div class="vp__node vp__node--selected"></div>
+      <div class="s9-threatmap__crosshair s9-threatmap__crosshair--shape-diamond s9-threatmap__crosshair--visible"
+           style="left:50%;top:50%" aria-hidden="true">
+        <span class="s9-threatmap__crosshair-label">MOSCOW</span>
+      </div>
+      <div class="vp__label">diamond — visible</div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+  // Mirror of ANIM constants from anim-constants.js
+  const ANIM = {
+    CROSSHAIR_IN_DELAY:       40,
+    LABEL_CHAR_RATE:          38,
+    LABEL_CURSOR_BLINK:      530,
+    LABEL_START_DELAY:       250,
+    COORD_SCRAMBLE_DELAY:     80,
+    DESELECT_LABEL_DUR:      100,
+    DESELECT_CROSSHAIR_DELAY: 80,
+  };
+
+  const CONFIGS = {
+    box:     { label: 'TOKYO',  lat:  35.68, lng: 139.69 },
+    bracket: { label: 'SEOUL',  lat:  37.57, lng: 126.98 },
+    diamond: { label: 'MOSCOW', lat:  55.75, lng:  37.62 },
+  };
+
+  // Per-shape state
+  const state = {};
+  for (const shape of ['box', 'bracket', 'diamond']) {
+    state[shape] = { selected: false, timers: [], typewriter: null };
+  }
+
+  function clearTimers(shape) {
+    state[shape].timers.forEach(id => clearTimeout(id));
+    state[shape].timers = [];
+    if (state[shape].typewriter) { state[shape].typewriter.cancel(); state[shape].typewriter = null; }
+    if (state[shape].coordLat)   { state[shape].coordLat.cancel();   state[shape].coordLat   = null; }
+    if (state[shape].coordLng)   { state[shape].coordLng.cancel();   state[shape].coordLng   = null; }
+  }
+
+  function cancelAnim(shape) {
+    clearTimers(shape);
+    const ch = document.getElementById(`ch-${shape}`);
+    ch.classList.remove(
+      's9-threatmap__crosshair--animating-in',
+      's9-threatmap__crosshair--animating-out',
+    );
+    void ch.offsetWidth;  // force style flush — same as _cancelAllAnimations
+  }
+
+  function setBadge(shape, text, cls) {
+    const b = document.getElementById(`badge-${shape}`);
+    b.textContent = text;
+    b.className = `vp__badge${cls ? ` vp__badge--${cls}` : ''}`;
+  }
+
+  function startTypewriter(shape) {
+    const lbl  = document.getElementById(`lbl-${shape}`);
+    const text = CONFIGS[shape].label;
+    let i = 0, cursorOn = true, cur = null, ch = null, cancelled = false;
+    const handle = {
+      cancel() {
+        cancelled = true;
+        clearTimeout(ch);
+        clearInterval(cur);
+      }
+    };
+    function render() { lbl.textContent = text.slice(0, i) + (cursorOn ? '_' : ' '); }
+    render();
+    cur = setInterval(() => { if (!cancelled) { cursorOn = !cursorOn; render(); } }, ANIM.LABEL_CURSOR_BLINK);
+    function next() {
+      if (cancelled) return;
+      i++;
+      render();
+      if (i < text.length) {
+        ch = setTimeout(next, ANIM.LABEL_CHAR_RATE);
+      } else {
+        ch = setTimeout(() => {
+          if (!cancelled) {
+            clearInterval(cur);
+            lbl.textContent = text;
+            setBadge(shape, 'locked', 'vis');
+          }
+        }, ANIM.LABEL_CURSOR_BLINK);
+      }
+    }
+    ch = setTimeout(next, ANIM.LABEL_CHAR_RATE);
+    state[shape].typewriter = handle;
+  }
+
+  function startCoordScramble(shape) {
+    const cfg   = CONFIGS[shape];
+    const latEl = document.querySelector(`#vp-${shape} .coords-lat`);
+    const lngEl = document.querySelector(`#vp-${shape} .coords-lng`);
+    if (!latEl || !lngEl) return;
+
+    function scramble(el, prefix, real, dec, dur) {
+      const t0   = Date.now();
+      const mag  = Math.abs(real);
+      const ints = Math.max(1, Math.floor(Math.log10(mag || 1)) + 1);
+      let timer  = null;
+      let done   = false;
+      function tick() {
+        if (done) return;
+        const elapsed = Date.now() - t0;
+        if (elapsed >= dur) {
+          el.textContent = `${prefix}${real.toFixed(dec)}°`;
+          return;
+        }
+        const rnd  = (Math.random() * Math.pow(10, ints)).toFixed(dec);
+        const sign = real < 0 ? '-' : '';
+        el.textContent = `${prefix}${sign}${rnd}°`;
+        timer = setTimeout(tick, 40);
+      }
+      tick();
+      return { cancel() { done = true; clearTimeout(timer); } };
+    }
+
+    const latHandle = scramble(latEl, 'LAT: ', cfg.lat, 2, 320);
+    const lngHandle = scramble(lngEl, 'LNG: ', cfg.lng, 2, 320);
+    // Store cancel handles so clearTimers can reach them
+    state[shape].coordLat = latHandle;
+    state[shape].coordLng = lngHandle;
+  }
+
+  function select(shape) {
+    cancelAnim(shape);
+    state[shape].selected = true;
+
+    const vp   = document.getElementById(`vp-${shape}`);
+    const node = document.getElementById(`node-${shape}`);
+    const lbl  = document.getElementById(`lbl-${shape}`);
+    const ch   = document.getElementById(`ch-${shape}`);
+
+    vp.classList.add('vp--active');
+    lbl.textContent = '';
+    node.classList.add('vp__node--selected');
+    setBadge(shape, 'acquiring…', 'in');
+
+    // 1. Add --animating-in after CROSSHAIR_IN_DELAY
+    const t1 = setTimeout(() => {
+      ch.classList.add('s9-threatmap__crosshair--visible', 's9-threatmap__crosshair--animating-in');
+    }, ANIM.CROSSHAIR_IN_DELAY);
+
+    // 2. Coord scramble
+    const t2 = setTimeout(() => startCoordScramble(shape), ANIM.COORD_SCRAMBLE_DELAY);
+
+    // 3. Typewriter
+    const t3 = setTimeout(() => {
+      setBadge(shape, 'typing…', 'in');
+      startTypewriter(shape);
+    }, ANIM.LABEL_START_DELAY);
+
+    state[shape].timers = [t1, t2, t3];
+  }
+
+  function deselect(shape) {
+    cancelAnim(shape);
+    state[shape].selected = false;
+
+    const vp   = document.getElementById(`vp-${shape}`);
+    const node = document.getElementById(`node-${shape}`);
+    const lbl  = document.getElementById(`lbl-${shape}`);
+    const ch   = document.getElementById(`ch-${shape}`);
+
+    vp.classList.remove('vp--active');
+    node.classList.remove('vp__node--selected');
+    setBadge(shape, 'releasing', 'out');
+
+    // 1. Fade label
+    lbl.classList.add('s9-threatmap__crosshair-label--fading');
+    const t1 = setTimeout(() => {
+      lbl.textContent = '';
+      lbl.classList.remove('s9-threatmap__crosshair-label--fading');
+    }, ANIM.DESELECT_LABEL_DUR);
+
+    // 2. Collapse crosshair
+    const t2 = setTimeout(() => {
+      ch.classList.remove('s9-threatmap__crosshair--animating-in', 's9-threatmap__crosshair--visible');
+      void ch.offsetWidth;
+      ch.classList.add('s9-threatmap__crosshair--animating-out');
+    }, ANIM.DESELECT_CROSSHAIR_DELAY);
+
+    // 3. Clear badge after crosshair gone
+    const t3 = setTimeout(() => {
+      ch.classList.remove('s9-threatmap__crosshair--animating-out');
+      setBadge(shape, '', '');
+    }, ANIM.DESELECT_CROSSHAIR_DELAY + 200);
+
+    state[shape].timers = [t1, t2, t3];
+  }
+
+  function reset(shape) {
+    cancelAnim(shape);
+    if (state[shape].coordLat) { state[shape].coordLat.cancel(); state[shape].coordLat = null; }
+    if (state[shape].coordLng) { state[shape].coordLng.cancel(); state[shape].coordLng = null; }
+    state[shape].selected = false;
+    const vp = document.getElementById(`vp-${shape}`);
+    vp.classList.remove('vp--active');
+    document.getElementById(`node-${shape}`).classList.remove('vp__node--selected');
+    const ch  = document.getElementById(`ch-${shape}`);
+    const lbl = document.getElementById(`lbl-${shape}`);
+    ch.classList.remove(
+      's9-threatmap__crosshair--visible',
+      's9-threatmap__crosshair--animating-in',
+      's9-threatmap__crosshair--animating-out',
+    );
+    lbl.textContent = '';
+    setBadge(shape, '', '');
+    const latEl = vp.querySelector('.coords-lat');
+    const lngEl = vp.querySelector('.coords-lng');
+    if (latEl) latEl.textContent = 'LAT: --.-°';
+    if (lngEl) lngEl.textContent = 'LNG: --.-°';
+  }
+
+  // ── Viewport click handlers ─────────────────────────────────
+  for (const shape of ['box', 'bracket', 'diamond']) {
+    document.getElementById(`vp-${shape}`).addEventListener('click', () => {
+      if (state[shape].selected) deselect(shape);
+      else select(shape);
+    });
+  }
+
+  // ── Global buttons ──────────────────────────────────────────
+  document.getElementById('btn-all-in').addEventListener('click', () => {
+    for (const shape of ['box', 'bracket', 'diamond']) select(shape);
+  });
+  document.getElementById('btn-all-out').addEventListener('click', () => {
+    for (const shape of ['box', 'bracket', 'diamond']) deselect(shape);
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    for (const shape of ['box', 'bracket', 'diamond']) reset(shape);
+  });
+
+  // ── Theme switcher ──────────────────────────────────────────
+  document.getElementById('themeStrip').addEventListener('click', (e) => {
+    const btn = e.target.closest('.theme-btn');
+    if (!btn) return;
+    document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const theme = btn.dataset.theme;
+    document.documentElement.removeAttribute('data-theme');
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+  });
+</script>
+</body>
+</html>

@@ -1,9 +1,0 @@
-node_modules/
-.agents/
-.claude/
-.openhands/
-.playwright-mcp/
-memory/
-threejs-skills/
-dist/assets/
-*.png

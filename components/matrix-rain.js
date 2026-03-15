@@ -1,120 +1,267 @@
 /**
  * matrix-rain.js — Katakana matrix rain in true 3D space.
  *
- * Architecture (same insight as rezmason/matrix):
- *   Glyphs are stationary in a grid. Illumination waves sweep DOWN through
- *   each column — the characters don't move, the light does.
- *
- * Rendering:
- *   - Canvas glyph atlas  → CanvasTexture (katakana + symbols)
- *   - InstancedBufferGeometry: one quad per character cell (col × row)
- *   - PerspectiveCamera: columns scattered in XZ space give true depth parallax
- *   - Per-column state (x, z, speed, seed) in a DataTexture — zero CPU per frame
- *   - Vertex shader positions each quad; fragment shader samples atlas + applies
- *     illumination gradient
- *   - AdditiveBlending + CSS mix-blend-mode:screen → glows over globe, invisible
- *     where black (no overhead)
- *
- * Usage:
- *   import { initMatrixRain, destroyMatrixRain } from './components/matrix-rain.js';
- *   const rain = initMatrixRain(element, { color: '#00ff70' });
- *   rain.destroy();
+ * Columns are scattered in a spherical shell around the globe. Each column
+ * has randomized position, trail length, brightness, glyph scale, and speed.
+ * Billboarded quads always face the camera; depth-scaled for consistent
+ * screen presence. AdditiveBlending + CSS mix-blend-mode:screen composites
+ * over the globe.
  */
 
 import * as THREE from 'three';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass }      from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader }      from 'three/addons/shaders/FXAAShader.js';
 
-// ── Glyph set ─────────────────────────────────────────────────
-// Half-width katakana + numerals + symbols — authentic matrix palette
+// ── Glyph set (Matrix-Code.ttf — Rezmason/matrix, MIT license) ──
 const GLYPHS = [
-  ...'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ',
-  ...'ﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ',
-  ...'012345789',
-  ...':."=*+-<>¦|',
+  ...'アウエオカキケコサシスセソタツテナニヌネ',
+  ...'ハヒホマミムメモヤヨラリワー',
+  ...'012345789z',
+  ...':."*+<>|¦╌▪꞊',
 ];
+const ATLAS_COLS = 8;   // columns in the MSDF grid atlas
+const ATLAS_GRID = 8;   // 8×8 cell grid (512×512px, 64px per cell)
+
+// ── Shared GLSL hash — used by both vertex and fragment shaders ──
+const H2_GLSL = /* glsl */`
+// Stable hash — keeps inputs small with fract() to avoid GPU sin() precision issues
+float h2(vec2 v) {
+  vec2 s = fract(v * vec2(0.1031, 0.1030));
+  s += dot(s, s.yx + 33.33);
+  return fract((s.x + s.y) * s.x);
+}
+`;
+
+// ── RainPhosphorShader ──────────────────────────────────────
+// Temporal persistence — blends current frame with decayed previous frame.
+// Bright head glyphs leave ghost trails that fade over ~0.5s.
+
+const RainPhosphorShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    tPrev:    { value: null },
+    decay:    { value: 0.88 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tPrev;
+    uniform float     decay;
+    varying vec2      vUv;
+    void main() {
+      vec4 current = texture2D(tDiffuse, vUv);
+      vec4 prev    = texture2D(tPrev, vUv) * decay;
+      // max prevents double-brightening where current overlaps previous trails
+      gl_FragColor = max(current, prev);
+    }
+  `,
+};
+
+// ── RainHoloShader ────────────────────────────────────────────
+// Post-process pass mirroring the threat-map HoloShader:
+//   chromatic aberration (edge-weighted) + scanlines + vignette.
+// mix-blend-mode:screen on the canvas makes the black background invisible,
+// so bloom and holo effects work cleanly without alpha compositing issues.
+
+const RainHoloShader = {
+  uniforms: {
+    tDiffuse:         { value: null },
+    time:             { value: 0.0 },
+    vignetteStrength: { value: 0.42 },
+    scanlineOpacity:  { value: 0.045 },
+    aberrationAmt:    { value: 0.0025 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float     time;
+    uniform float     vignetteStrength;
+    uniform float     scanlineOpacity;
+    uniform float     aberrationAmt;
+    varying vec2      vUv;
+    void main() {
+      vec2  ctr    = vUv - 0.5;
+      float edgeSq = dot(ctr, ctr) * 4.0;
+      float s      = aberrationAmt * edgeSq;
+      vec2 uvR = clamp(vUv + ctr * s, 0.001, 0.999);
+      vec2 uvB = clamp(vUv - ctr * s, 0.001, 0.999);
+      float r = texture2D(tDiffuse, uvR).r;
+      float g = texture2D(tDiffuse, vUv ).g;
+      float b = texture2D(tDiffuse, uvB ).b;
+      vec3 col = vec3(r, g, b);
+      // Scrolling scanlines — slow drift adds subtle life
+      float scan = sin(vUv.y * 640.0 + time * 0.5) * 0.5 + 0.5;
+      col *= 1.0 - scanlineOpacity * (1.0 - scan);
+      float vig = 1.0 - edgeSq * vignetteStrength;
+      col *= vig;
+      // Preserve alpha from render target — transparent background stays transparent
+      // so mix-blend-mode:screen on the canvas correctly composites over the globe.
+      gl_FragColor = vec4(col, texture2D(tDiffuse, vUv).a);
+    }
+  `,
+};
+
+// ── RainHeatShader ──────────────────────────────────────────────
+// Post-process UV warp driven by pixel brightness — heat shimmer
+// around bright glyph heads. Inserted after bloom, before soften.
+
+const RainHeatShader = {
+  uniforms: {
+    tDiffuse:   { value: null },
+    uTime:      { value: 0.0 },
+    uHeatAmt:   { value: 0.004 },
+    uHeatFreq:  { value: 60.0 },
+    uHeatSpeed: { value: 3.5 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float     uTime;
+    uniform float     uHeatAmt;
+    uniform float     uHeatFreq;
+    uniform float     uHeatSpeed;
+    varying vec2      vUv;
+    void main() {
+      vec4 original = texture2D(tDiffuse, vUv);
+      float bright = dot(original.rgb, vec3(0.2126, 0.7152, 0.0722));
+      float warpU = sin(vUv.y * uHeatFreq       + uTime * uHeatSpeed)       * bright * uHeatAmt;
+      float warpV = sin(vUv.x * uHeatFreq * 1.3 + uTime * uHeatSpeed * 0.7) * bright * uHeatAmt * 0.5;
+      vec2 warpedUv = clamp(vUv + vec2(warpU, warpV), 0.001, 0.999);
+      vec4 warped = texture2D(tDiffuse, warpedUv);
+      // Protect bright bloom peaks from being warped to darker neighbors:
+      // bright pixels keep original, dim surroundings get full shimmer distortion
+      float protect = smoothstep(0.3, 0.8, bright);
+      gl_FragColor = mix(warped, original, protect);
+    }
+  `,
+};
+
+// ── RainStreakShader ────────────────────────────────────────────
+// Lens rain streaks — subtle vertical bright streaks drifting horizontally.
+// Simulates rain on a camera lens. Inserted after holo, before FXAA.
+
+const RainStreakShader = {
+  uniforms: {
+    tDiffuse:   { value: null },
+    uTime:      { value: 0.0 },
+    uStreakAmt: { value: 0.055 },
+    uAspect:    { value: 1.78 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float     uTime;
+    uniform float     uStreakAmt;
+    uniform float     uAspect;
+    varying vec2      vUv;
+
+    float streakX(int i)     { return fract(float(i) * 0.3183 + 0.17); }
+    float streakSpeed(int i) { return 0.004 + float(i) * 0.003; }
+    float streakWidth(int i) { return (0.0018 + float(i) * 0.0007) / uAspect; }
+    float streakAlpha(int i) { return 0.4 + float(i) * 0.2; }
+
+    void main() {
+      vec4 col = texture2D(tDiffuse, vUv);
+      float streakAdd = 0.0;
+      for (int i = 0; i < 3; i++) {
+        float cx    = fract(streakX(i) + uTime * streakSpeed(i));
+        float dist  = min(abs(vUv.x - cx), 1.0 - abs(vUv.x - cx));
+        float streak = exp(-dist * dist / (2.0 * streakWidth(i) * streakWidth(i)));
+        float vertFade = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+        float shimmer = 0.7 + 0.3 * sin(vUv.y * 120.0 + uTime * 2.5 + float(i) * 2.094);
+        streakAdd += streak * vertFade * shimmer * streakAlpha(i);
+      }
+      col.rgb += vec3(0.55, 1.0, 0.65) * streakAdd * uStreakAmt;
+      col.rgb  = min(col.rgb, vec3(3.0));
+      gl_FragColor = col;
+    }
+  `,
+};
 
 // ── Scene constants ───────────────────────────────────────────
-const N_COLS     = 110;   // rain columns scattered in XZ
-const N_ROWS     = 55;    // character rows per column (sets max trail length)
-const CELL_W     = 0.28;  // world-unit width of one glyph
-const CELL_H     = 0.36;  // world-unit height of one glyph
-const WORLD_H    = 22;    // cycle range in Y (must exceed max visible height)
-const X_RANGE    = 16;    // columns scattered ±X_RANGE in X
-const Z_NEAR     = -0.6;  // closest column Z
-const Z_FAR      = -9.0;  // farthest column Z
-const ATLAS_PX   = 52;    // canvas pixels per glyph cell
+const N_COLS     = 600;
+const N_ROWS     = 120;   // max trail length — long fading tails
+const CELL_W     = 0.12;  // base world-unit glyph width
+const CELL_H     = 0.08;  // base world-unit glyph height
+const WORLD_H    = 16;    // vertical sweep range per column
 
-// ── Glyph atlas ───────────────────────────────────────────────
-/**
- * Render all glyphs into a vertical strip canvas → THREE.CanvasTexture.
- * One glyph per row: glyph[i] occupies canvas y=[i*PX, (i+1)*PX].
- */
-function buildAtlas() {
-  const n   = GLYPHS.length;
-  const px  = ATLAS_PX;
-  const c   = document.createElement('canvas');
-  c.width   = px;
-  c.height  = px * n;
+// Spherical shell around globe (radius 1.0)
+// Camera orbits at ~3.0, columns must extend well past that
+const R_MIN      = 3.5;
+const R_MAX      = 8.0;
 
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, c.width, c.height);
-  ctx.fillStyle    = '#fff';
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  // Share Tech Mono may not be loaded yet; a monospace fallback still looks fine.
-  // The texture is rebuilt after fonts.ready (see initMatrixRain).
-  ctx.font = `${Math.round(px * 0.84)}px "Share Tech Mono", "Courier New", monospace`;
-
-  GLYPHS.forEach((g, i) => ctx.fillText(g, px / 2, px * i + px / 2));
-
-  const tex        = new THREE.CanvasTexture(c);
-  tex.flipY        = false;   // keep atlas orientation predictable in shader
+// ── Pre-baked MSDF glyph atlas (8×8 grid, 64px per cell, RGB channels) ──
+function loadMSDF(path) {
+  const tex = new THREE.TextureLoader().load(path);
+  tex.flipY        = false;
   tex.minFilter    = THREE.LinearMipMapLinearFilter;
   tex.magFilter    = THREE.LinearFilter;
+  tex.colorSpace   = THREE.LinearSRGBColorSpace; // distance data, not colour
   tex.generateMipmaps = true;
-  return { tex, count: n, canvas: c, ctx };
-}
-
-// ── Per-column DataTexture ────────────────────────────────────
-// RGBA Float32: [ x, z, speed (world-units/sec), seed (0..1) ]
-function buildColData() {
-  const data = new Float32Array(N_COLS * 4);
-  for (let i = 0; i < N_COLS; i++) {
-    data[i * 4 + 0] = (Math.random() - 0.5) * 2 * X_RANGE;
-    data[i * 4 + 1] = Z_NEAR + Math.random() * (Z_FAR - Z_NEAR);
-    data[i * 4 + 2] = 1.8 + Math.random() * 3.2;   // world-units / sec
-    data[i * 4 + 3] = Math.random();
-  }
-  const tex       = new THREE.DataTexture(data, N_COLS, 1, THREE.RGBAFormat, THREE.FloatType);
-  tex.needsUpdate = true;
-  return tex;
+  return { tex, count: GLYPHS.length };
 }
 
 // ── InstancedBufferGeometry ───────────────────────────────────
-// One PlaneGeometry quad per cell, instanced N_COLS × N_ROWS times.
-// aColIdx and aRowIdx identify which cell each instance represents.
+// Packed attributes: aColA = (wx, wz, speed, seed), aColB = (yOff, scale, alpha, trail)
 function buildGeometry() {
   const geom = new THREE.InstancedBufferGeometry();
   const base = new THREE.PlaneGeometry(1, 1);
-  // Clone attributes — do NOT dispose base before cloning or buffers are freed
   geom.index = base.index.clone();
   geom.setAttribute('position', base.getAttribute('position').clone());
   geom.setAttribute('uv',       base.getAttribute('uv').clone());
   base.dispose();
 
-  const total  = N_COLS * N_ROWS;
-  const colBuf = new Float32Array(total);
-  const rowBuf = new Float32Array(total);
+  const total    = N_COLS * N_ROWS;
+  const colBuf   = new Float32Array(total);
+  const rowBuf   = new Float32Array(total);
+  const colABuf  = new Float32Array(total * 4);  // vec4(wx, wz, speed, seed)
+  const colBBuf  = new Float32Array(total * 4);  // vec4(yOff, scale, alpha, trail)
 
   for (let c = 0; c < N_COLS; c++) {
+    const theta = Math.random() * Math.PI * 2;
+    const cosP  = 1 - 2 * Math.random();                 // cos(phi) uniform -1..1
+    const sinP  = Math.sqrt(1 - cosP * cosP);
+
+    // Radius: heavily biased toward outer shell (5–6 range)
+    const t      = Math.pow(Math.random(), 0.12);
+    const radius = R_MIN + t * (R_MAX - R_MIN);
+
+    const wx = sinP * Math.cos(theta) * radius;
+    const wz = sinP * Math.sin(theta) * radius;
+
+    // Y offset from sphere surface position + extra random scatter
+    const yBase  = cosP * radius;
+    const yOff   = yBase + (Math.random() - 0.5) * 2.0;
+
+    const speed  = 0.4 + Math.random() * 1.87;            // 0.4 – 2.27
+    const seed   = Math.random();
+    const scale  = 0.5 + Math.random() * 1.0;            // 0.5 – 1.5× size
+    const alpha  = 0.18 + Math.random() * 0.72;          // 0.18 – 0.90 brightness
+    const trail  = 0.015 + Math.random() * 0.035;          // 0.015 – 0.05 decay rate
+
     for (let r = 0; r < N_ROWS; r++) {
-      colBuf[c * N_ROWS + r] = c;
-      rowBuf[c * N_ROWS + r] = r;
+      const idx = c * N_ROWS + r;
+      colBuf[idx] = c;
+      rowBuf[idx] = r;
+      const i4 = idx * 4;
+      colABuf[i4]     = wx;
+      colABuf[i4 + 1] = wz;
+      colABuf[i4 + 2] = speed;
+      colABuf[i4 + 3] = seed;
+      colBBuf[i4]     = yOff;
+      colBBuf[i4 + 1] = scale;
+      colBBuf[i4 + 2] = alpha;
+      colBBuf[i4 + 3] = trail;
     }
   }
 
-  geom.setAttribute('aColIdx', new THREE.InstancedBufferAttribute(colBuf, 1));
-  geom.setAttribute('aRowIdx', new THREE.InstancedBufferAttribute(rowBuf, 1));
+  geom.setAttribute('aColIdx',  new THREE.InstancedBufferAttribute(colBuf, 1));
+  geom.setAttribute('aRowIdx',  new THREE.InstancedBufferAttribute(rowBuf, 1));
+  geom.setAttribute('aColA',    new THREE.InstancedBufferAttribute(colABuf, 4));
+  geom.setAttribute('aColB',    new THREE.InstancedBufferAttribute(colBBuf, 4));
   geom.instanceCount = total;
   return geom;
 }
@@ -125,61 +272,160 @@ precision highp float;
 
 attribute float aColIdx;
 attribute float aRowIdx;
+attribute vec4  aColA;   // wx, wz, speed, seed
+attribute vec4  aColB;   // yOff, scale, alpha, trail
 
-uniform sampler2D uColData;
-uniform float     uNCols;
-uniform float     uTime;
-uniform float     uCellW;
-uniform float     uCellH;
-uniform float     uWorldH;
-uniform float     uNRows;
+uniform float uTime;
+uniform float uCellW;
+uniform float uCellH;
+uniform float uWorldH;
+uniform float uNRows;
 
 varying vec2  vUv;
-varying float vDist;   // distance from illumination head in row-units (0=head, +ve=trail)
+varying float vDist;
 varying float vColIdx;
 varying float vRowIdx;
+varying float vAlpha;
+varying float vTrail;
+varying float vDepthDim;
+varying vec3  vOutward;
+varying vec3  vWorldPos;
+varying float vBurst;
+varying float vBootFade;
+varying float vDeathFade;
+varying float vGlobeProx;
+
+${H2_GLSL}
 
 void main() {
-  vUv     = uv;
-  vColIdx = aColIdx;
-  vRowIdx = aRowIdx;
+  // Initialize varyings before any early return (GLSL requires writes on all paths)
+  vDeathFade = 1.0;
+  vGlobeProx = 0.0;
 
-  // Fetch column config from DataTexture
-  vec4  col  = texture2D(uColData, vec2((aColIdx + 0.5) / uNCols, 0.5));
-  float colX = col.r;
-  float colZ = col.g;
-  float spd  = col.b;
-  float seed = col.a;
+  // Unpack per-column attributes
+  float aWX    = aColA.x;
+  float aWZ    = aColA.y;
+  float aSpeed = aColA.z;
+  float aSeed  = aColA.w;
+  float aYOff  = aColB.x;
+  float aScale = aColB.y;
+  float aAlpha = aColB.z;
+  float aTrail = aColB.w;
 
-  // Static world-Y of this character cell (top → bottom as rowIdx increases)
-  float cellY = uWorldH * 0.5 - aRowIdx * uCellH;
-
-  // Illumination head sweeps from top to bottom, cycling continuously.
-  // headY decreases from +WORLD_H/2 toward -WORLD_H/2, then wraps.
-  float cycleH = uWorldH + uNRows * uCellH;
-  float headY  = uWorldH * 0.5 - mod(uTime * spd + seed * cycleH, cycleH);
-
-  // Distance from head in row-units:
-  //   < 0  → cell is below head  (not yet lit, invisible)
-  //   0    → head position       (brightest, white)
-  //   > 0  → above head          (trail, exponential fade)
-  vDist = (cellY - headY) / uCellH;
-
-  // Cull cells that are not in the visible trail window
-  if (vDist < -0.5 || vDist > float(uNRows)) {
-    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);  // outside NDC cube → clipped
+  // ── Startup cascade — columns boot up over 2.5s ──────────
+  float bootDelay = h2(vec2(aColIdx * 0.31, 0.77)) * 2.5;
+  vBootFade = smoothstep(bootDelay, bootDelay + 0.3, uTime);
+  if (vBootFade < 0.001) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
   }
 
-  // Place quad in world space.
-  // position is the base PlaneGeometry vertex in [-0.5, 0.5] unit space.
-  vec3 worldPos = vec3(
-    position.x * uCellW + colX,
-    position.y * uCellH + cellY,
-    colZ
-  );
+  vBurst  = 0.0;  // default — overwritten by burst block below
+  vUv     = uv;
+  vColIdx = aColIdx;
+  vRowIdx = aRowIdx;
+  vTrail  = aTrail;
 
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
+  // Step must exceed rendered quad height (uCellH * aScale * 2.2) to prevent overlap.
+  // 2.5–2.9× gives a small gap between glyphs; per-column variation keeps it organic.
+  float spacingFactor = 1.85 + 0.10 * h2(vec2(aColIdx * 0.61, 0.29));
+  float cellStep = uCellH * aScale * spacingFactor;
+
+  // Per-glyph Y jitter
+  float yJitter = h2(vec2(aColIdx * 0.43, aRowIdx * 0.89)) * 0.16 * cellStep;
+
+  // Per-glyph alpha variation: ±12%
+  float alphaJitter = 1.0 + (h2(vec2(aColIdx * 0.67, aRowIdx * 0.31)) - 0.5) * 0.24;
+  vAlpha = aAlpha * alphaJitter;
+
+  // Static world-Y of this cell
+  float cellY = aYOff + uWorldH * 0.5 - aRowIdx * cellStep + yJitter;
+
+  // ── Column burst ──────────────────────────────────────────
+  float burstCycle  = 4.0;
+  float burstBucket = floor(uTime / burstCycle);
+  float burstH      = h2(vec2(aColIdx * 0.41, burstBucket * 0.19));
+  float burstActive = step(0.995, burstH);
+  float burstPhase  = fract(uTime / burstCycle);
+  float burstFrac   = smoothstep(0.0, 0.1, burstPhase)
+                    * (1.0 - smoothstep(0.25, 0.35, burstPhase));
+  float speedMul    = 1.0 + burstActive * burstFrac * 2.0;
+  vBurst = burstActive * burstFrac;
+
+  // Illumination head sweeps down
+  float cycleH    = uWorldH + uNRows * cellStep;
+  float cyclePos  = mod(uTime * aSpeed * speedMul + aSeed * cycleH, cycleH);
+  float cyclePhase = cyclePos / cycleH;
+
+  // ── Column death fade — smooth fade in last 12% of cycle before wrap ──
+  float deathRamp = smoothstep(0.88, 1.0, cyclePhase);
+  vDeathFade = 1.0 - deathRamp;
+
+  float headY = aYOff + uWorldH * 0.5 - cyclePos;
+  vDist = (cellY - headY) / cellStep;
+
+  // ── Rain-globe proximity pulse ──────────────────────────────
+  float headGlobeDist = abs(length(vec3(aWX, headY, aWZ)) - 1.0);
+  float globeProxRaw  = 1.0 - smoothstep(0.0, 0.4, headGlobeDist);
+  vGlobeProx = globeProxRaw * smoothstep(3.0, 0.0, max(vDist, 0.0));
+
+  // Tighter culling using per-column trail decay rate:
+  // fragment discards when exp(-vDist * trail) < 0.012 → vDist > 4.42 / trail
+  float maxVisible = min(4.42 / aTrail, uNRows * 1.2);
+  if (vDist < -0.5 || vDist > maxVisible) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+
+  // ── 3D world-space glyph placement ──────────────────────────
+  // All columns face toward a convergence point 5 units behind the camera
+  // (0, 0, -2) with ±5° per-column jitter for subtle parallax.
+  vec3 colCenter = vec3(aWX, cellY, aWZ);
+  vec2  toTarget    = vec2(-aWX, -2.0 - aWZ); // camera at z=3, target at z=-2
+  float targetAngle = atan(toTarget.x, toTarget.y);
+  float facingAngle = targetAngle + (h2(vec2(aColIdx * 0.73, 0.51)) - 0.5) * 0.1745; // ±5°
+  vec3  outward = vec3(sin(facingAngle), 0.0, cos(facingAngle));
+  vec3  right   = vec3(outward.z, 0.0, -outward.x);  // cross(Y, outward), already unit
+  vOutward   = outward;
+
+  // ── Column sway — sinusoidal lateral drift, head leads, tail lags ──
+  float sway = sin(uTime * 0.4 + aSeed * 6.2832) * 0.04
+             * (1.0 - clamp(vDist / uNRows, 0.0, 1.0));
+  colCenter += right * sway;
+
+  // ── Per-column Z-rotation — ±5° tilt around outward axis ──
+  float rotAngle = (h2(vec2(aSeed, 42.0)) - 0.5) * 0.1745;
+  float cosR     = cos(rotAngle);
+  float sinR     = sin(rotAngle);
+  vec3 rotRight  = right            * cosR + vec3(0.0, 1.0, 0.0) * sinR;
+  vec3 rotUp     = vec3(0.0, 1.0, 0.0) * cosR - right            * sinR;
+
+  // ── Drip stretch — Y-only scale at head for mercury-drip effect ──
+  float scaleJitter = 1.0 + (h2(vec2(aColIdx * 0.53, aRowIdx * 0.17)) - 0.5) * 0.20;
+  float dripStretch = 1.0 + 0.35 * exp(-max(vDist, 0.0) * 1.5);
+  float sX = aScale * scaleJitter * 2.2;
+  float sY = aScale * scaleJitter * 2.2 * dripStretch;
+
+  vec3 worldPos = colCenter
+                + rotRight * position.x * uCellW * sX
+                + rotUp    * position.y * uCellH * sY;
+  vWorldPos = worldPos;
+
+  // ── Depth & brightness ──────────────────────────────────────
+  vec4  viewPos   = modelViewMatrix * vec4(worldPos, 1.0);
+  float camDist3D = length(viewPos.xyz);
+  if (camDist3D < 1.5) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+
+  // Fade glyphs close to camera (within 3.5 units) using true 3D distance
+  // to prevent blinding when camera auto-focuses beneath a column.
+  // No far-distance falloff: back-hemisphere columns stay bright so they appear
+  // through the globe via CSS mix-blend-mode:screen on the rain canvas.
+  vDepthDim = smoothstep(1.5, 3.5, camDist3D);
+
+  gl_Position = projectionMatrix * viewPos;
 }
 `;
 
@@ -192,52 +438,282 @@ uniform float     uGlyphCount;
 uniform float     uTime;
 uniform vec3      uColor;
 uniform float     uNRows;
+uniform float     uGlobalAlpha;
+uniform float     uDepth;
+uniform float     uPomSteps;
+uniform float     uNormalStrength;
+uniform float     uAtlasCols;
+uniform float     uAtlasGrid;
+uniform vec3      uLightDir;
+uniform float     uGlobeInteract;
+uniform float     uGlyphChroma;
 
 varying vec2  vUv;
 varying float vDist;
 varying float vColIdx;
 varying float vRowIdx;
+varying float vAlpha;
+varying float vTrail;
+varying float vDepthDim;
+varying vec3  vOutward;
+varying vec3  vWorldPos;
+varying float vBurst;
+varying float vBootFade;
+varying float vDeathFade;
+varying float vGlobeProx;
 
-float h2(vec2 v) {
-  return fract(sin(dot(v, vec2(127.1, 311.7))) * 43758.5453);
+${H2_GLSL}
+
+// MSDF median — preserves sharp corners by selecting the middle channel.
+float median3(float a, float b, float c) {
+  return max(min(a, b), min(max(a, b), c));
+}
+
+// Convert face UV [0,1]² to MSDF grid atlas UV, handling back-face U flip.
+float sampleGlyph(vec2 fUV, float gIdx) {
+  float su = gl_FrontFacing ? fUV.x : 1.0 - fUV.x;
+  float col = mod(gIdx, uAtlasCols);
+  float row = floor(gIdx / uAtlasCols);
+  vec2 atlasUV = vec2(
+    (col + su) / uAtlasGrid,
+    (row + (1.0 - fUV.y)) / uAtlasGrid
+  );
+  vec3 s = texture2D(uGlyphTex, atlasUV).rgb;
+  return median3(s.r, s.g, s.b);
 }
 
 void main() {
-  // Trail brightness: max at head (vDist≈0), exponential falloff into trail
-  float trail = exp(-max(vDist, 0.0) * 0.14);
+  // Per-column trail decay — accelerates once intensity drops below 50%
+  float d = max(vDist, 0.0);
+  float halfDist = 0.6931 / vTrail;  // ln(2) / vTrail — distance where trail hits 0.5
+  float accel = d > halfDist ? 1.5 : 1.0;
+  float trail = exp(-d * vTrail * accel);
   if (trail < 0.012) discard;
 
-  // Glyph identity: each cell has a stable character that flickers occasionally.
-  // Cells near the head flicker faster (higher rate).
-  float proximity = 1.0 - clamp(vDist / 8.0, 0.0, 1.0);
-  float rate      = 2.0 + proximity * 14.0 + h2(vec2(vColIdx, 0.5)) * 6.0;
-  float tick      = floor(uTime * rate);
+  // ── Globe occlusion (early) — skip expensive POM for heavily occluded fragments
+  vec3  toFrag   = vWorldPos - cameraPosition;
+  float fragDist = length(toFrag);
+  vec3  viewDir  = toFrag / fragDist;  // reused for POM tangent projection below
+  float occlude  = 1.0;
+  float ob       = dot(cameraPosition, viewDir);
+  float oc       = dot(cameraPosition, cameraPosition) - 1.0;  // globe radius = 1.0
+  float disc     = ob * ob - oc;
+  if (disc > 0.0) {
+    float tNear = -ob - sqrt(disc);
+    if (tNear > 0.0 && fragDist > tNear) {
+      occlude = 1.0 - 0.8 * smoothstep(0.0, 0.12, sqrt(disc));
+    }
+  }
+  // Conservative early discard — if max possible alpha is sub-visible, skip everything
+  float maxAlpha = pow(trail * vAlpha * vDepthDim, 1.3) * uGlobalAlpha * occlude * vBootFade;
+  if (maxAlpha < 0.015) discard;
+
+  // Snap to integer — varyings can have interpolation noise across the quad
+  vec2 cellId = vec2(floor(vColIdx + 0.5), floor(vRowIdx + 0.5));
+
+  float cellPhase = h2(cellId * 0.37);
+  float stability = h2(cellId * 0.91);
+
+  // Hold period in seconds (refresh-rate independent) — 3.3–11.7s, median ~7.5s
+  float holdSec    = 0.45 + h2(cellId * 0.29) * 7.15;
+  float burstOffset = vBurst > 0.5 ? floor(uTime * 12.0) : 0.0;
+  float changeTick = floor((cellPhase * holdSec + uTime) / holdSec) + burstOffset;
+
+  // ~30% of cells are stable — rest mutate on their own schedule
+  float baseGlyph = floor(h2(cellId * 0.47 + 0.5) * uGlyphCount);
   float glyphIdx  = floor(
-    h2(vec2(vColIdx * 0.37 + tick * 0.11, vRowIdx * 0.73 + tick * 0.07)) * uGlyphCount
+    h2(cellId * 0.37 + changeTick * vec2(0.11, 0.07)) * uGlyphCount
+  );
+  glyphIdx = stability < 0.30 ? baseGlyph : glyphIdx;
+
+  // Back-face U flip for film grain (sampleGlyph handles its own flip internally)
+  float sampleX = gl_FrontFacing ? vUv.x : 1.0 - vUv.x;
+
+  // Film grain
+  float grain = h2(vec2(
+    sampleX * 47.3 + vUv.y * 31.7 + vColIdx * 0.53,
+    uTime * 7.3 + vRowIdx * 0.19
+  ));
+  grain = (grain - 0.5) * 0.07;
+
+  // Per-column hue shift — G-B plane rotation for yellow-green ↔ cyan variation
+  float hueShift   = (h2(vec2(cellId.x * 0.17, 0.0)) - 0.5) * 2.0;
+  float hueRad     = hueShift * 0.14;  // ±8°
+  float cosH       = cos(hueRad);
+  float sinH       = sin(hueRad);
+  vec3 tintedColor = vec3(
+    uColor.r,
+    uColor.g * cosH - uColor.b * sinH,
+    uColor.g * sinH + uColor.b * cosH
   );
 
-  // Sample atlas.
-  // flipY=false: UV.v=0 → canvas top, UV.v=1 → canvas bottom.
-  // PlaneGeometry: vUv.y=0 → quad bottom, vUv.y=1 → quad top.
-  // Glyph i canvas range: v=[i/n, (i+1)/n] top-to-bottom.
-  // Map quad top→glyph top, quad bottom→glyph bottom:
-  float atlasV = (glyphIdx + (1.0 - vUv.y)) / uGlyphCount;
-  float mask   = texture2D(uGlyphTex, vec2(vUv.x, atlasV)).r;
+  // Color: head burns white, trail is deep saturated green
+  float headFrac = 1.0 - smoothstep(0.0, 0.8, vDist);
+  vec3  col2     = mix(tintedColor * 1.6, tintedColor * 3.0 + vec3(0.3), headFrac) + grain;
 
-  if (mask < 0.07) discard;
+  // Head drip — leading 2-3 glyphs are distinctly brighter (film-accurate)
+  float drip = exp(-vDist * 0.8);
+  col2 *= 1.0 + drip * 0.5;
 
-  // Color: head → bright white; trail → theme color, fading
-  float headFrac = 1.0 - smoothstep(0.0, 1.8, vDist);
-  vec3  col      = mix(uColor * 1.3, vec3(0.82, 1.0, 0.88), headFrac);
+  // Glyph flash — ~0.8% of cells flare white with smooth decay
+  float flashBucket = floor(uTime * 30.0);
+  float flashH = h2(cellId * 0.71 + vec2(flashBucket * 0.13, flashBucket * 0.07));
+  float flashAge = fract(uTime * 30.0);
+  float flashIntensity = (1.0 - flashAge * flashAge) * step(flashH, 0.008);
+  col2 = mix(col2, vec3(2.4), flashIntensity);
 
-  // Second-brightest row: slightly elevated (classic matrix look)
-  float subHead  = 1.0 - smoothstep(1.0, 3.0, vDist);
-  col            = mix(col, uColor * 1.8, subHead * 0.35);
+  // Atmospheric depth tint — distant columns shift toward cyan/darker
+  float depthTint = smoothstep(3.0, 8.0, length(vWorldPos));
+  col2 = mix(col2, col2 * vec3(0.6, 0.85, 1.1), depthTint * 0.4);
 
-  float alpha    = trail * mask;
-  gl_FragColor   = vec4(col * alpha, alpha);
+  // ── Panel tangent frame (vOutward.y is always 0, so closed-form) ──
+  // cross((0,1,0), vOutward) = (vOutward.z, 0, -vOutward.x), already unit length
+  // cross(vOutward, panelRight) = (0, 1, 0) always
+  vec3 panelRight = vec3(vOutward.z, 0.0, -vOutward.x);
+
+  // ── View ray in tangent space (reuses viewDir from globe occlusion) ──
+  vec3 tangentV = vec3(
+    dot(viewDir, panelRight),
+    viewDir.y,
+    dot(viewDir, vOutward)
+  );
+
+  // Guard: skip POM when view is nearly edge-on (>~84°) or beyond 6 units
+  // (distant glyphs are too small on screen for POM to be visible)
+  float pomActive = step(0.1, abs(tangentV.z)) * step(fragDist, 6.0);
+  // Sign-preserving clamp — naturally handles front/back face POM direction
+  // without branching on gl_FrontFacing. Front face: tangentV.z < 0, back face: > 0.
+  float safeTZ = sign(tangentV.z) * max(abs(tangentV.z), 0.1);
+
+  // ── Distance-adaptive POM — far glyphs need fewer march steps ──
+  float pomLod   = clamp(1.0 - fragDist * 0.1, 0.3, 1.0);
+  int   numSteps = int(max(uPomSteps * pomLod, 3.0));
+  float stepSize = 1.0 / float(numSteps);
+  vec2  stepFace = (-tangentV.xy / safeTZ) * uDepth * stepSize;
+
+  vec2  faceUV      = vUv;
+  float currentH    = 1.0;
+  vec2  currentFace = faceUV;
+  vec2  prevFace    = faceUV;
+  float prevH       = 1.0;
+
+  for (int i = 0; i < 8; i++) {
+    if (i >= numSteps) break;
+    prevFace    = currentFace;
+    prevH       = currentH;
+    currentFace += stepFace * pomActive;
+    currentFace  = clamp(currentFace, vec2(0.005), vec2(0.995));
+    currentH    -= stepSize;
+    float surfH  = sampleGlyph(currentFace, glyphIdx);
+    if (surfH >= currentH) break;
+  }
+
+  // Binary refinement (3 bisection steps)
+  vec2  loFace = prevFace,  hiFace = currentFace;
+  float loH    = prevH,     hiH    = currentH;
+  for (int b = 0; b < 3; b++) {
+    vec2  midFace = (loFace + hiFace) * 0.5;
+    float midH    = (loH + hiH) * 0.5;
+    float s       = sampleGlyph(midFace, glyphIdx);
+    if (s >= midH) { hiFace = midFace; hiH = midH; }
+    else           { loFace = midFace; loH = midH; }
+  }
+
+  vec2 finalFace = mix(faceUV, (loFace + hiFace) * 0.5, pomActive);
+
+  // Re-sample MSDF at POM-displaced position — fwidth() gives pixel-perfect
+  // SDF anti-aliasing at every screen size instead of fixed smoothstep range
+  float sdfG = sampleGlyph(finalFace, glyphIdx);
+  float fw   = fwidth(sdfG) * 0.7;
+  float mask = smoothstep(0.5 - fw, 0.5 + fw, sdfG);
+  if (mask < 0.01) discard;
+
+  // ── Per-glyph chromatic aberration — offset R/B channels at head ──
+  float aberration = exp(-max(vDist, 0.0) * 1.5) * uGlyphChroma;
+  float chromaOff  = aberration * 0.012;
+  vec2 rUV = clamp(vec2(finalFace.x + chromaOff, finalFace.y), 0.005, 0.995);
+  vec2 bUV = clamp(vec2(finalFace.x - chromaOff, finalFace.y), 0.005, 0.995);
+  float rMask = smoothstep(0.5 - fw, 0.5 + fw, sampleGlyph(rUV, glyphIdx));
+  float bMask = smoothstep(0.5 - fw, 0.5 + fw, sampleGlyph(bUV, glyphIdx));
+  col2.r *= rMask / max(mask, 0.01);
+  col2.b *= bMask / max(mask, 0.01);
+
+  // Edge emission glow — exponential corona peaks sharply at stroke boundary
+  // for a laser-etched holographic feel (no extra texture reads)
+  float edgeDist = abs(sdfG - 0.5);
+  float edgeGlow = exp(-edgeDist * 18.0) * 0.4;
+  col2 += uColor * edgeGlow * trail;
+
+  // ── Globe impact pulse — additive glow when head is near globe surface ──
+  float impulseBright = vGlobeProx * trail * mask * 2.5 * uGlobeInteract;
+  col2 += vec3(0.6, 1.0, 0.7) * impulseBright;
+
+  // ── Normals + Lighting (skipped for dim trail glyphs — saves 4 taps) ──
+  vec3 fakeN = vec3(0.0, 0.0, 1.0);  // flat default for dim glyphs
+  if (trail > 0.25) {
+    float eps = 0.04;
+    float mL = sampleGlyph(finalFace + vec2(-eps,  0.0), glyphIdx);
+    float mR = sampleGlyph(finalFace + vec2( eps,  0.0), glyphIdx);
+    float mD = sampleGlyph(finalFace + vec2( 0.0, -eps), glyphIdx);
+    float mU = sampleGlyph(finalFace + vec2( 0.0,  eps), glyphIdx);
+
+    float Kx = mR - mL;
+    float Ky = mU - mD;
+    Kx *= gl_FrontFacing ? 1.0 : -1.0;  // back-face gradient correction
+
+    fakeN = normalize(vec3(-Kx * uNormalStrength, -Ky * uNormalStrength, 1.0));
+  }
+
+  vec3 localLight = normalize(vec3(
+    dot(uLightDir, panelRight),
+    uLightDir.y,
+    dot(uLightDir, vOutward)
+  ));
+  float diffuse = max(0.0, dot(fakeN, localLight));
+  float spec    = pow(max(0.0, dot(fakeN, normalize(localLight + vec3(0.0, 0.0, 1.0)))), 24.0);
+
+  col2 = col2 * (0.65 + 0.35 * diffuse) + tintedColor * spec * 0.8;
+
+  float rawBright  = trail * mask * vAlpha * vDepthDim;
+  float contrast   = pow(rawBright, 1.3);
+  float alpha = contrast * uGlobalAlpha * occlude * vBootFade * vDeathFade;
+
+  if (alpha < 0.015) discard;
+
+  gl_FragColor = vec4(col2 * alpha, alpha);
 }
 `;
+
+// ── RainSoftenShader ─────────────────────────────────────────
+// Screen-space radial blur — peripheral columns soften, center stays sharp.
+// Approximates depth-of-field without requiring the depth buffer (which is
+// empty because glyph mesh uses depthWrite:false).
+
+const RainSoftenShader = {
+  uniforms: {
+    tDiffuse:      { value: null },
+    uBlurStrength: { value: 0.006 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float     uBlurStrength;
+    varying vec2      vUv;
+    void main() {
+      vec2  ctr  = vUv - 0.5;
+      float edge = dot(ctr, ctr) * 4.0;
+      float r    = uBlurStrength * edge;
+      vec4 col   = texture2D(tDiffuse, vUv);
+      float origAlpha = col.a;
+      col += texture2D(tDiffuse, clamp(vUv + vec2( r,  r * 0.5), 0.001, 0.999));
+      col += texture2D(tDiffuse, clamp(vUv + vec2(-r,  r * 0.5), 0.001, 0.999));
+      col += texture2D(tDiffuse, clamp(vUv + vec2(0.0,      -r), 0.001, 0.999));
+      col *= 0.25;
+      col.a = origAlpha;  // preserve original alpha — prevent bleed into transparent background
+      gl_FragColor = col;
+    }
+  `,
+};
 
 // ── State registry ────────────────────────────────────────────
 const _state = new Map();
@@ -248,77 +724,196 @@ const _state = new Map();
  * @param {HTMLElement} element
  * @param {object}      opts
  * @param {string}  [opts.color='#00ff70']
- * @param {number}  [opts.opacity=0.9]
+ * @param {number}  [opts.opacity=0.82]
  */
 export function initMatrixRain(element, opts = {}) {
+  // Guard against double-init from both normal calls and HMR re-evaluation
+  // (module-scoped _state is reset on hot reload, so also check the DOM).
   if (_state.has(element)) destroyMatrixRain(element);
+  const staleCanvas = element.querySelector('canvas[data-matrix-rain]');
+  if (staleCanvas) staleCanvas.remove();
 
-  const { color = '#00ff70', opacity = 0.9, syncCamera = null } = opts;
+  const { color = '#00ff70', opacity = 0.82, syncCamera = null } = opts;
   const rgb = new THREE.Color(color);
 
-  // ── Atlas
-  const atlas = buildAtlas();
-
-  // ── Renderer
+  const atlas = loadMSDF('/data/matrixcode_msdf.png');
+  // alpha:true preserves transparent background — mix-blend-mode:screen on the canvas
+  // composites glyphs additively over the globe while background stays transparent.
+  // (alpha:false + screen blend would work mathematically but OutputPass/EffectComposer
+  // intermediate passes force alpha=1, making the canvas opaque and occluding the globe.)
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(element.clientWidth || 1, element.clientHeight || 1);
 
   const canvas = renderer.domElement;
+  // No CSS filter — bloom + holo pass handle all glow/aberration GPU-side
+  canvas.dataset.matrixRain = '1';
   canvas.style.cssText =
     'position:absolute;inset:0;width:100%;height:100%;' +
-    'pointer-events:none;z-index:0;mix-blend-mode:screen;';
-  canvas.style.opacity = String(opacity);
+    'pointer-events:none;z-index:0;';
   element.appendChild(canvas);
 
-  // ── Scene + Camera
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(
-    70,
+    45,
     (element.clientWidth || 1) / (element.clientHeight || 1),
-    0.1,
-    60
+    0.1, 60
   );
-  camera.position.set(0, 0, 4);
+  camera.position.set(0, 0, 3);
   camera.lookAt(0, 0, 0);
 
-  // ── Column data + geometry
-  const colData = buildColData();
-  const geom    = buildGeometry();
+  const geom = buildGeometry();
 
   const uniforms = {
-    uGlyphTex:   { value: atlas.tex },
-    uGlyphCount: { value: atlas.count },
-    uColData:    { value: colData },
-    uNCols:      { value: N_COLS },
-    uTime:       { value: 0 },
-    uCellW:      { value: CELL_W },
-    uCellH:      { value: CELL_H },
-    uWorldH:     { value: WORLD_H },
-    uNRows:      { value: N_ROWS },
-    uColor:      { value: new THREE.Vector3(rgb.r, rgb.g, rgb.b) },
+    uGlyphTex:    { value: atlas.tex },
+    uGlyphCount:  { value: atlas.count },
+    uAtlasCols:   { value: ATLAS_COLS },
+    uAtlasGrid:   { value: ATLAS_GRID },
+    uTime:        { value: 0 },
+    uCellW:       { value: CELL_W },
+    uCellH:       { value: CELL_H },
+    uWorldH:      { value: WORLD_H },
+    uNRows:       { value: N_ROWS },
+    uColor:       { value: new THREE.Vector3(rgb.r, rgb.g, rgb.b) },
+    uGlobalAlpha: { value: opacity },
+    uDepth:          { value: 0.04 },
+    uPomSteps:       { value: 6.0 },
+    uNormalStrength: { value: 6.0 },
+    uLightDir:       { value: new THREE.Vector3(-0.4, 0.8, 0.5).normalize() },
+    uGlobeInteract:  { value: 1.0 },
+    uGlyphChroma:    { value: 1.0 },
   };
 
   const material = new THREE.ShaderMaterial({
     uniforms,
     vertexShader:   VERT,
     fragmentShader: FRAG,
-    transparent:    true,
-    depthWrite:     false,
-    blending:       THREE.AdditiveBlending,
-    side:           THREE.DoubleSide,
+    transparent:        true,
+    depthWrite:         false,
+    // Additive RGB — order-independent, no z-sort artifacts on unsorted instanced quads.
+    // OneMinusSrcAlpha caused hard-edged cutouts where overlapping quads rendered in
+    // wrong draw order. Additive simply sums glyph light contributions naturally.
+    // MaxEquation for alpha prevents accumulation that corrupts the globe composite.
+    blending:           THREE.CustomBlending,
+    blendEquation:      THREE.AddEquation,
+    blendSrc:           THREE.OneFactor,
+    blendDst:           THREE.OneFactor,
+    blendEquationAlpha: THREE.MaxEquation,
+    blendSrcAlpha:      THREE.OneFactor,
+    blendDstAlpha:      THREE.OneFactor,
+    side:               THREE.DoubleSide,
+    extensions:         { derivatives: true },
   });
 
   const mesh = new THREE.Mesh(geom, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1;
   scene.add(mesh);
 
-  // ── Animation loop
-  const s = { renderer, material, geom, atlas, colData, ro: null, animId: 0, syncCamera };
+  // ── Post-processing pipeline ─────────────────────────────
+  const w0 = element.clientWidth  || 1;
+  const h0 = element.clientHeight || 1;
+
+  const composer  = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(w0, h0),
+    1.15,  // strength — amplify glyph glow
+    0.45,  // radius — tight halos, not diffuse smear
+    0.20   // threshold — focused on head glyphs and flashes
+  );
+  composer.addPass(bloomPass);
+
+  // Heat distortion — UV warp driven by brightness, after bloom
+  const heatPass = new ShaderPass(RainHeatShader);
+  heatPass.enabled = true;
+  composer.addPass(heatPass);
+
+  // Phosphor persistence — temporal feedback for ghost trails
+  // Placed before soften so ghost trails receive exactly one soften pass per frame
+  // (avoids compounding blur from soften → phosphor retain → soften again)
+  const drawSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+  let phosphorTex = new THREE.FramebufferTexture(drawSize.x, drawSize.y);
+  const phosphorPass = new ShaderPass(RainPhosphorShader);
+  phosphorPass.uniforms.tPrev.value = phosphorTex;
+
+  // Override render to capture output into feedback texture for next frame
+  const _phosphorRender = phosphorPass.render.bind(phosphorPass);
+  phosphorPass.render = function(rdr, writeBuffer, readBuffer, dt, mask) {
+    this.uniforms.tPrev.value = phosphorTex;
+    _phosphorRender(rdr, writeBuffer, readBuffer, dt, mask);
+    // writeBuffer is still the active render target after super.render()
+    rdr.copyFramebufferToTexture(phosphorTex);
+  };
+  composer.addPass(phosphorPass);
+
+  const softenPass = new ShaderPass(RainSoftenShader);
+  softenPass.enabled = true;
+  softenPass.uniforms.uBlurStrength.value = 0.002;
+  composer.addPass(softenPass);
+
+  // Lens rain streaks — before holo so vignette applies to streaks too
+  const streakPass = new ShaderPass(RainStreakShader);
+  streakPass.enabled = true;
+  streakPass.uniforms.uAspect.value = (element.clientWidth || 1) / (element.clientHeight || 1);
+  composer.addPass(streakPass);
+
+  const holoPass = new ShaderPass(RainHoloShader);
+  composer.addPass(holoPass);
+
+  // FXAA — resolves sub-pixel edge jitter on distant glyph strokes
+  const fxaaPass = new ShaderPass(FXAAShader);
+  const pixelRatio = renderer.getPixelRatio();
+  fxaaPass.uniforms.resolution.value.set(
+    1 / ((element.clientWidth || 1) * pixelRatio),
+    1 / ((element.clientHeight || 1) * pixelRatio)
+  );
+  composer.addPass(fxaaPass);
+  // OutputPass intentionally omitted: it forces alpha=1 on every pixel, which would
+  // make the transparent canvas opaque and occlude the globe behind it.
+
+  const s = {
+    renderer, composer, bloomPass, heatPass, softenPass, phosphorPass, phosphorTex,
+    holoPass, streakPass, fxaaPass, material, geom, atlas, ro: null, animId: 0,
+    syncCamera, burstBloomEnabled: true,
+  };
   _state.set(element, s);
+
+  let prevTs = 0;
+  let burstBloomTimer = 0.0;
+  let lastBurstBucket = -1;
 
   function animate(ts) {
     s.animId = requestAnimationFrame(animate);
-    uniforms.uTime.value = ts * 0.001;
+    const t  = ts * 0.001;
+    const dt = t - prevTs;
+    prevTs   = t;
+
+    uniforms.uTime.value          = t;
+    holoPass.uniforms.time.value  = t;
+    heatPass.uniforms.uTime.value = t;
+    streakPass.uniforms.uTime.value = t;
+
+    // ── Depth-adaptive bloom threshold — pulse during burst cycles ──
+    if (s.burstBloomEnabled) {
+      const burstBucket = Math.floor(t / 4.0);
+      if (burstBucket !== lastBurstBucket) {
+        lastBurstBucket = burstBucket;
+        burstBloomTimer = 0.30;
+      }
+      if (burstBloomTimer > 0.0) {
+        burstBloomTimer = Math.max(0.0, burstBloomTimer - dt);
+        const surgePhase = 1.0 - burstBloomTimer / 0.30;
+        bloomPass.threshold = surgePhase < 0.2
+          ? THREE.MathUtils.lerp(0.20, 0.10, surgePhase / 0.2)
+          : THREE.MathUtils.lerp(0.10, 0.20, (surgePhase - 0.2) / 0.8);
+      } else {
+        bloomPass.threshold = 0.20;
+      }
+    } else {
+      bloomPass.threshold = 0.20;
+    }
     if (s.syncCamera) {
       camera.position.copy(s.syncCamera.position);
       camera.quaternion.copy(s.syncCamera.quaternion);
@@ -327,35 +922,42 @@ export function initMatrixRain(element, opts = {}) {
       camera.far  = s.syncCamera.far;
       camera.updateProjectionMatrix();
     }
-    renderer.render(scene, camera);
+    // Rotate light to track camera azimuth + 60° offset
+    if (camera.position.lengthSq() > 0.001) {
+      const az = Math.atan2(camera.position.x, camera.position.z) + Math.PI / 3;
+      uniforms.uLightDir.value.set(
+        Math.sin(az) * 0.6, 0.8, Math.cos(az) * 0.6
+      ).normalize();
+    }
+    s.composer.render();
   }
   s.animId = requestAnimationFrame(animate);
 
-  // ── Resize
+  // RAF-debounced resize — prevents redundant setSize calls during drag-resize
+  let resizePending = false;
   s.ro = new ResizeObserver(() => {
-    const w = element.clientWidth  || 1;
-    const h = element.clientHeight || 1;
-    renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    if (resizePending) return;
+    resizePending = true;
+    requestAnimationFrame(() => {
+      resizePending = false;
+      const w = element.clientWidth  || 1;
+      const h = element.clientHeight || 1;
+      renderer.setSize(w, h);
+      s.composer.setSize(w, h);
+      s.bloomPass.resolution.set(w, h);
+      const pr = renderer.getPixelRatio();
+      s.fxaaPass.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+      s.streakPass.uniforms.uAspect.value = w / h;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      // Recreate phosphor feedback texture at new size
+      const ds = renderer.getDrawingBufferSize(new THREE.Vector2());
+      s.phosphorTex.dispose();
+      phosphorTex = new THREE.FramebufferTexture(ds.x, ds.y);
+      s.phosphorTex = phosphorTex;
+    });
   });
   s.ro.observe(element);
-
-  // ── Rebuild atlas once custom font is loaded (for crisp katakana)
-  document.fonts.ready.then(() => {
-    const st = _state.get(element);
-    if (!st) return;
-    const { tex, count, canvas: ac, ctx } = atlas;
-    ctx.clearRect(0, 0, ac.width, ac.height);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, ac.width, ac.height);
-    ctx.fillStyle    = '#fff';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `${Math.round(ATLAS_PX * 0.84)}px "Share Tech Mono", monospace`;
-    GLYPHS.forEach((g, i) => ctx.fillText(g, ATLAS_PX / 2, ATLAS_PX * i + ATLAS_PX / 2));
-    tex.needsUpdate = true;
-  });
 
   return {
     destroy()     { destroyMatrixRain(element); },
@@ -363,7 +965,24 @@ export function initMatrixRain(element, opts = {}) {
       const c = new THREE.Color(hex);
       uniforms.uColor.value.set(c.r, c.g, c.b);
     },
-    setOpacity(v) { canvas.style.opacity = String(v); },
+    setOpacity(v) { uniforms.uGlobalAlpha.value = v; },
+    setDepth(v) { uniforms.uDepth.value = v; },
+    setNormalStrength(v) { uniforms.uNormalStrength.value = v; },
+    setSoften(on, strength) {
+      softenPass.enabled = on;
+      if (strength !== undefined) softenPass.uniforms.uBlurStrength.value = strength;
+    },
+    setHeat(on, amt) {
+      heatPass.enabled = on;
+      if (amt !== undefined) heatPass.uniforms.uHeatAmt.value = amt;
+    },
+    setStreaks(on, amt) {
+      streakPass.enabled = on;
+      if (amt !== undefined) streakPass.uniforms.uStreakAmt.value = amt;
+    },
+    setBurstBloom(on) { s.burstBloomEnabled = on; },
+    setGlobeInteract(on) { uniforms.uGlobeInteract.value = on ? 1.0 : 0.0; },
+    setGlyphChroma(on, scale) { uniforms.uGlyphChroma.value = on ? (scale ?? 1.0) : 0.0; },
   };
 }
 
@@ -372,10 +991,13 @@ export function destroyMatrixRain(element) {
   if (!s) return;
   cancelAnimationFrame(s.animId);
   s.ro.disconnect();
+  if (s.holoPass) s.holoPass.material.dispose();
+  if (s.phosphorPass) s.phosphorPass.material.dispose();
+  if (s.phosphorTex) s.phosphorTex.dispose();
+  s.composer.dispose();
   s.material.dispose();
   s.geom.dispose();
   s.atlas.tex.dispose();
-  s.colData.dispose();
   s.renderer.dispose();
   s.renderer.domElement.remove();
   _state.delete(element);
