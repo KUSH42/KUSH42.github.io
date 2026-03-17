@@ -14,7 +14,8 @@ export class TroikaLabelPool {
     // Pre-create all instances
     for (let i = 0; i < maxLabels; i++) {
       const t = new TroikaText();
-      t.font       = '/fonts/RobotoMono-Regular.woff';
+      // Use troika-three-text's built-in default font to avoid a hard dependency
+      // on a font file being served at a specific path.
       t.fontSize   = 0.4;
       t.color      = 0xaaaaaa;
       t.anchorX    = 'center';
