@@ -35,46 +35,10 @@ const easeInOutCubic = t =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 // ---------------------------------------------------------------------------
-// Vertex shader — preamble (uniforms + helpers, before void main)
+// Vertex shader — preamble and position capture
 // ---------------------------------------------------------------------------
-const VERT_PREAMBLE = /* glsl */`
-varying vec3 vDisintPos;
-
-uniform float uGlitchEnabled;
-uniform float uGlitchTime;
-uniform float uGlitchFrequency;
-uniform float uGlitchIntensity;
-uniform float uGlitchThreshold;
-`;
-
-// Injected after #include <begin_vertex> — captures model-space position and
-// applies vertex glitch displacement.
-const VERT_INJECT = /* glsl */`
-  vDisintPos = position;
-
-  // ---- Vertex glitch -------------------------------------------------------
-  if (uGlitchEnabled > 0.5) {
-    // Seed from model-space position — unique per vertex, stable across frames.
-    float _vSeed = fract(sin(dot(position, vec3(127.1, 311.7, 74.7))) * 43758.5453);
-
-    // Quantize time into discrete slots. Within one slot every vertex holds
-    // the same on/off state — produces crisp frame-to-frame snapping.
-    float _slot = floor(uGlitchTime * uGlitchFrequency);
-
-    // Per-slot per-vertex coin flip: is this vertex glitching this slot?
-    float _slotRand = fract(sin(dot(vec2(_vSeed, _slot), vec2(269.5, 183.3))) * 35793.4219);
-    float _isGlitching = step(1.0 - uGlitchThreshold, _slotRand);
-
-    // Random world-space displacement for this vertex + slot.
-    vec3 _gDisp = vec3(
-      fract(sin(dot(vec3(_vSeed, _slot, 1.7), vec3(127.1, 311.7, 74.7))) * 43758.5453) - 0.5,
-      fract(sin(dot(vec3(_vSeed, _slot, 3.1), vec3(127.1, 311.7, 74.7))) * 43758.5453) - 0.5,
-      fract(sin(dot(vec3(_vSeed, _slot, 5.3), vec3(127.1, 311.7, 74.7))) * 43758.5453) - 0.5
-    ) * 2.0 * uGlitchIntensity;
-
-    transformed += _gDisp * _isGlitching;
-  }
-`;
+const VERT_PREAMBLE = /* glsl */`varying vec3 vDisintPos;`;
+const VERT_INJECT   = /* glsl */`vDisintPos = position;`;
 
 // ---------------------------------------------------------------------------
 // Fragment shader — shared cell helpers
@@ -115,6 +79,11 @@ function buildFragPreamble() {
     uniform float uDisintNoiseSpeed;  // edge shimmer speed multiplier
     uniform vec3  uDisintEdgeColor;
     uniform float uDisintEdgeIntensity;
+    // Glitch
+    uniform float uGlitchEnabled;
+    uniform float uGlitchFrequency;   // re-randomise rate (Hz)
+    uniform float uGlitchThreshold;   // fraction of cells discarded at once [0..1]
+    uniform float uGlitchNoiseScale;  // glitch cell size (independent of disintegration)
     ${FRAG_CELL_HELPERS}
   `;
 }
@@ -132,6 +101,22 @@ const FRAG_DISCARD = /* glsl */`
     // cells with a high value survive a little past it.
     float _cellThreshold = _ap + (_cr - 0.5) * uDisintEdgeWidth * 2.0;
     if (_cellThreshold < uDisintProgress) discard;
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Glitch discard — injected immediately after FRAG_DISCARD (same chunk).
+// Uses time-slotted cell hash: every 1/frequency seconds the entire pattern
+// re-randomises, making different rectangular blocks blink out each frame.
+// ---------------------------------------------------------------------------
+const FRAG_GLITCH_DISCARD = /* glsl */`
+  if (uGlitchEnabled > 0.5) {
+    vec3  _gCellID  = floor(vDisintPos * uGlitchNoiseScale);
+    // Quantise time — all cells flip simultaneously at uGlitchFrequency Hz.
+    float _gSlot    = floor(uDisintTime * uGlitchFrequency);
+    // Stir cell ID with time slot so each slot gives a completely new pattern.
+    float _gHash    = _cellHash(_gCellID + vec3(0.0, _gSlot * 17.31, _gSlot * 5.71));
+    if (_gHash < uGlitchThreshold) discard;
   }
 `;
 
@@ -211,12 +196,11 @@ export class DisintegrationEffect {
                                 ? cfg.edgeColor.clone()
                                 : new THREE.Color(cfg.edgeColor) },
       uDisintEdgeIntensity: { value: cfg.edgeIntensity },
-      // Glitch
+      // Glitch (all driven by uDisintTime — no separate time uniform needed)
       uGlitchEnabled:   { value: 0.0 },
-      uGlitchTime:      { value: 0.0 },
       uGlitchFrequency: { value: 15.0 },
-      uGlitchIntensity: { value: 0.2 },
       uGlitchThreshold: { value: 0.08 },
+      uGlitchNoiseScale:{ value: 10.0 },
     };
 
     // Glitch control object — properties write directly to uniforms.
@@ -224,15 +208,15 @@ export class DisintegrationEffect {
     this.glitch = {
       get enabled()    { return u.uGlitchEnabled.value > 0.5; },
       set enabled(v)   { u.uGlitchEnabled.value = v ? 1.0 : 0.0; },
-      /** Displacement magnitude in model units. */
-      get intensity()  { return u.uGlitchIntensity.value; },
-      set intensity(v) { u.uGlitchIntensity.value = v; },
-      /** How many times per second the glitch pattern re-randomises. */
+      /** How many times per second the cell pattern re-randomises. */
       get frequency()  { return u.uGlitchFrequency.value; },
       set frequency(v) { u.uGlitchFrequency.value = v; },
-      /** Fraction of vertices that are displaced at any one time [0..1]. */
+      /** Fraction of cells discarded at any one time [0..1]. */
       get threshold()  { return u.uGlitchThreshold.value; },
       set threshold(v) { u.uGlitchThreshold.value = Math.max(0, Math.min(1, v)); },
+      /** Cell grid density — higher = smaller glitch blocks. */
+      get noiseScale()  { return u.uGlitchNoiseScale.value; },
+      set noiseScale(v) { u.uGlitchNoiseScale.value = v; },
     };
 
     this._patchMaterial(mesh.material);
@@ -297,9 +281,7 @@ export class DisintegrationEffect {
    */
   tick(deltaMs) {
     this._elapsed += deltaMs;
-    const t = this._elapsed * 0.001;
-    this._uniforms.uDisintTime.value  = t;
-    this._uniforms.uGlitchTime.value  = t;
+    this._uniforms.uDisintTime.value = this._elapsed * 0.001;
 
     if (this._anim) {
       this._anim.elapsed += deltaMs;
@@ -367,7 +349,7 @@ export class DisintegrationEffect {
       shader.fragmentShader = shader.fragmentShader
         .replace(
           `#include <clipping_planes_fragment>`,
-          `#include <clipping_planes_fragment>\n${FRAG_DISCARD}`
+          `#include <clipping_planes_fragment>\n${FRAG_DISCARD}\n${FRAG_GLITCH_DISCARD}`
         )
         .replace(
           `#include <dithering_fragment>`,

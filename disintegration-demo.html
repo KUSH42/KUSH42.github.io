@@ -95,9 +95,9 @@
   <div class="section-label">Vertex Glitch</div>
 
   <label><input type="checkbox" id="chkGlitch"> Enabled</label>
-  <label>Intensity
-    <input type="range" id="sliderGlitchIntensity" min="1" max="100" value="20">
-    <span id="valGlitchIntensity">0.2</span>
+  <label>Block size
+    <input type="range" id="sliderGlitchScale" min="1" max="200" value="100">
+    <span id="valGlitchScale">10.0</span>
   </label>
   <label>Frequency
     <input type="range" id="sliderGlitchFreq" min="1" max="60" value="15">
@@ -191,10 +191,10 @@ function buildFx(axisKey) {
   });
   fx.progress = prevProgress;
 
-  fx.glitch.enabled   = glitchEnabled;
-  fx.glitch.intensity = +document.getElementById('sliderGlitchIntensity').value / 100;
-  fx.glitch.frequency = +document.getElementById('sliderGlitchFreq').value;
-  fx.glitch.threshold = +document.getElementById('sliderGlitchThresh').value    / 100;
+  fx.glitch.enabled    = glitchEnabled;
+  fx.glitch.noiseScale = +document.getElementById('sliderGlitchScale').value / 10;
+  fx.glitch.frequency  = +document.getElementById('sliderGlitchFreq').value;
+  fx.glitch.threshold  = +document.getElementById('sliderGlitchThresh').value / 100;
 
   // Keep progress slider in sync
   document.getElementById('sliderProgress').value = prevProgress * 100;
@@ -261,9 +261,9 @@ document.getElementById('chkGlitch').addEventListener('change', e => {
   fx.glitch.enabled = e.target.checked;
 });
 
-document.getElementById('sliderGlitchIntensity').addEventListener('input', e => {
-  fx.glitch.intensity = e.target.value / 100;
-  document.getElementById('valGlitchIntensity').textContent = fx.glitch.intensity.toFixed(2);
+document.getElementById('sliderGlitchScale').addEventListener('input', e => {
+  fx.glitch.noiseScale = e.target.value / 10;
+  document.getElementById('valGlitchScale').textContent = fx.glitch.noiseScale.toFixed(1);
 });
 
 document.getElementById('sliderGlitchFreq').addEventListener('input', e => {
