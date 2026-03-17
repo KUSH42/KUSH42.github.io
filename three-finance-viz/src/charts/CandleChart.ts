@@ -212,7 +212,7 @@ export class CandleChart implements Disposable {
 
     const bodyBottom = Math.min(worldOpen, worldClose);
     const bodyTop    = Math.max(worldOpen, worldClose);
-    const bodyHeight = Math.max(bodyTop - bodyBottom, 0.001);
+    const bodyHeight = Math.max(bodyTop - bodyBottom, 0.01);
     const bodyY      = out.position.y + bodyBottom + bodyHeight / 2;
 
     const wickHeight = Math.max(worldHigh - worldLow, 0.001);
@@ -230,7 +230,7 @@ export class CandleChart implements Disposable {
       this.bullBodyMesh.setColorAt(slot, this._bullBodyColor);
 
       _pos.set(out.position.x, wickY, out.position.z);
-      _scale.set(candleWidth * 0.15, wickHeight, candleWidth * 0.15);
+      _scale.set(candleWidth * 0.22, wickHeight, candleWidth * 0.22);
       _mat4.compose(_pos, _quat, _scale);
       this.bullWickMesh.setMatrixAt(slot, _mat4);
       this.bullWickMesh.setColorAt(slot, this._bullWickColor);
@@ -248,7 +248,7 @@ export class CandleChart implements Disposable {
       this.bearBodyMesh.setColorAt(slot, this._bearBodyColor);
 
       _pos.set(out.position.x, wickY, out.position.z);
-      _scale.set(candleWidth * 0.15, wickHeight, candleWidth * 0.15);
+      _scale.set(candleWidth * 0.22, wickHeight, candleWidth * 0.22);
       _mat4.compose(_pos, _quat, _scale);
       this.bearWickMesh.setMatrixAt(slot, _mat4);
       this.bearWickMesh.setColorAt(slot, this._bearWickColor);

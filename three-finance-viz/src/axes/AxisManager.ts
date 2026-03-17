@@ -21,6 +21,8 @@ interface AxisScales {
   priceToWorldY: (price: number) => number;
   worldYToPrice: (worldY: number) => number;
   indexToWorldX: (index: number) => number;
+  /** Optional: binary-search a candle index for the given timestamp. */
+  timeToIndex?: (timeMs: number) => number;
 }
 
 // ── GridGeometryManager ────────────────────────────────────────────────────────
@@ -54,8 +56,8 @@ class GridGeometryManager {
         pos[base]   = tick.gridXMin; pos[base+1] = tick.worldPos; pos[base+2] = 0;
         pos[base+3] = tick.gridXMax; pos[base+4] = tick.worldPos; pos[base+5] = 0;
       } else if (tick.axis === 'x') {
-        pos[base]   = tick.worldPos; pos[base+1] = -50; pos[base+2] = 0;
-        pos[base+3] = tick.worldPos; pos[base+4] =  50; pos[base+5] = 0;
+        pos[base]   = tick.worldPos; pos[base+1] = -5; pos[base+2] = 0;
+        pos[base+3] = tick.worldPos; pos[base+4] = 10; pos[base+5] = 0;
       }
       i++;
     }
@@ -108,6 +110,7 @@ function generateTimeTicks(
   startIndex: number,
   endIndex: number,
   maxCount: number = 12,
+  scales?: AxisScales,
 ): TimeTick[] {
   const duration = endTime - startTime;
   if (duration <= 0) return [];
@@ -119,13 +122,21 @@ function generateTimeTicks(
   const stride = Math.ceil(rawTicks.length / maxCount);
   const thinned = rawTicks.filter((_, i) => i % stride === 0);
 
-  // Map each tick date to a world X by interpolating index
+  // Map each tick date to a world X
   const totalDuration = endTime - startTime;
   return thinned.map(d => {
-    const frac = (d.getTime() - startTime) / totalDuration;
-    const approxIndex = Math.round(startIndex + frac * (endIndex - startIndex));
-    const clampedIndex = Math.max(startIndex, Math.min(endIndex, approxIndex));
-    return { date: d, world_x: indexToWorldX(clampedIndex) };
+    let idx: number;
+    if (scales?.timeToIndex) {
+      // Accurate: binary-search actual candle timestamps
+      idx = scales.timeToIndex(d.getTime());
+      idx = Math.max(startIndex, Math.min(endIndex, idx));
+    } else {
+      // Fallback: linear interpolation
+      const frac = (d.getTime() - startTime) / totalDuration;
+      idx = Math.round(startIndex + frac * (endIndex - startIndex));
+      idx = Math.max(startIndex, Math.min(endIndex, idx));
+    }
+    return { date: d, world_x: indexToWorldX(idx) };
   });
 }
 
@@ -190,6 +201,7 @@ export class AxisManager {
       visibleRange.startIndex,
       visibleRange.endIndex,
       timeTickCount,
+      this.scales,
     );
 
     // Update grid geometry
@@ -234,7 +246,7 @@ export class AxisManager {
 
       // Create time labels
       timeTicks.forEach((tick, i) => {
-        const pos = new THREE.Vector3(tick.world_x, -2.5, 0);
+        const pos = new THREE.Vector3(tick.world_x, -5.5, 0);
         if (!frustum.containsPoint(pos)) return;
         const text = this._formatTime(tick.date, visibleRange.endTime - visibleRange.startTime);
         this.labelPool!.acquire(`time_${i}`, text, pos);

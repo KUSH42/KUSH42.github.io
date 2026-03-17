@@ -32,8 +32,8 @@ const UI_TEMPLATE = `
         <button class="chart-ui__pill" data-value="15m">15m</button>
         <button class="chart-ui__pill chart-ui__pill--active" data-value="1h">1h</button>
         <button class="chart-ui__pill" data-value="4h">4h</button>
-        <button class="chart-ui__pill" data-value="1D">1D</button>
-        <button class="chart-ui__pill" data-value="1W">1W</button>
+        <button class="chart-ui__pill" data-value="1d">1D</button>
+        <button class="chart-ui__pill" data-value="1w">1W</button>
       </div>
     </section>
 
@@ -465,6 +465,19 @@ export class UIController {
     // Add indicator
     this.root.querySelector('#ui-add-indicator')!
       .addEventListener('click', () => this._openIndicatorPicker());
+
+    // Time range inputs
+    const rangeStart = this.root.querySelector<HTMLInputElement>('#ui-range-start')!;
+    const rangeEnd   = this.root.querySelector<HTMLInputElement>('#ui-range-end')!;
+    const applyDateRange = () => {
+      const startMs = rangeStart.valueAsNumber;
+      const endMs   = rangeEnd.valueAsNumber;
+      if (!isNaN(startMs) && !isNaN(endMs) && startMs < endMs) {
+        this.bus.emit('dateRangeChange', { startMs, endMs });
+      }
+    };
+    rangeStart.addEventListener('change', applyDateRange);
+    rangeEnd.addEventListener('change', applyDateRange);
   }
 
   private _renderIndicatorRow(config: IndicatorConfig): void {
@@ -557,6 +570,19 @@ export class UIController {
    */
   on(event: string, handler: Function): void {
     this.bus.on(event, handler as (...args: any[]) => void);
+  }
+
+  setDateRange(startMs: number, endMs: number): void {
+    const fmt = (ms: number) => {
+      // datetime-local format: "YYYY-MM-DDTHH:MM"
+      const d = new Date(ms);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    const startEl = this.root.querySelector<HTMLInputElement>('#ui-range-start');
+    const endEl   = this.root.querySelector<HTMLInputElement>('#ui-range-end');
+    if (startEl) startEl.value = fmt(startMs);
+    if (endEl)   endEl.value   = fmt(endMs);
   }
 
   dispose(): void {

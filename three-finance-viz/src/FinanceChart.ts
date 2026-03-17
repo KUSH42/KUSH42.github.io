@@ -44,7 +44,8 @@ import type {
 // v3.0 provider layer imports
 import { ProviderManager } from './providers/ProviderManager';
 import type { ProviderConfig } from './providers/types';
-import { ProviderError } from './providers/types';
+import { ProviderError, INTERVAL_MS } from './providers/types';
+import type { Interval } from './providers/types';
 import type { ExchangeAdapter } from './providers/adapters/ExchangeAdapter';
 
 // ── Module-level helpers ────────────────────────────────────────────────────
@@ -127,6 +128,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
   // v3.0 provider layer
   private _providerManager?: ProviderManager;
+  private _activeProviderConfig?: ProviderConfig;
 
   // Keyboard handler
   private _onKey?: (e: KeyboardEvent) => void;
@@ -360,6 +362,13 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
         priceToWorldY: this._addendumScales.price,
         worldYToPrice: this._addendumScales.priceInverse,
         indexToWorldX: (i: number) => positionFn(i).x,
+        timeToIndex: (timeMs: number) => {
+          if (this._candleBuffer.count === 0) return 0;
+          return Math.max(0, Math.min(
+            this._candleBuffer.count - 1,
+            lowerBound(this._candleBuffer.time, this._candleBuffer.count, timeMs),
+          ));
+        },
       },
       {
         gridXMin: -50,
@@ -432,11 +441,28 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       this.updateIndicatorV2(p.id, p));
     bus.on('indicatorRemove', (p: { id: string }) => this.removeIndicatorV2(p.id));
 
-    bus.on('intervalChange', (p: { interval: string }) =>
-      this._axisManager?.setInterval(p.interval));
+    bus.on('intervalChange', (p: { interval: string }) => {
+      this._axisManager?.setInterval(p.interval);
+      // Update tick aggregator so future ticks aggregate at new interval
+      const intervalMs = (INTERVAL_MS as Record<string, number>)[p.interval] ?? 60_000;
+      if (this._tickAggregator) {
+        this._tickAggregator = new TickAggregator(intervalMs);
+      }
+      // Reconnect provider with new interval if one is active
+      if (this._providerManager && this._activeProviderConfig) {
+        const newCfg = { ...this._activeProviderConfig, interval: p.interval as Interval };
+        this._activeProviderConfig = newCfg;
+        void this._providerManager.connect(this, newCfg).catch((err: unknown) =>
+          console.warn('[tfv] interval change reconnect failed:', err));
+      }
+    });
 
     bus.on('symbolChange', (p: { symbol: string }) =>
       this.emit('symbol:change' as any, p));
+
+    bus.on('dateRangeChange', (p: { startMs: number; endMs: number }) => {
+      this.setTimeRange(p.startMs, p.endMs);
+    });
 
     bus.on('rangeChange', (p: { startIndex: number; endIndex: number }) => {
       if (this._candleBuffer.count === 0) return;
@@ -462,7 +488,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _createLayout(mode: 'linear' | 'helix' | 'tunnel'): LayoutEngine {
     switch (mode) {
       case 'linear':
-        return new LinearLayout({ candleSpacing: 0.5, candleWidth: 0.4 });
+        return new LinearLayout({ candleSpacing: 0.45, candleWidth: 0.35 });
       case 'helix':
         return new HelixLayout({
           radius: 15,
@@ -482,7 +508,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       default: {
         const _exhaustive: never = mode;
         void _exhaustive;
-        return new LinearLayout({ candleSpacing: 0.5, candleWidth: 0.4 });
+        return new LinearLayout({ candleSpacing: 0.45, candleWidth: 0.35 });
       }
     }
   }
@@ -727,6 +753,9 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       this._indicatorManager?.onDataUpdate(this._addendumData);
       this._rangeController?.updateData(this._addendumData);
       this._uiController?.updateNavigatorData(this._addendumData);
+      if (this._uiController && candles.length > 0) {
+        this._uiController.setDateRange(candles[0].time, candles[candles.length - 1].time);
+      }
       if (this._lastVisibleRange) this._rebuildRSISubViews(this._lastVisibleRange);
 
       // Update price ticker with last candle
@@ -738,6 +767,13 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
     // Reset camera to fit data
     this.resetCamera(0);
+
+    // Keep grid floor centered under the visible candle range
+    if (this._candleBuffer.count > 0) {
+      const bounds = this._layout.getWorldBounds(this._candleBuffer);
+      const xCenter = (bounds.min.x + bounds.max.x) / 2;
+      this._chartScene.centerGridFloor(xCenter);
+    }
   }
 
   /** Append a completed candle (e.g. closed bar from REST history). */
@@ -997,8 +1033,14 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
           }
         }
       } else if ('open' in msg && 'close' in msg) {
-        // It's an OHLCVCandle
-        this._scheduler!.scheduleAppend(msg as OHLCVCandle);
+        const candle = msg as OHLCVCandle;
+        const buf = this._candleBuffer;
+        // Same time bucket = live update of current candle; new bucket = completed candle
+        if (buf.count > 0 && buf.time[buf.count - 1] === candle.time) {
+          this._scheduler!.schedulePatch(candle);
+        } else {
+          this._scheduler!.scheduleAppend(candle);
+        }
       }
       // OrderBookDelta handling would go here with OrderBookDepth
     });
@@ -1053,6 +1095,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       throw new ProviderError('EXCHANGE_UNAVAILABLE',
         'No providers registered. Call registerProviders() first.');
     }
+    this._activeProviderConfig = config;
     await this._providerManager.connect(this, config);
   }
 

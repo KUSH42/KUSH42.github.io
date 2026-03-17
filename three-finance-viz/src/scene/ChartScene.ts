@@ -59,6 +59,10 @@ export class ChartScene {
     this._axesLabels.setRange(minPrice, maxPrice, minTimeMs, maxTimeMs);
   }
 
+  centerGridFloor(x: number): void {
+    this._gridFloor.setCenter(x);
+  }
+
   onThemeChange(theme: ChartTheme): void {
     this.scene.background = new THREE.Color(theme.background);
     (this.scene.fog as THREE.FogExp2).color.set(theme.background);

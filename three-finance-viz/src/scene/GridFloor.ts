@@ -8,10 +8,12 @@ export class GridFloor {
   constructor(
     private readonly scene: THREE.Scene,
     theme: ChartTheme,
-    size = 200,
-    divisions = 40,
+    size = 2000,
+    divisions = 200,
   ) {
     this._grid = new THREE.GridHelper(size, divisions);
+    this._grid.position.y = -5;
+    this._grid.position.x = 500;
     this._applyTheme(theme);
     scene.add(this._grid);
   }
@@ -21,6 +23,10 @@ export class GridFloor {
     mat.color.set(theme.grid);
     mat.opacity = 0.5;
     mat.transparent = true;
+  }
+
+  setCenter(x: number): void {
+    this._grid.position.x = x;
   }
 
   onThemeChange(theme: ChartTheme): void {
