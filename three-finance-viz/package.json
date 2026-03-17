@@ -8,9 +8,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/three-finance-viz.es.js",
-      "require": "./dist/three-finance-viz.umd.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/three-finance-viz.umd.js"
     }
   },
   "scripts": {
