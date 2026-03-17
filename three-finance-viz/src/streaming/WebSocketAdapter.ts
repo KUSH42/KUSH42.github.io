@@ -34,6 +34,17 @@ export interface StreamConnectOptions {
     | 'send'
     | 'close'
   >;
+  /**
+   * Called immediately after the WebSocket opens.
+   * Receives a `send` callback that writes directly to the underlying WebSocket.
+   * Used by the provider layer to deliver subscription frames after connect.
+   */
+  onOpen?: (send: (msg: string) => void) => void;
+  /**
+   * Custom heartbeat message string. Defaults to `'ping'`.
+   * Bybit requires `'{"op":"ping"}'` instead of the plain `'ping'`.
+   */
+  heartbeatMessage?: string;
 }
 
 export class WebSocketAdapter extends EventEmitter<StreamEvents> {
@@ -62,6 +73,11 @@ export class WebSocketAdapter extends EventEmitter<StreamEvents> {
       this.retryDelay = 1000; // reset backoff on successful connect
       this._startHeartbeat();
       this.emit('connect', { url: this.opts.url });
+      try {
+        this.opts.onOpen?.((msg) => this.ws!.send(msg));
+      } catch (err) {
+        this.emit('error', { error: err instanceof Error ? err : new Error(String(err)) });
+      }
     };
 
     this.ws.onmessage = (ev) => {
@@ -103,7 +119,9 @@ export class WebSocketAdapter extends EventEmitter<StreamEvents> {
     const interval = this.opts.heartbeatIntervalMs ?? 30_000;
     if (interval === 0) return;
     this.heartbeatTimer = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) this.ws.send('ping');
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(this.opts.heartbeatMessage ?? 'ping');
+      }
     }, interval);
   }
 

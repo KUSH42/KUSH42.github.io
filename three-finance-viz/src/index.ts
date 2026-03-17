@@ -22,6 +22,37 @@ export type { ChartLayer } from './types/ChartLayer';
 export type { LayoutEngine, CandleTransform } from './layout/LayoutEngine';
 export type { StreamConnectOptions } from './streaming/WebSocketAdapter';
 
+// ── v3.0 Provider layer exports ─────────────────────────────────────────────
+
+export { ProviderManager } from './providers/ProviderManager';
+export type { ExchangeAdapter } from './providers/adapters/ExchangeAdapter';
+export { BinanceAdapter }  from './providers/adapters/BinanceAdapter';
+export { CoinbaseAdapter } from './providers/adapters/CoinbaseAdapter';
+export { KrakenAdapter }   from './providers/adapters/KrakenAdapter';
+export { BybitAdapter }    from './providers/adapters/BybitAdapter';
+export { DeribitAdapter }  from './providers/adapters/DeribitAdapter';
+export { RateLimiter }    from './providers/RateLimiter';
+export { SymbolResolver } from './providers/SymbolResolver';
+export { LRUCache }       from './providers/LRUCache';
+export { ProviderError, INTERVAL_MS } from './providers/types';
+export type {
+  ExchangeId,
+  Interval,
+  CanonicalSymbol,
+  ExchangeSymbol,
+  ProviderConfig,
+  ProviderEvents,
+  HistoricalFetchRequest,
+  HistoricalFetchResult,
+  StreamSubscription,
+  RateLimitConfig,
+  RateLimitBucket,
+  CacheKey,
+  TokenAcquirer,
+  PaginationStrategy,
+  ProviderErrorCode,
+} from './providers/types';
+
 // ── v2.0 Addendum exports ───────────────────────────────────────────────────
 
 // Classes

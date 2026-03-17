@@ -41,6 +41,11 @@ import { RangeController } from './data/RangeController';
 import type {
   IndicatorConfig, UIState, ScaleSet, OHLCV, VisibleRange, ThemePalette, LayoutMode,
 } from './types/addendum';
+// v3.0 provider layer imports
+import { ProviderManager } from './providers/ProviderManager';
+import type { ProviderConfig } from './providers/types';
+import { ProviderError } from './providers/types';
+import type { ExchangeAdapter } from './providers/adapters/ExchangeAdapter';
 
 // ── Module-level helpers ────────────────────────────────────────────────────
 
@@ -78,6 +83,11 @@ export interface FinanceChartOptions {
    * Defaults to false for backward compatibility.
    */
   enableAddendum?: boolean;
+  /**
+   * Pre-register exchange adapters.
+   * Equivalent to calling chart.registerProviders(...adapters) after init().
+   */
+  providers?: ExchangeAdapter[];
 }
 
 export class FinanceChart extends EventEmitter<ChartEvents> {
@@ -113,6 +123,10 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _frameCount = 0;
   private _fpsTimer = 0;
   private _disposed = false;
+  private _initialized = false;
+
+  // v3.0 provider layer
+  private _providerManager?: ProviderManager;
 
   // Keyboard handler
   private _onKey?: (e: KeyboardEvent) => void;
@@ -274,9 +288,17 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       this._initAddendum();
     }
 
+    // v3.0 provider layer — register adapters passed via options
+    if (this._opts.providers && this._opts.providers.length > 0) {
+      this.registerProviders(...this._opts.providers);
+    }
+
     // Start render loop
     this._lastTime = performance.now();
     this._renderLoop();
+
+    // Mark as initialized — must be last so connectProvider() guard works
+    this._initialized = true;
   }
 
   private _getPriceRange(): { min: number; max: number } {
@@ -634,6 +656,9 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // Remove keyboard listener
     if (this._onKey) this._container.removeEventListener('keydown', this._onKey);
 
+    // v3.0: Disconnect provider
+    this._providerManager?.disconnect();
+
     // Dispose streaming
     this._wsAdapter?.disconnect();
     this._scheduler?.dispose();
@@ -988,6 +1013,76 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._scheduler = undefined;
     this._tickAggregator?.reset();
     this._tickAggregator = undefined;
+  }
+
+  // ── Provider layer (v3.0) ──────────────────────────────────────────────────
+
+  /**
+   * True after init() has resolved successfully.
+   * connectProvider() throws immediately if false.
+   */
+  get isInitialized(): boolean {
+    return this._initialized;
+  }
+
+  /**
+   * Register exchange adapters for use with connectProvider().
+   * Must be called before connectProvider() if adapters were not supplied
+   * via FinanceChartOptions.providers.
+   *
+   * @param adapters - One or more exchange adapter instances
+   */
+  registerProviders(...adapters: ExchangeAdapter[]): void {
+    this._providerManager = new ProviderManager(adapters);
+  }
+
+  /**
+   * Connect to a real exchange data source.
+   * Fetches historical OHLCV data via REST, then connects the live WebSocket stream.
+   *
+   * @param config - Provider configuration
+   * @throws ProviderError if chart.isInitialized is false or no adapter supports the symbol
+   */
+  async connectProvider(config: ProviderConfig): Promise<void> {
+    if (!this._initialized) {
+      throw new ProviderError('EXCHANGE_UNAVAILABLE',
+        'connectProvider() called before chart.init() completed. ' +
+        'Await chart.init() before calling connectProvider().');
+    }
+    if (!this._providerManager) {
+      throw new ProviderError('EXCHANGE_UNAVAILABLE',
+        'No providers registered. Call registerProviders() first.');
+    }
+    await this._providerManager.connect(this, config);
+  }
+
+  /**
+   * Disconnect the active provider (both historical fetcher and live stream).
+   * Safe to call if no provider is connected.
+   */
+  disconnectProvider(): void {
+    this._providerManager?.disconnect();
+  }
+
+  /**
+   * @internal Used by ProviderManager to subscribe to UI-driven symbol changes.
+   * Not part of the public API — do not depend on this in application code.
+   *
+   * The UIController emits 'symbolChange' on the internal bus; the _initAddendum
+   * wiring forwards that to chart.emit('symbol:change', ...). ProviderManager
+   * calls chart._bus.on('symbolChange', handler) and this adapter maps that to
+   * listening for the 'symbol:change' event on the chart's own EventEmitter.
+   */
+  get _bus(): { on: (event: string, handler: (data: unknown) => void) => () => void } {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    return {
+      on(event: string, handler: (data: unknown) => void): () => void {
+        // Map 'symbolChange' → 'symbol:change' (the ChartEvents key)
+        const mappedEvent = event === 'symbolChange' ? 'symbol:change' : event;
+        return self.on(mappedEvent as 'symbol:change', handler as (data: { symbol: string }) => void);
+      },
+    };
   }
 
   // ── Extensibility ──────────────────────────────────────────────────────────
