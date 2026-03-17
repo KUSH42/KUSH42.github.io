@@ -130,6 +130,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       layout: this._layout,
       theme: this._theme,
       maxCandles: this._maxCandles,
+      priceToWorldY: (price: number) => this._priceToWorldY(price),
     });
 
     this._volumeChart = new VolumeChart({

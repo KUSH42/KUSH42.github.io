@@ -64,6 +64,8 @@ export class CandleChart implements Disposable {
       layout: LayoutEngine;
       theme: ChartTheme;
       maxCandles: number;
+      /** Maps a raw price value to a world-space Y coordinate */
+      priceToWorldY: (price: number) => number;
     },
   ) {
     const { maxCandles, theme, scene } = deps;
@@ -80,11 +82,11 @@ export class CandleChart implements Disposable {
     this.bullWickMesh = new THREE.InstancedMesh(WICK_GEO_HIGH, bullWickMat, maxCandles);
     this.bearWickMesh = new THREE.InstancedMesh(WICK_GEO_HIGH, bearWickMat, maxCandles);
 
-    // Bloom layer setup
-    this.bullBodyMesh.layers.set(BLOOM_LAYER);
-    this.bearBodyMesh.layers.set(0);
-    this.bullWickMesh.layers.set(BLOOM_LAYER);
-    this.bearWickMesh.layers.set(0);
+    // Bloom layer setup — use .enable() not .set() so objects stay on layer 0
+    // (visible to camera) while also being on layer 1 (selective bloom target).
+    // .set(1) would remove layer 0 membership, hiding bull meshes from the camera.
+    this.bullBodyMesh.layers.enable(BLOOM_LAYER);
+    this.bullWickMesh.layers.enable(BLOOM_LAYER);
 
     // Disable frustum culling — managed manually via .count
     this.bullBodyMesh.frustumCulled = false;
@@ -200,11 +202,21 @@ export class CandleChart implements Disposable {
     const close = buf.close(i);
     const isBull = close >= open;
     const candleWidth = layout.getCandleWidth(buf);
+    const p2y = this.deps.priceToWorldY;
 
-    const bodyHeight = Math.max(Math.abs(close - open), 0.001);
-    const bodyY = out.position.y + (isBull ? open + bodyHeight / 2 : close + bodyHeight / 2);
-    const wickHeight = Math.max(high - low, 0.001);
-    const wickY = out.position.y + low + wickHeight / 2;
+    // Map raw price values to world-Y so candles aren't at price-magnitude distance
+    const worldOpen  = p2y(open);
+    const worldClose = p2y(close);
+    const worldHigh  = p2y(high);
+    const worldLow   = p2y(low);
+
+    const bodyBottom = Math.min(worldOpen, worldClose);
+    const bodyTop    = Math.max(worldOpen, worldClose);
+    const bodyHeight = Math.max(bodyTop - bodyBottom, 0.001);
+    const bodyY      = out.position.y + bodyBottom + bodyHeight / 2;
+
+    const wickHeight = Math.max(worldHigh - worldLow, 0.001);
+    const wickY      = out.position.y + worldLow + wickHeight / 2;
 
     if (isBull) {
       this._assignBull(i);
