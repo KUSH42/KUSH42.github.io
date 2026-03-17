@@ -13,6 +13,7 @@ uniform float uNumRings;
 uniform float uStagger;
 uniform float uRingDuration;
 uniform int   uDirection;
+uniform float uWarpAmount;
 
 void main() {
   float normRing;
@@ -33,7 +34,16 @@ void main() {
 
   vAlpha = smoothstep(0.0, 1.0, localT);
 
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  // Radial warp: ring contracts from inside the sphere and snaps to its surface
+  // radius with an easeOutBack curve, briefly overshooting outward before settling.
+  // easeOutBack: f(0)=0, f(1)=1, overshoots ~8% around t=0.7
+  float c1 = 1.70158;
+  float c3 = c1 + 1.0;
+  float easeOutBack = 1.0 + c3 * pow(localT - 1.0, 3.0) + c1 * pow(localT - 1.0, 2.0);
+  // warpScale goes from (1 - uWarpAmount) at localT=0 → brief overshoot → 1.0 at localT=1
+  float warpScale = 1.0 - uWarpAmount * (1.0 - easeOutBack);
+
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position * warpScale, 1.0);
 }
 `;
 
@@ -60,6 +70,7 @@ void main() {
  * @param {number}  opts.numRings
  * @param {number}  opts.stagger
  * @param {number}  opts.ringDuration
+ * @param {number}  opts.warpAmount
  * @param {string}  opts.direction
  * @param {THREE.Blending} opts.blending
  * @returns {THREE.ShaderMaterial}
@@ -72,6 +83,7 @@ export function createRingMaterial({
   numRings,
   stagger,
   ringDuration,
+  warpAmount,
   direction,
   blending,
 }) {
@@ -97,6 +109,7 @@ export function createRingMaterial({
       uEmissiveIntensity: { value: emissiveIntensity },
       uColor:             { value: new THREE.Color(lineColor) },
       uDirection:         { value: directionIndex },
+      uWarpAmount:        { value: warpAmount },
     },
   });
 }

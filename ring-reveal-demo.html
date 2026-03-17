@@ -211,6 +211,11 @@
     <input type="range" id="slGlowRad" min="100" max="120" value="108">
     <span class="val" id="vGlowRad">1.008</span>
   </label>
+  <label>
+    <span class="lname">Warp amount</span>
+    <input type="range" id="slWarp" min="0" max="80" value="12">
+    <span class="val" id="vWarp">0.12</span>
+  </label>
 
   <!-- Morph presets -->
   <div class="section-label">Morph Presets</div>
@@ -330,6 +335,7 @@ function getOptions() {
     opacity:           +document.getElementById('slOpacity').value / 100,
     glowOpacity:       +document.getElementById('slGlowOpacity').value / 100,
     emissiveIntensity: +document.getElementById('slEmissive').value / 100,
+    warpAmount:        +document.getElementById('slWarp').value / 100,
     glowRadius:        +document.getElementById('slGlowRad').value / 100,
     morphDurationMs:   +document.getElementById('slMorphDur').value,
   };
@@ -504,6 +510,14 @@ document.getElementById('slEmissive').addEventListener('input', e => {
   anim._baseRings.material.uniforms.uEmissiveIntensity.value = v;
   anim._glowRings.material.uniforms.uEmissiveIntensity.value = v;
   anim._options.emissiveIntensity = v;
+});
+
+document.getElementById('slWarp').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vWarp').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uWarpAmount.value = v;
+  anim._glowRings.material.uniforms.uWarpAmount.value = v;
+  anim._options.warpAmount = v;
 });
 
 document.getElementById('slGlowRad').addEventListener('input', e => {

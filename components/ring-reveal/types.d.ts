@@ -39,6 +39,8 @@ export interface RingRevealOptions {
   glowRadius?: number;
   /** Fragment colour multiplier — values >1 push above bloom threshold. Default: 1.5 */
   emissiveIntensity?: number;
+  /** Radial warp: rings snap from (1-warpAmount) scale to 1.0 with easeOutBack overshoot. Default: 0.12 */
+  warpAmount?: number;
 
   /** Default morph duration in ms. Default: 800 */
   morphDurationMs?: number;
