@@ -579,7 +579,7 @@ function runLoopCycle(done) {
         if (!looping) return;
         pauseThen(pause, () => {
           mutateAll(+document.getElementById('slMutateStr').value);
-          pauseThen(100, done);
+          pauseThen(450, done); // allow 400ms mutation morph to complete before reset()
         });
       });
     }));
