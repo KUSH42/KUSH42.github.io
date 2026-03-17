@@ -15,6 +15,8 @@ import { HoloShader } from './shaders.js';
 import { _loadGeoLines } from './geo-lines.js';
 import { setActiveNode, _cancelAllAnimations } from './selection.js';
 import { ANIM, easeOutCubic, easeInCubic, easeInOutCubic } from './anim-constants.js';
+import { RingRevealAnimator } from '../ring-reveal/index.js';
+import { easeOutExpo } from '../ring-reveal/easings.js';
 
 // ── initThreatMap ─────────────────────────────────────────────
 
@@ -382,10 +384,19 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
 
   const state = _state.get(element);
 
+  let _prevTime = performance.now();
+
   function animateLoop() {
     const s = _state.get(element);
     if (!s) return;
     s.animFrameId = requestAnimationFrame(animateLoop);
+
+    const now = performance.now();
+    const deltaMs = now - _prevTime;
+    _prevTime = now;
+
+    // Tick ring reveal animator
+    if (s.revealAnim) s.revealAnim.tick(deltaMs);
 
     // Camera lerp to focused node — suppressed for 3 s after user orbit interaction
     if (s.cameraLerpTarget && Date.now() - s.lastOrbitInteraction >= 3000) {
@@ -511,6 +522,27 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
 
     s.composer.render();
   }
+  // ── Ring reveal load-in animation ────────────────────────
+  const revealAnim = new RingRevealAnimator(scene, {
+    radius:            GLOBE_RADIUS * 1.003,
+    numRings:          56,
+    durationMs:        2000,
+    easingFn:          easeOutExpo,
+    direction:         'south-to-north',
+    stagger:           0.55,
+    lineColor:         0x00ffcc,
+    glowColor:         0x00ffcc,
+    emissiveIntensity: 2.0,
+  });
+  revealAnim.baseRings.renderOrder = 4;
+  revealAnim.glowRings.renderOrder = 4;
+  state.revealAnim = revealAnim;
+
+  revealAnim.play(() => {
+    // Fade out rings after reveal completes
+    revealAnim.morphTo({ opacity: 0, glowOpacity: 0 }, 600);
+  });
+
   state.animFrameId = requestAnimationFrame(animateLoop);
 
   // Load geographic outlines async — non-blocking, failure is graceful
@@ -553,6 +585,9 @@ export function destroyThreatMap(element) {
     record.line.material.dispose();
     state.scene.remove(record.line);
   }
+
+  // Dispose ring reveal animator
+  if (state.revealAnim) state.revealAnim.dispose();
 
   // Dispose globe layers
   if (state.globeGeo)    state.globeGeo.dispose();
