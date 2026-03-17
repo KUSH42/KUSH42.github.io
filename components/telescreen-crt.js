@@ -22,6 +22,7 @@ const VS = `
 const FS = `
   precision mediump float;
   uniform sampler2D tDiffuse;
+  uniform sampler2D tScratches;
   uniform vec2  iResolution;
   uniform float uTime;
   uniform vec2  uImgOffset;
@@ -178,7 +179,13 @@ const FS = `
     col *= cornerMask(pos);
 
     // 6. CRT gamma encode
-    gl_FragColor = vec4(ToCrtGamma(col), 1.0);
+    col = ToCrtGamma(col);
+
+    // 7. Physical scratches overlay — sampled in raw display UV (glass surface,
+    //    not phosphor layer) so scratches don't distort with the CRT warp.
+    col *= texture2D(tScratches, vUv).rgb;
+
+    gl_FragColor = vec4(col, 1.0);
   }`;
 
 function makeShader(gl, type, src) {
@@ -206,7 +213,7 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   const glowCtx = glowCvs.getContext('2d');
 
   // All GL state in a mutable object — rebuilt on context restore
-  const glState = { prog: null, buf: null, tex: null, aPos: -1, uLocs: {} };
+  const glState = { prog: null, buf: null, tex: null, scratchTex: null, aPos: -1, uLocs: {} };
 
   function initGL() {
     const prog = gl.createProgram();
@@ -228,6 +235,7 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       imgOffset: gl.getUniformLocation(prog, 'uImgOffset'),
       imgScale:  gl.getUniformLocation(prog, 'uImgScale'),
       diffuse:   gl.getUniformLocation(prog, 'tDiffuse'),
+      scratches: gl.getUniformLocation(prog, 'tScratches'),
     };
 
     const tex = gl.createTexture();
@@ -239,7 +247,20 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.uniform1i(uLocs.diffuse, 0);
 
-    Object.assign(glState, { prog, buf, tex, aPos, uLocs });
+    // TEXTURE1 — scratches overlay (REPEAT so the jpg tiles naturally)
+    const scratchTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, scratchTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // Placeholder 1×1 white pixel so draw calls succeed before the image loads
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 255, 255]));
+    gl.uniform1i(uLocs.scratches, 1);
+
+    Object.assign(glState, { prog, buf, tex, scratchTex, aPos, uLocs });
   }
 
   initGL();
@@ -250,10 +271,25 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   let animId = 0;
 
   function uploadTexture() {
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, glState.tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, srcImg);
     texReady = true;
   }
+
+  function uploadScratchTexture(img) {
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, glState.scratchTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  }
+
+  // Load scratches overlay — resolves the asset path relative to this module
+  const scratchImg = new Image();
+  scratchImg.src = new URL('../data/scratches.jpg', import.meta.url).href;
+  scratchImg.addEventListener('load', () => {
+    if (!contextLost) uploadScratchTexture(scratchImg);
+  });
 
   function imgRect(cw, ch, sw, sh) {
     const scale = Math.max(cw / sw, ch / sh) * 0.8;
@@ -290,6 +326,7 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     initGL();
     sizeFeed();
     uploadTexture();
+    if (scratchImg.complete && scratchImg.naturalWidth) uploadScratchTexture(scratchImg);
   });
 
   function render(ts) {
@@ -306,6 +343,10 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       const r = imgRect(cw, ch, sw, sh);
       gl.uniform2f(glState.uLocs.imgOffset, r.ox, r.oy);
       gl.uniform2f(glState.uLocs.imgScale, r.sx, r.sy);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, glState.tex);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, glState.scratchTex);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       drawGlow();
     }
