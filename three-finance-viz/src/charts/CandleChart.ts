@@ -380,6 +380,13 @@ export class CandleChart implements Disposable {
     this.bearWickMesh.count = this.bearCount;
   }
 
+  setVisible(v: boolean): void {
+    this.bullBodyMesh.visible = v;
+    this.bearBodyMesh.visible = v;
+    this.bullWickMesh.visible = v;
+    this.bearWickMesh.visible = v;
+  }
+
   dispose(): void {
     this.deps.scene.remove(
       this.bullBodyMesh,

@@ -53,6 +53,17 @@ export type {
   ProviderErrorCode,
 } from './providers/types';
 
+// ── v4.0 Chart types exports ─────────────────────────────────────────────────
+
+// Chart types
+export type { ChartType } from './types/chartType';
+export type { ChartRenderer } from './charts/ChartRenderer';
+export type { LineChartConfig } from './charts/LineChart';
+export type { AreaChartConfig } from './charts/AreaChart';
+export type { MarketCapPoint, MarketCapChartConfig } from './charts/MarketCapChart';
+export { ChartTypeManager } from './charts/ChartTypeManager';
+export type { ChartTypeManagerDeps } from './charts/ChartTypeManager';
+
 // ── v2.0 Addendum exports ───────────────────────────────────────────────────
 
 // Classes

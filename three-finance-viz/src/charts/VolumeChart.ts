@@ -34,6 +34,7 @@ export class VolumeChart implements Disposable {
       maxCandles: number;
       panelOffset: number;
       panelHeight: number;
+      primaryMode?: boolean;
     },
   ) {
     retainSharedGeometry();
@@ -69,7 +70,8 @@ export class VolumeChart implements Disposable {
     const buf = this.deps.buffer;
     const layout = this.deps.layout;
     const out = this._scratchTransform;
-    const { panelOffset, panelHeight } = this.deps;
+    const panelOffset = this.deps.primaryMode ? 0 : this.deps.panelOffset;
+    const panelHeight = this.deps.primaryMode ? 10 : this.deps.panelHeight;
 
     layout.getCandleTransform(i, buf, out);
 
@@ -125,6 +127,10 @@ export class VolumeChart implements Disposable {
   onLayoutChange(layout: LayoutEngine): void {
     this.deps = { ...this.deps, layout };
     this.updateRange(0, this.deps.buffer.count);
+  }
+
+  setVisible(v: boolean): void {
+    this.volMesh.visible = v;
   }
 
   dispose(): void {

@@ -47,6 +47,11 @@ import type { ProviderConfig } from './providers/types';
 import { ProviderError, INTERVAL_MS } from './providers/types';
 import type { Interval } from './providers/types';
 import type { ExchangeAdapter } from './providers/adapters/ExchangeAdapter';
+// chart-types imports
+import { ChartTypeManager } from './charts/ChartTypeManager';
+import { MarketCapChart } from './charts/MarketCapChart';
+import type { MarketCapPoint } from './charts/MarketCapChart';
+import type { ChartType } from './types/chartType';
 
 // ── Module-level helpers ────────────────────────────────────────────────────
 
@@ -150,6 +155,12 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _activeIndicatorConfigs = new Map<string, IndicatorConfig>();
   private _lastVisibleRange: VisibleRange | null = null;
 
+  // chart-types fields
+  private _chartTypeManager?: ChartTypeManager;
+  private _marketCapChart?: MarketCapChart;
+  private _circulatingSupply = 0;
+  private _marketCapSeries: MarketCapPoint[] = [];
+
   constructor(options: FinanceChartOptions) {
     super();
     this._opts = options;
@@ -187,14 +198,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._layout = this._createLayout(this._layoutMode);
 
     // Create sub-charts
-    this._candleChart = new CandleChart({
-      scene: this._chartScene.scene,
-      buffer: this._candleBuffer,
-      layout: this._layout,
-      theme: this._theme,
-      maxCandles: this._maxCandles,
-      priceToWorldY: (price: number) => this._priceToWorldY(price),
-    });
+    // When enableAddendum is true, ChartTypeManager will create the CandleChart instance
+    // and we alias _candleChart to it. When enableAddendum is false, create it directly.
+    if (!this._opts.enableAddendum) {
+      this._candleChart = new CandleChart({
+        scene: this._chartScene.scene,
+        buffer: this._candleBuffer,
+        layout: this._layout,
+        theme: this._theme,
+        maxCandles: this._maxCandles,
+        priceToWorldY: (price: number) => this._priceToWorldY(price),
+      });
+    }
 
     this._volumeChart = new VolumeChart({
       scene: this._chartScene.scene,
@@ -236,6 +251,9 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       // v2.0: update resolution for all LineMaterial instances
       const resolution = new THREE.Vector2(w, h);
       this._indicatorManager?.onResize(resolution);
+      // chart-types: propagate resize
+      this._chartTypeManager?.onResize(resolution);
+      this._marketCapChart?.onResize(this._rendererManager.renderer);
     });
 
     // Interaction
@@ -287,6 +305,22 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
     // v2.0 Addendum systems — opt-in via enableAddendum option
     if (this._opts.enableAddendum) {
+      // Create ChartTypeManager; it creates and owns the CandleChart instance
+      this._chartTypeManager = new ChartTypeManager({
+        scene:             this._chartScene.scene,
+        buffer:            this._candleBuffer,
+        layout:            this._layout,
+        theme:             this._theme,
+        maxCandles:        this._maxCandles,
+        priceToWorldY:     (p) => this._priceToWorldY(p),
+        resolution:        new THREE.Vector2(this._rendererManager.width, this._rendererManager.height),
+        volumePanelOffset: -4,
+        volumePanelHeight: 3,
+      });
+      // Alias _candleChart to the ChartTypeManager's CandleChart so all existing
+      // consumers (CrosshairController, LOD updates, etc.) work unchanged.
+      this._candleChart = this._chartTypeManager.getCandleChart()!;
+
       this._initAddendum();
     }
 
@@ -483,6 +517,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
         600,
       );
     });
+
+    bus.on('chartTypeChange', (p: { type: ChartType }) => this.setChartType(p.type));
   }
 
   private _createLayout(mode: 'linear' | 'helix' | 'tunnel'): LayoutEngine {
@@ -598,6 +634,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // LOD update
     const camDist = this._chartScene.camera.position.length();
     this._candleChart.updateLOD(camDist);
+    this._chartTypeManager?.updateLOD(camDist);
 
     // Update custom layers
     for (const layer of this._customLayers.values()) {
@@ -619,6 +656,14 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // v2.0: Sub-view render (RSI/MACD panels) — AFTER main, uses scissor/viewport
     if (this._indicatorManager) {
       this._indicatorManager.renderSubViews(this._rendererManager.renderer);
+    }
+
+    // chart-types: MarketCapChart sub-panel render — AFTER all other renders
+    if (this._marketCapChart?.isEnabled) {
+      const canvasH  = this._rendererManager.height;
+      const mcFraction = 0.18;
+      const mcHeight   = Math.floor(canvasH * mcFraction);
+      this._marketCapChart.render(this._rendererManager.renderer, 0, mcHeight);
     }
   };
 
@@ -712,6 +757,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._candleChart?.dispose();
     this._volumeChart?.dispose();
     this._indicatorLayer?.dispose();
+    this._chartTypeManager?.dispose();
+    this._marketCapChart?.dispose();
 
     // Dispose post-processing
     this._postProc?.dispose();
@@ -739,6 +786,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._volumeChart.recalculateScale();
     this._candleChart.updateRange(0, this._candleBuffer.count);
     this._volumeChart.updateRange(0, this._candleBuffer.count);
+
+    // chart-types: rebuild active non-candlestick renderer and update market cap
+    if (this._chartTypeManager && this._chartTypeManager.activeType !== 'candlestick') {
+      this._chartTypeManager.onDataLoaded();
+    }
+    if (this._marketCapChart) {
+      if (this._circulatingSupply > 0) {
+        this._marketCapChart.deriveFromSupply(this._candleBuffer, this._circulatingSupply);
+      } else if (this._marketCapSeries.length > 0) {
+        this._marketCapChart.setSeries(this._marketCapSeries);
+      }
+    }
 
     // v2.0: sync addendum data (OHLCVCandle → OHLCV conversion: time → timestamp)
     if (this._indicatorManager || this._rangeController) {
@@ -782,7 +841,24 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       console.warn('[three-finance-viz] CandleBuffer at capacity; ignoring appendCandle');
       return;
     }
-    this._candleChart.append(candle);    // CandleChart.append() appends to buffer internally
+
+    if (this._chartTypeManager) {
+      // Explicitly append to buffer first; ChartTypeManager renderers expect the buffer
+      // to already contain this candle before they update geometry.
+      this._candleBuffer.append(candle);
+      // Dispatch to the active renderer (CandleChart uses updateRange; others use append)
+      this._chartTypeManager.append(candle);
+      // Append market cap point if supply mode is active
+      if (this._marketCapChart?.isEnabled && this._circulatingSupply > 0) {
+        const count = this._candleBuffer.count;
+        this._marketCapChart.appendPoint({
+          time:  this._candleBuffer.time[count - 1],
+          value: this._candleBuffer.close(count - 1) * this._circulatingSupply,
+        });
+      }
+    } else {
+      this._candleChart.append(candle);    // CandleChart.append() appends to buffer internally
+    }
     this._volumeChart.append(candle);
 
     // v2.0: keep addendum data in sync for streaming
@@ -802,7 +878,12 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   /** Patch the last (in-progress) candle with streaming data. */
   updateLastCandle(partial: Partial<OHLCVCandle>): void {
     if (this._candleBuffer.count === 0) return;
-    this._candleChart.patchLast(partial);
+
+    if (this._chartTypeManager) {
+      this._chartTypeManager.patchLast(partial);
+    } else {
+      this._candleChart.patchLast(partial);
+    }
     this._volumeChart.patchLast(partial);
 
     // v2.0: keep last addendum entry in sync
@@ -893,6 +974,69 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     if (cfg) { cfg.enabled = enabled; this._syncLegend(); }
   }
 
+  // ── Chart types (v4.0) ─────────────────────────────────────────────────────
+
+  /**
+   * Switch the primary chart type.
+   * Requires `enableAddendum: true` in constructor options.
+   * @param type - The chart type to switch to
+   */
+  setChartType(type: ChartType): void {
+    if (!this._chartTypeManager) {
+      console.warn('[three-finance-viz] setChartType() requires enableAddendum: true.');
+      return;
+    }
+    this._chartTypeManager.setChartType(type);
+    this._uiController?.syncChartType(type);
+    // When switching to primary volume mode, hide the sub-panel to avoid duplication
+    if (type === 'volume') {
+      this._volumeChart.setVisible(false);
+    } else {
+      this._volumeChart.setVisible(true);
+    }
+  }
+
+  /**
+   * Provide an external market cap time-series to render as a sub-panel.
+   * Clears any previously set circulating supply.
+   * @param series - Array of time/value market cap points
+   */
+  setMarketCapSeries(series: MarketCapPoint[]): void {
+    this._marketCapSeries = series;
+    this._circulatingSupply = 0;
+    this._ensureMarketCapChart();
+    this._marketCapChart!.setSeries(series);
+    this._marketCapChart!.setEnabled(true);
+  }
+
+  /**
+   * Set circulating supply so market cap is derived automatically from candle close prices.
+   * Clears any previously set external series.
+   * @param supply - Circulating token/coin supply
+   */
+  setCirculatingSupply(supply: number): void {
+    this._circulatingSupply = supply;
+    this._marketCapSeries = [];
+    this._ensureMarketCapChart();
+    if (this._candleBuffer.count > 0) {
+      this._marketCapChart!.deriveFromSupply(this._candleBuffer, supply);
+    }
+    this._marketCapChart!.setEnabled(true);
+  }
+
+  private _ensureMarketCapChart(): void {
+    if (!this._marketCapChart) {
+      const resolution = new THREE.Vector2(
+        this._rendererManager.width,
+        this._rendererManager.height,
+      );
+      this._marketCapChart = new MarketCapChart({
+        theme:      this._theme,
+        resolution,
+      });
+    }
+  }
+
   private _rebuildRSISubViews(vr: VisibleRange): void {
     if (!this._indicatorManager) return;
     for (const [id, cfg] of this._activeIndicatorConfigs) {
@@ -931,6 +1075,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       layer.onThemeChange(theme);
     }
     this._axisManager?.setTheme(buildThemePalette(theme));
+    this._chartTypeManager?.onThemeChange(theme);
+    this._marketCapChart?.onThemeChange(theme);
   }
 
   setLayout(mode: 'linear' | 'helix' | 'tunnel'): void {
@@ -942,6 +1088,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     for (const layer of this._customLayers.values()) {
       layer.onLayoutChange(this._layout);
     }
+    this._chartTypeManager?.onLayoutChange(this._layout);
     this.resetCamera(800);
   }
 

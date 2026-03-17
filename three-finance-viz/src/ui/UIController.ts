@@ -3,6 +3,7 @@ import { debounce, throttle } from '../utils/timing';
 import type { UIState, IndicatorConfig, EventBus, IndicatorType, PriceSource } from '../types/addendum';
 import { NavigatorBar } from './NavigatorBar';
 import type { OHLCV } from '../types/addendum';
+import type { ChartType } from '../types/chartType';
 
 // ── HTML Template ─────────────────────────────────────────────────────────────
 
@@ -57,6 +58,18 @@ const UI_TEMPLATE = `
         <button class="chart-ui__pill chart-ui__pill--active" data-value="Linear">Linear</button>
         <button class="chart-ui__pill" data-value="Helix">Helix</button>
         <button class="chart-ui__pill" data-value="Tunnel">Tunnel</button>
+      </div>
+    </section>
+
+    <!-- Section: Chart Type -->
+    <section class="chart-ui__section">
+      <label class="chart-ui__label">Chart Type</label>
+      <div class="chart-ui__pill-group" id="ui-chart-type-group">
+        <button class="chart-ui__pill chart-ui__pill--active" data-value="candlestick">Candles</button>
+        <button class="chart-ui__pill" data-value="heikin-ashi">HA</button>
+        <button class="chart-ui__pill" data-value="line">Line</button>
+        <button class="chart-ui__pill" data-value="area">Area</button>
+        <button class="chart-ui__pill" data-value="volume">Volume</button>
       </div>
     </section>
 
@@ -437,6 +450,19 @@ export class UIController {
         this.bus.emit('layoutChange', { mode: this.state.layoutMode });
       });
 
+    // Chart type pills
+    const chartTypeGroup = this.root.querySelector('#ui-chart-type-group');
+    if (chartTypeGroup) {
+      chartTypeGroup.addEventListener('click', (e: Event) => {
+        const btn = (e.target as HTMLElement).closest('[data-value]') as HTMLElement | null;
+        if (!btn) return;
+        const type = btn.dataset.value!;
+        this._setActivePill('#ui-chart-type-group', type);
+        this.state.chartType = type as ChartType;
+        this.bus.emit('chartTypeChange', { type: this.state.chartType });
+      });
+    }
+
     // Theme
     this.root.querySelector('#ui-theme-group')!
       .addEventListener('click', (e: Event) => {
@@ -552,6 +578,19 @@ export class UIController {
       this.root.querySelector('#ui-indicator-list')!.innerHTML = '';
       state.indicators.forEach(cfg => this._renderIndicatorRow(cfg));
     }
+    if (state.chartType !== undefined) {
+      this._setActivePill('#ui-chart-type-group', state.chartType);
+    }
+  }
+
+  /**
+   * Sync the active chart type pill without emitting a bus event.
+   * Called by FinanceChart.setChartType() to keep the UI consistent with programmatic changes.
+   * @param type - The chart type to mark as active
+   */
+  syncChartType(type: ChartType): void {
+    this._setActivePill('#ui-chart-type-group', type);
+    this.state.chartType = type;
   }
 
   /**

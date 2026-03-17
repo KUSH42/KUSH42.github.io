@@ -90,6 +90,7 @@ export interface UIState {
   paletteOverrides: Partial<ThemePalette>;
   crosshairEnabled: boolean;
   tooltipsEnabled: boolean;
+  chartType?: import('./chartType').ChartType;
 }
 
 // ── Indicator Value Cache ───────────────────────────────────────────────────

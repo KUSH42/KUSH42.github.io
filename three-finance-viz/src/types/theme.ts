@@ -24,6 +24,20 @@ export interface ChartTheme {
     bidHeat: [string, string]; // low size → high size
     askHeat: [string, string];
   };
+  line?: {
+    color: string;
+    lineWidth: number;
+  };
+  area?: {
+    lineColor: string;
+    fillColor: string;
+    floorAlpha: number;
+  };
+  marketCap?: {
+    lineColor: string;
+    fillColor: string;
+    floorAlpha: number;
+  };
 }
 
 export const DARK_THEME: ChartTheme = {
@@ -49,6 +63,9 @@ export const DARK_THEME: ChartTheme = {
     bidHeat: ['#0d2b1e', '#26a69a'],
     askHeat: ['#2b0d0d', '#ef5350'],
   },
+  line: { color: '#26a69a', lineWidth: 2 },
+  area: { lineColor: '#26a69a', fillColor: '#26a69a', floorAlpha: 0.08 },
+  marketCap: { lineColor: '#7c4dff', fillColor: '#7c4dff', floorAlpha: 0.08 },
 };
 
 export const LIGHT_THEME: ChartTheme = {
@@ -74,4 +91,7 @@ export const LIGHT_THEME: ChartTheme = {
     bidHeat: ['#e8f5e9', '#00897b'],
     askHeat: ['#ffebee', '#e53935'],
   },
+  line: { color: '#00897b', lineWidth: 2 },
+  area: { lineColor: '#00897b', fillColor: '#00897b', floorAlpha: 0.10 },
+  marketCap: { lineColor: '#5e35b1', fillColor: '#5e35b1', floorAlpha: 0.10 },
 };
