@@ -6,6 +6,7 @@ import type { ChartTheme } from '../types/theme';
 import type { LayoutEngine, CandleTransform } from '../layout/LayoutEngine';
 import type { Disposable } from './CandleChart';
 import { BODY_GEO_HIGH, retainSharedGeometry, releaseSharedGeometry } from './sharedGeometry';
+import { parseThemeColor } from '../utils/MathUtils';
 
 const _mat4 = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
@@ -47,8 +48,13 @@ export class VolumeChart implements Disposable {
   }
 
   private _applyThemeColors(theme: ChartTheme): void {
-    this._bullColor.set(theme.volume.bullBar);
-    this._bearColor.set(theme.volume.bearBar);
+    const bull = parseThemeColor(theme.volume.bullBar);
+    const bear = parseThemeColor(theme.volume.bearBar);
+    this._bullColor.set(bull.hex);
+    this._bearColor.set(bear.hex);
+    // Apply averaged alpha to the shared material
+    const mat = this.volMesh.material as THREE.MeshStandardMaterial;
+    mat.opacity = (bull.alpha + bear.alpha) / 2;
   }
 
   recalculateScale(): void {

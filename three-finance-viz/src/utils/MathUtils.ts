@@ -44,3 +44,22 @@ export function easeInOutCubic(t: number): number {
 export function safeNormalize(value: number, min: number, max: number): number {
   return max > min ? (value - min) / (max - min) : 0;
 }
+
+/**
+ * Parse a CSS hex color that may carry an alpha channel (#rrggbb or #rrggbbaa).
+ * THREE.Color only accepts 6-digit hex — strip the alpha and return it separately.
+ * Returns { hex: string (6-digit), alpha: number (0–1) }.
+ */
+export function parseThemeColor(css: string): { hex: string; alpha: number } {
+  if (css.length === 9 && css[0] === '#') {
+    const alpha = parseInt(css.slice(7, 9), 16) / 255;
+    return { hex: css.slice(0, 7), alpha };
+  }
+  if (css.length === 5 && css[0] === '#') {
+    // 4-digit shorthand #rgba
+    const a = parseInt(css[4], 16);
+    const alpha = (a * 17) / 255;
+    return { hex: `#${css[1]}${css[1]}${css[2]}${css[2]}${css[3]}${css[3]}`, alpha };
+  }
+  return { hex: css, alpha: 1 };
+}
