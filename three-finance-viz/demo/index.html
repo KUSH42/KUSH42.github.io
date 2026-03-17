@@ -8,9 +8,16 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body   { background: #0d0f14; overflow: hidden; font-family: system-ui, sans-serif; color: #e0e4f0; }
     #chart { width: 100vw; height: 100vh; display: block; position: relative; }
-    #hud   { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 8px; padding: 8px 12px; pointer-events: none; z-index: 20; }
-    #hud button {
-      pointer-events: all;
+
+    /* ── HUD ── */
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+      padding: 8px 12px; pointer-events: none; z-index: 20;
+    }
+    #hud > * { pointer-events: all; }
+
+    #hud button, #hud select, #hud input {
       background: #1e2130;
       color: #e0e4f0;
       border: 1px solid #3a3d4a;
@@ -18,30 +25,70 @@
       border-radius: 4px;
       cursor: pointer;
       font-size: 12px;
+      height: 26px;
     }
-    #hud button:hover { background: #2a2d3a; }
+    #hud button:hover  { background: #2a2d3a; }
+    #hud button:active { background: #333650; }
+    #hud button:disabled { opacity: 0.4; cursor: default; }
+    #hud select { padding: 2px 6px; }
+    #hud input  { width: 100px; }
+
+    .hud-sep { width: 1px; height: 18px; background: #3a3d4a; margin: 0 2px; }
+
+    /* Provider badge */
+    #provider-badge {
+      font-size: 11px; font-family: monospace; font-weight: 600;
+      padding: 3px 8px; border-radius: 3px; background: #555;
+      color: #fff; white-space: nowrap; pointer-events: none;
+    }
+
     #fps    { position: fixed; top: 8px; right: 12px; font-size: 11px; font-family: monospace; color: #555; z-index: 20; }
     #status { position: fixed; bottom: 8px; left: 12px; font-size: 11px; font-family: monospace; color: #888; z-index: 20; }
-    .tfv-tooltip {
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-      font-size: 12px;
-    }
+
+    .tfv-tooltip { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; }
   </style>
 </head>
 <body>
   <div id="chart" tabindex="0" role="application" aria-label="Interactive 3D financial chart"></div>
+
   <div id="hud" aria-hidden="true">
+    <!-- Layout -->
     <button id="btn-linear">Linear</button>
     <button id="btn-helix">Helix</button>
     <button id="btn-tunnel">Tunnel</button>
     <button id="btn-reset">Reset Camera</button>
-    <button id="btn-theme">Toggle Theme</button>
+    <button id="btn-theme">Theme</button>
+
+    <div class="hud-sep"></div>
+
+    <!-- Provider controls -->
+    <select id="provider-select" title="Data source">
+      <option value="mock">Mock</option>
+      <option value="binance"  selected>Binance</option>
+      <option value="coinbase">Coinbase</option>
+      <option value="kraken">Kraken</option>
+      <option value="bybit">Bybit</option>
+      <option value="auto">Auto</option>
+    </select>
+    <input id="symbol-input" type="text" value="BTC/USDT" placeholder="BTC/USDT" title="Symbol" />
+    <button id="btn-connect">Connect</button>
+
+    <div class="hud-sep"></div>
+
+    <!-- Status badge -->
+    <span id="provider-badge">● MOCK</span>
+
+    <div class="hud-sep"></div>
+
+    <!-- Exports -->
     <button id="btn-png">PNG</button>
     <button id="btn-glb">GLB</button>
     <button id="btn-csv">CSV</button>
   </div>
+
   <span id="fps" aria-hidden="true">-- fps</span>
-  <span id="status" aria-live="polite"></span>
+  <span id="status" aria-live="polite">Mock data</span>
+
   <script type="module" src="./main.ts"></script>
 </body>
 </html>
