@@ -16,10 +16,11 @@
       font-size: 13px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
     #ui label { display: flex; align-items: center; gap: 8px; }
-    #ui input[type=range] { width: 160px; accent-color: #0ff; }
+    #ui input[type=range] { width: 150px; accent-color: #0ff; }
+    #ui input[type=checkbox] { accent-color: #0ff; }
     #ui button {
       background: #001a1a;
       color: #0ff;
@@ -29,6 +30,7 @@
       font-family: monospace;
     }
     #ui button:hover { background: #003333; }
+    #ui button.active { background: #004444; border-color: #0ff; }
     #ui select {
       background: #001a1a;
       color: #0ff;
@@ -36,40 +38,75 @@
       font-family: monospace;
       padding: 2px 6px;
     }
+    .section-label {
+      color: #0ff8;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-top: 4px;
+    }
+    .btn-row { display: flex; gap: 6px; }
   </style>
 </head>
 <body>
 <div id="ui">
-  <label>Progress <input type="range" id="sliderProgress" min="0" max="100" value="0" style="width:200px">
+  <div class="section-label">Disintegration</div>
+
+  <label>Progress
+    <input type="range" id="sliderProgress" min="0" max="100" value="0" style="width:180px">
     <span id="valProgress">0.00</span>
   </label>
-  <label>Block size <input type="range" id="sliderNoise" min="1" max="200" value="100">
+  <label>Block size
+    <input type="range" id="sliderNoise" min="1" max="200" value="100">
     <span id="valNoise">10.0</span>
   </label>
-  <label>Edge scatter <input type="range" id="sliderEdge" min="1" max="80" value="15">
+  <label>Edge scatter
+    <input type="range" id="sliderEdge" min="1" max="80" value="15">
     <span id="valEdge">0.15</span>
   </label>
-  <label>Edge glow <input type="range" id="sliderGlow" min="0" max="200" value="60">
+  <label>Edge glow
+    <input type="range" id="sliderGlow" min="0" max="200" value="60">
     <span id="valGlow">6.0</span>
   </label>
   <label>Axis
     <select id="selAxis">
-      <option value="y" selected>+Y (bottom→top)</option>
-      <option value="-y">-Y (top→bottom)</option>
-      <option value="x">+X (left→right)</option>
-      <option value="z">+Z (front→back)</option>
+      <option value="y"  selected>+Y (bottom→top)</option>
+      <option value="-y">−Y (top→bottom)</option>
+      <option value="x" >+X (left→right)</option>
+      <option value="z" >+Z (front→back)</option>
     </select>
   </label>
   <label>Object
     <select id="selObject">
-      <option value="torus" selected>Torus</option>
+      <option value="torus"  selected>Torus</option>
       <option value="sphere">Sphere</option>
       <option value="box">Box</option>
       <option value="knot">Torus Knot</option>
     </select>
   </label>
-  <button id="btnPlay">▶ Play</button>
+
+  <div class="btn-row">
+    <button id="btnDisintegrate">▼ Disintegrate</button>
+    <button id="btnReconstruct">▲ Reconstruct</button>
+    <button id="btnStop">■ Stop</button>
+  </div>
   <button id="btnReset">↺ Reset</button>
+
+  <div class="section-label">Vertex Glitch</div>
+
+  <label><input type="checkbox" id="chkGlitch"> Enabled</label>
+  <label>Intensity
+    <input type="range" id="sliderGlitchIntensity" min="1" max="100" value="20">
+    <span id="valGlitchIntensity">0.2</span>
+  </label>
+  <label>Frequency
+    <input type="range" id="sliderGlitchFreq" min="1" max="60" value="15">
+    <span id="valGlitchFreq">15</span> fps
+  </label>
+  <label>Threshold
+    <input type="range" id="sliderGlitchThresh" min="1" max="100" value="8">
+    <span id="valGlitchThresh">0.08</span>
+  </label>
 </div>
 
 <script type="module">
@@ -82,10 +119,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { DisintegrationEffect } from './components/DisintegrationEffect.js';
 
 // ── Scene ──────────────────────────────────────────────────────────────────
-const scene    = new THREE.Scene();
+const scene  = new THREE.Scene();
 scene.background = new THREE.Color(0x020808);
 
-const camera   = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
 camera.position.set(0, 1.5, 5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -95,15 +132,13 @@ document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.target.set(0, 0, 0);
 
-// ── Lights ─────────────────────────────────────────────────────────────────
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
 dirLight.position.set(3, 5, 3);
 scene.add(dirLight);
 
-// ── Post-processing (bloom to show edge glow) ──────────────────────────────
+// ── Post-processing ────────────────────────────────────────────────────────
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(
@@ -111,7 +146,7 @@ composer.addPass(new UnrealBloomPass(
 ));
 composer.addPass(new OutputPass());
 
-// ── Object factory ─────────────────────────────────────────────────────────
+// ── Geometry factory ───────────────────────────────────────────────────────
 const GEOMETRIES = {
   torus:  () => new THREE.TorusGeometry(1, 0.4, 64, 128),
   sphere: () => new THREE.SphereGeometry(1.2, 64, 64),
@@ -126,111 +161,126 @@ const AXES = {
   'z':  new THREE.Vector3( 0,  0,  1),
 };
 
-let mesh  = null;
-let fx    = null;
-let clock = new THREE.Clock();
+let mesh = null;
+let fx   = null;
+const clock = new THREE.Clock();
 
 function buildMesh(type) {
-  if (mesh) {
-    if (fx) { fx.dispose(); fx = null; }
-    scene.remove(mesh);
-    mesh.geometry.dispose();
-  }
+  if (fx)   { fx.dispose(); fx = null; }
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); }
 
-  const geo = GEOMETRIES[type]();
-  const mat = new THREE.MeshStandardMaterial({
-    color:     0x00ccff,
-    metalness: 0.3,
-    roughness: 0.4,
-  });
-
-  mesh = new THREE.Mesh(geo, mat);
+  mesh = new THREE.Mesh(
+    GEOMETRIES[type](),
+    new THREE.MeshStandardMaterial({ color: 0x00ccff, metalness: 0.3, roughness: 0.4 })
+  );
   scene.add(mesh);
-
-  const axisKey = document.getElementById('selAxis').value;
-  buildFx(axisKey);
+  buildFx(document.getElementById('selAxis').value);
 }
 
 function buildFx(axisKey) {
+  const prevProgress    = fx ? fx.progress : 0;
+  const glitchEnabled   = fx ? fx.glitch.enabled : false;
   if (fx) { fx.dispose(); fx = null; }
 
   fx = new DisintegrationEffect(mesh, {
-    axis:           AXES[axisKey],
-    noiseScale:     parseFloat(document.getElementById('sliderNoise').value) / 10,
-    edgeWidth:      parseFloat(document.getElementById('sliderEdge').value) / 100,
-    edgeColor:      new THREE.Color(0x00ffcc),
-    edgeIntensity:  parseFloat(document.getElementById('sliderGlow').value) / 10,
+    axis:          AXES[axisKey],
+    noiseScale:    +document.getElementById('sliderNoise').value / 10,
+    edgeWidth:     +document.getElementById('sliderEdge').value  / 100,
+    edgeColor:     new THREE.Color(0x00ffcc),
+    edgeIntensity: +document.getElementById('sliderGlow').value  / 10,
   });
-  fx.progress = parseFloat(document.getElementById('sliderProgress').value) / 100;
+  fx.progress = prevProgress;
+
+  fx.glitch.enabled   = glitchEnabled;
+  fx.glitch.intensity = +document.getElementById('sliderGlitchIntensity').value / 100;
+  fx.glitch.frequency = +document.getElementById('sliderGlitchFreq').value;
+  fx.glitch.threshold = +document.getElementById('sliderGlitchThresh').value    / 100;
+
+  // Keep progress slider in sync
+  document.getElementById('sliderProgress').value = prevProgress * 100;
+  document.getElementById('valProgress').textContent = prevProgress.toFixed(2);
 }
 
 buildMesh('torus');
 
-// ── Playback ───────────────────────────────────────────────────────────────
-let playing = false;
-let playT   = 0;
-const PLAY_DURATION = 3.0; // seconds
-
-document.getElementById('btnPlay').addEventListener('click', () => {
-  playing = true;
-  playT = fx.progress * PLAY_DURATION;
-});
-
-document.getElementById('btnReset').addEventListener('click', () => {
-  playing = false;
-  playT = 0;
-  fx.progress = 0;
-  document.getElementById('sliderProgress').value = 0;
-  document.getElementById('valProgress').textContent = '0.00';
-});
-
-// ── Controls ───────────────────────────────────────────────────────────────
+// ── Disintegration controls ────────────────────────────────────────────────
 document.getElementById('sliderProgress').addEventListener('input', e => {
   const v = e.target.value / 100;
+  fx.stopAnimation();
   fx.progress = v;
-  playing = false;
   document.getElementById('valProgress').textContent = v.toFixed(2);
 });
 
 document.getElementById('sliderNoise').addEventListener('input', e => {
   const v = e.target.value / 10;
   document.getElementById('valNoise').textContent = v.toFixed(1);
-  // higher slider value = higher noiseScale = smaller blocks
-  // Noise scale requires shader recompile — rebuild fx
-  if (fx) {
-    const p = fx.progress;
-    buildFx(document.getElementById('selAxis').value);
-    fx.progress = p;
-  }
+  // noiseScale is baked into the shader at compile time via uniform —
+  // actually it IS a uniform, so update directly:
+  fx._uniforms.uDisintNoiseScale.value = v;
 });
 
 document.getElementById('sliderEdge').addEventListener('input', e => {
-  const v = e.target.value / 100;
-  fx.edgeWidth = v;
-  document.getElementById('valEdge').textContent = v.toFixed(2);
-  // edgeWidth also controls the scatter band in the discard shader —
-  // changing it live updates via uniform, no recompile needed
+  fx.edgeWidth = e.target.value / 100;
+  document.getElementById('valEdge').textContent = fx.edgeWidth.toFixed(2);
 });
 
 document.getElementById('sliderGlow').addEventListener('input', e => {
-  const v = e.target.value / 10;
-  fx.edgeIntensity = v;
-  document.getElementById('valGlow').textContent = v.toFixed(1);
+  fx.edgeIntensity = e.target.value / 10;
+  document.getElementById('valGlow').textContent = fx.edgeIntensity.toFixed(1);
 });
 
 document.getElementById('selAxis').addEventListener('change', e => {
-  const p = fx ? fx.progress : 0;
   buildFx(e.target.value);
-  fx.progress = p;
 });
 
 document.getElementById('selObject').addEventListener('change', e => {
   buildMesh(e.target.value);
-  document.getElementById('sliderProgress').value = 0;
-  document.getElementById('valProgress').textContent = '0.00';
-  playing = false;
-  playT = 0;
+  syncProgressUI(0);
 });
+
+document.getElementById('btnDisintegrate').addEventListener('click', () => {
+  fx.disintegrate(2500, () => console.log('gone'));
+});
+
+document.getElementById('btnReconstruct').addEventListener('click', () => {
+  fx.reconstruct(2500, () => console.log('back'));
+});
+
+document.getElementById('btnStop').addEventListener('click', () => {
+  fx.stopAnimation();
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  fx.stopAnimation();
+  fx.progress = 0;
+  syncProgressUI(0);
+});
+
+// ── Glitch controls ────────────────────────────────────────────────────────
+document.getElementById('chkGlitch').addEventListener('change', e => {
+  fx.glitch.enabled = e.target.checked;
+});
+
+document.getElementById('sliderGlitchIntensity').addEventListener('input', e => {
+  fx.glitch.intensity = e.target.value / 100;
+  document.getElementById('valGlitchIntensity').textContent = fx.glitch.intensity.toFixed(2);
+});
+
+document.getElementById('sliderGlitchFreq').addEventListener('input', e => {
+  fx.glitch.frequency = +e.target.value;
+  document.getElementById('valGlitchFreq').textContent = e.target.value;
+});
+
+document.getElementById('sliderGlitchThresh').addEventListener('input', e => {
+  fx.glitch.threshold = e.target.value / 100;
+  document.getElementById('valGlitchThresh').textContent = fx.glitch.threshold.toFixed(2);
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function syncProgressUI(v) {
+  document.getElementById('sliderProgress').value = v * 100;
+  document.getElementById('valProgress').textContent = v.toFixed(2);
+}
 
 // ── Resize ─────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
@@ -246,19 +296,11 @@ renderer.setAnimationLoop(() => {
 
   if (fx) {
     fx.tick(dt * 1000);
-
-    if (playing) {
-      playT += dt;
-      const p = Math.min(playT / PLAY_DURATION, 1.0);
-      fx.progress = p;
-      document.getElementById('sliderProgress').value = p * 100;
-      document.getElementById('valProgress').textContent = p.toFixed(2);
-      if (p >= 1.0) playing = false;
-    }
+    // Sync progress slider while animation is running
+    syncProgressUI(fx.progress);
   }
 
   if (mesh) mesh.rotation.y += dt * 0.3;
-
   controls.update();
   composer.render();
 });
