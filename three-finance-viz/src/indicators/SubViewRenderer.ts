@@ -27,7 +27,13 @@ export class SubViewRenderer {
    * Called each frame — renders sub-panel AFTER main scene render
    * @param renderer - The WebGL renderer to use
    */
+  /** Returns true when there is at least one data line to display */
+  hasContent(): boolean {
+    return this.lines.size > 0;
+  }
+
   render(renderer: THREE.WebGLRenderer): void {
+    if (!this.hasContent()) return;
     const canvas = renderer.domElement;
     try {
       renderer.setScissorTest(true);

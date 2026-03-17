@@ -39,6 +39,7 @@ const chart = new FinanceChart({
   layout: 'linear',
   maxCandles: 2000,
   enablePostProcessing: false,
+  enableAddendum: true,
   onRendererFallback: (reason) => console.info('[tfv] WebGL2 fallback:', reason),
 });
 
