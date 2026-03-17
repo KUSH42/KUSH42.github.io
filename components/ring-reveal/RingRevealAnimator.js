@@ -213,6 +213,7 @@ export class RingRevealAnimator {
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
         stagger:           baseMat.uniforms.uStagger.value,
         warpAmount:        baseMat.uniforms.uWarpAmount.value,
+        ringDuration:      baseMat.uniforms.uRingDuration.value,
         radius:            fromRadius,
       },
       to: {
@@ -229,6 +230,7 @@ export class RingRevealAnimator {
         emissiveIntensity: targetConfig.emissiveIntensity ?? baseMat.uniforms.uEmissiveIntensity.value,
         stagger:           targetConfig.stagger           ?? baseMat.uniforms.uStagger.value,
         warpAmount:        targetConfig.warpAmount        ?? baseMat.uniforms.uWarpAmount.value,
+        ringDuration:      targetConfig.ringDuration      ?? baseMat.uniforms.uRingDuration.value,
         radius:            toRadius,
       },
       deferredGeom: (targetConfig.numRings !== undefined && targetConfig.numRings !== opts.numRings)
@@ -326,6 +328,8 @@ export class RingRevealAnimator {
     glowMat.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
     baseMat.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
     glowMat.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
+    baseMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
+    glowMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
 
     // Radius via scale
     const scale = lerp(from.radius, to.radius) / this._options.radius;
@@ -340,6 +344,7 @@ export class RingRevealAnimator {
       opts.emissiveIntensity = to.emissiveIntensity;
       opts.stagger           = to.stagger;
       opts.warpAmount        = to.warpAmount;
+      opts.ringDuration      = to.ringDuration;
       opts.lineColor         = to.lineColor.getHex();
       opts.glowColor         = to.glowColor.getHex();
       opts.radius            = to.radius;

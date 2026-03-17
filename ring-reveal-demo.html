@@ -453,7 +453,15 @@ function syncUI(cfg) {
   set('slStagger',     cfg.stagger    !== undefined ? Math.round(cfg.stagger    * 100) : undefined, 'vStagger',     v => (v / 100).toFixed(2));
   set('slWarp',        cfg.warpAmount !== undefined ? Math.round(cfg.warpAmount * 100) : undefined, 'vWarp',        v => (v / 100).toFixed(2));
   set('slNumRings',    cfg.numRings,                                                                 'vNumRings');
-  set('slRingDur',     cfg.ringDuration !== undefined ? Math.round(cfg.ringDuration * 100) : undefined, 'vRingDur', v => (v / 100).toFixed(2));
+  if (cfg.ringDuration !== undefined) {
+    const v = Math.max(0.001, cfg.ringDuration);
+    set('slRingDur', Math.round(v * 100), 'vRingDur', x => (x / 100).toFixed(2));
+    if (anim) {
+      anim._baseRings.material.uniforms.uRingDuration.value = v;
+      anim._glowRings.material.uniforms.uRingDuration.value = v;
+      anim._options.ringDuration = v;
+    }
+  }
   set('slDuration',    cfg.durationMs,                                                               'vDuration');
   if (cfg.direction) {
     document.getElementById('selDirection').value = cfg.direction;
@@ -758,12 +766,9 @@ function randomNeonColor() {
 // Slightly shift a color by ±hue/sat/light delta
 function mutateColor(hex, strength) {
   const c = new THREE.Color(hex);
-  let h, s, l;
-  c.getHSL({ h: 0, s: 0, l: 0 }, (hsl => { h = hsl.h; s = hsl.s; l = hsl.l; }));
-  // getHSL with a target object
   const hsl = {};
   c.getHSL(hsl);
-  h = (hsl.h + rand(-strength, strength) * 0.15 + 1) % 1;
+  const h = (hsl.h + rand(-strength, strength) * 0.15 + 1) % 1;
   s = Math.max(0.2, Math.min(1, hsl.s + rand(-strength, strength) * 0.3));
   l = Math.max(0.2, Math.min(0.85, hsl.l + rand(-strength, strength) * 0.2));
   const out = new THREE.Color().setHSL(h, s, l);
