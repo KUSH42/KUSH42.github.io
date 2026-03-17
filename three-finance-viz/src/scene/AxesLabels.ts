@@ -1,19 +1,11 @@
 // src/scene/AxesLabels.ts
 import * as THREE from 'three';
+import { Text } from 'troika-three-text';
 import type { ChartTheme } from '../types/theme';
 
-// troika-three-text is an optional dependency; we import it dynamically
-type TroikaText = THREE.Object3D & {
-  text: string;
-  fontSize: number;
-  color: string;
-  sync(): void;
-  dispose(): void;
-};
-
 export class AxesLabels {
-  private _group: THREE.Group;
-  private _labels: TroikaText[] = [];
+  private readonly _group: THREE.Group;
+  private _labels: Text[] = [];
   private _theme: ChartTheme;
 
   constructor(
@@ -29,69 +21,83 @@ export class AxesLabels {
   setRange(
     minPrice: number,
     maxPrice: number,
-    _minTimeMs: number,
-    _maxTimeMs: number,
+    minTimeMs: number,
+    maxTimeMs: number,
   ): void {
-    // Clear existing labels
     this._clearLabels();
 
-    // Generate price ticks (5 ticks)
-    const tickCount = 5;
-    for (let i = 0; i <= tickCount; i++) {
-      const price = minPrice + (maxPrice - minPrice) * (i / tickCount);
-      const y = (price - minPrice) / (maxPrice - minPrice) * 10; // scale to world units
-      this._createLabel(
+    // Price Y-axis labels — 6 evenly spaced ticks
+    const priceTickCount = 5;
+    for (let i = 0; i <= priceTickCount; i++) {
+      const t = i / priceTickCount;
+      const price = minPrice + (maxPrice - minPrice) * t;
+      const worldY = t * 10; // price range mapped to 0–10 world units
+      this._addLabel(
         price.toFixed(2),
-        new THREE.Vector3(-1.5, y, 0),
-        this._theme.axis,
+        new THREE.Vector3(-1.8, worldY, 0),
+        'right',
+        'middle',
+      );
+    }
+
+    // Time X-axis labels — 5 evenly spaced ticks
+    const timeTickCount = 4;
+    for (let i = 0; i <= timeTickCount; i++) {
+      const t = i / timeTickCount;
+      const timeMs = minTimeMs + (maxTimeMs - minTimeMs) * t;
+      const worldX = t * 10; // time range mapped to 0–10 world units
+      const label = new Date(timeMs).toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      this._addLabel(
+        label,
+        new THREE.Vector3(worldX, -0.6, 0),
+        'center',
+        'top',
       );
     }
   }
 
-  private _createLabel(text: string, position: THREE.Vector3, color: string): void {
-    // Create a simple sprite-based label using CanvasTexture as fallback
-    // troika-three-text would be used in production for better quality
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 32;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = 'transparent';
-    ctx.clearRect(0, 0, 128, 32);
-    ctx.fillStyle = color;
-    ctx.font = '14px monospace';
-    ctx.fillText(text, 4, 22);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(position);
-    sprite.scale.set(1.5, 0.4, 1);
-    this._group.add(sprite);
-
-    // Cast to satisfy our label type (sprite doesn't have sync/dispose of troika)
-    this._labels.push(sprite as unknown as TroikaText);
-  }
-
-  private _clearLabels(): void {
-    for (const label of this._labels) {
-      this._group.remove(label as unknown as THREE.Object3D);
-      // Cleanup sprite materials and textures
-      const sprite = label as unknown as THREE.Sprite;
-      if (sprite.material) {
-        const mat = sprite.material as THREE.SpriteMaterial;
-        mat.map?.dispose();
-        mat.dispose();
-      }
-    }
-    this._labels = [];
+  private _addLabel(
+    text: string,
+    position: THREE.Vector3,
+    anchorX: 'left' | 'center' | 'right',
+    anchorY: 'top' | 'middle' | 'bottom',
+  ): void {
+    const label = new Text();
+    label.text = text;
+    label.fontSize = 0.28;
+    label.color = this._theme.axis;
+    label.anchorX = anchorX;
+    label.anchorY = anchorY;
+    label.position.copy(position);
+    // Render on top of geometry — no depth write
+    label.depthOffset = -1;
+    this._group.add(label);
+    label.sync();
+    this._labels.push(label);
   }
 
   onThemeChange(theme: ChartTheme): void {
     this._theme = theme;
+    for (const label of this._labels) {
+      label.color = theme.axis;
+      label.sync();
+    }
   }
 
   dispose(): void {
     this._clearLabels();
     this.scene.remove(this._group);
+  }
+
+  private _clearLabels(): void {
+    for (const label of this._labels) {
+      this._group.remove(label);
+      label.dispose();
+    }
+    this._labels = [];
   }
 }
