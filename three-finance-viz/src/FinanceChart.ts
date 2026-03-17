@@ -197,19 +197,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // Build layout
     this._layout = this._createLayout(this._layoutMode);
 
-    // Create sub-charts
-    // When enableAddendum is true, ChartTypeManager will create the CandleChart instance
-    // and we alias _candleChart to it. When enableAddendum is false, create it directly.
-    if (!this._opts.enableAddendum) {
-      this._candleChart = new CandleChart({
-        scene: this._chartScene.scene,
-        buffer: this._candleBuffer,
-        layout: this._layout,
-        theme: this._theme,
-        maxCandles: this._maxCandles,
-        priceToWorldY: (price: number) => this._priceToWorldY(price),
-      });
-    }
+    // Create sub-charts — CandleChart is always created directly so CrosshairController,
+    // bloom setup, and LOD all have a valid reference immediately.
+    // When enableAddendum is true, ChartTypeManager takes it as existingCandleChart
+    // (no duplicate is created).
+    this._candleChart = new CandleChart({
+      scene: this._chartScene.scene,
+      buffer: this._candleBuffer,
+      layout: this._layout,
+      theme: this._theme,
+      maxCandles: this._maxCandles,
+      priceToWorldY: (price: number) => this._priceToWorldY(price),
+    });
 
     this._volumeChart = new VolumeChart({
       scene: this._chartScene.scene,
@@ -307,19 +306,17 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     if (this._opts.enableAddendum) {
       // Create ChartTypeManager; it creates and owns the CandleChart instance
       this._chartTypeManager = new ChartTypeManager({
-        scene:             this._chartScene.scene,
-        buffer:            this._candleBuffer,
-        layout:            this._layout,
-        theme:             this._theme,
-        maxCandles:        this._maxCandles,
-        priceToWorldY:     (p) => this._priceToWorldY(p),
-        resolution:        new THREE.Vector2(this._rendererManager.width, this._rendererManager.height),
-        volumePanelOffset: -4,
-        volumePanelHeight: 3,
+        scene:                this._chartScene.scene,
+        buffer:               this._candleBuffer,
+        layout:               this._layout,
+        theme:                this._theme,
+        maxCandles:           this._maxCandles,
+        priceToWorldY:        (p) => this._priceToWorldY(p),
+        resolution:           new THREE.Vector2(this._rendererManager.width, this._rendererManager.height),
+        volumePanelOffset:    -4,
+        volumePanelHeight:    3,
+        existingCandleChart:  this._candleChart,  // reuse the already-created instance
       });
-      // Alias _candleChart to the ChartTypeManager's CandleChart so all existing
-      // consumers (CrosshairController, LOD updates, etc.) work unchanged.
-      this._candleChart = this._chartTypeManager.getCandleChart()!;
 
       this._initAddendum();
     }

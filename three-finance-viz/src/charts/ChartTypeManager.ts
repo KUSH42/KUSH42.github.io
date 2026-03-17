@@ -24,6 +24,9 @@ export interface ChartTypeManagerDeps {
   resolution: THREE.Vector2;
   volumePanelOffset: number;
   volumePanelHeight: number;
+  /** If provided, this existing CandleChart is registered as the 'candlestick' renderer
+   *  without creating a new instance. The chart must already be added to the scene. */
+  existingCandleChart?: CandleChart;
 }
 
 function defaultLineConfig(theme: ChartTheme): LineChartConfig {
@@ -71,8 +74,9 @@ export class ChartTypeManager {
     this._volumePanelOffset = deps.volumePanelOffset;
     this._volumePanelHeight = deps.volumePanelHeight;
 
-    // Create and register the default candlestick renderer immediately
-    const candleChart = new CandleChart({
+    // Register the candlestick renderer — use the externally-created instance if provided,
+    // otherwise create a new one. The external instance is already added to the scene.
+    const candleChart = deps.existingCandleChart ?? new CandleChart({
       scene:         this._scene,
       buffer:        this._buffer,
       layout:        this._layout,
