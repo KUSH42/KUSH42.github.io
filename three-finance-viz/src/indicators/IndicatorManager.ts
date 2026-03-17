@@ -49,6 +49,10 @@ export class IndicatorManager {
    * @param id - Indicator ID
    */
   remove(id: string): void {
+    const config = this.configs.get(id);
+    if (config?.type === 'RSI' || config?.type === 'MACD') {
+      this.subViewRenderer.clear();
+    }
     this.lineRenderers.get(id)?.dispose();
     this.bandRenderers.get(id)?.dispose();
     this.lineRenderers.delete(id);

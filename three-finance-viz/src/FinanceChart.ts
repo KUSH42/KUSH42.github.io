@@ -132,6 +132,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _addendumData: OHLCV[] = [];
   private _addendumScales?: ScaleSet;
   private _activeIndicatorConfigs = new Map<string, IndicatorConfig>();
+  private _lastVisibleRange: VisibleRange | null = null;
 
   constructor(options: FinanceChartOptions) {
     super();
@@ -340,7 +341,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       },
       {
         gridXMin: -50,
-        gridXMax:  500,
+        gridXMax:  this._maxCandles * 0.6,
         labelPool: this._labelPool,
       },
     );
@@ -483,14 +484,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     const count  = this._candleBuffer.count;
     const posOut = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), normal: new THREE.Vector3() };
     let si = 0, ei = count - 1;
+    let siFound = false;
     for (let i = 0; i < count; i++) {
       this._layout.getCandleTransform(i, this._candleBuffer, posOut);
-      if (frustum.containsPoint(posOut.position)) { si = i; break; }
+      if (frustum.containsPoint(posOut.position)) { si = i; siFound = true; break; }
     }
+    if (!siFound) return null;
+    let eiFound = false;
     for (let i = count - 1; i >= si; i--) {
       this._layout.getCandleTransform(i, this._candleBuffer, posOut);
-      if (frustum.containsPoint(posOut.position)) { ei = i; break; }
+      if (frustum.containsPoint(posOut.position)) { ei = i; eiFound = true; break; }
     }
+    if (!eiFound) ei = si;
 
     const { min: priceMin, max: priceMax } = this._getPriceRange();
     let volumeMax = 0;
@@ -528,11 +533,17 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // Update camera animation
     this._cameraAnimator.update(deltaMs);
 
-    // v2.0: AxisManager tick update
+    // v2.0: AxisManager tick update + RSI sub-view sync
     if (this._axisManager && this._candleBuffer.count > 0) {
       const vr = this._computeVisibleRange();
       if (vr) {
         this._axisManager.update(vr, this._chartScene.camera);
+        // Rebuild RSI sub-views when visible range changes (throttled by index delta)
+        const last = this._lastVisibleRange;
+        if (!last || Math.abs(vr.startIndex - last.startIndex) > 2 || Math.abs(vr.endIndex - last.endIndex) > 2) {
+          this._rebuildRSISubViews(vr);
+          this._lastVisibleRange = vr;
+        }
       }
     }
 
@@ -691,6 +702,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       this._indicatorManager?.onDataUpdate(this._addendumData);
       this._rangeController?.updateData(this._addendumData);
       this._uiController?.updateNavigatorData(this._addendumData);
+      if (this._lastVisibleRange) this._rebuildRSISubViews(this._lastVisibleRange);
 
       // Update price ticker with last candle
       if (this._priceTicker && candles.length > 0) {
@@ -709,8 +721,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       console.warn('[three-finance-viz] CandleBuffer at capacity; ignoring appendCandle');
       return;
     }
-    this._candleBuffer.append(candle);
-    this._candleChart.append(candle);
+    this._candleChart.append(candle);    // CandleChart.append() appends to buffer internally
     this._volumeChart.append(candle);
 
     // v2.0: keep addendum data in sync for streaming
@@ -819,6 +830,15 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._indicatorManager?.toggle(id, enabled);
     const cfg = this._activeIndicatorConfigs.get(id);
     if (cfg) { cfg.enabled = enabled; this._syncLegend(); }
+  }
+
+  private _rebuildRSISubViews(vr: VisibleRange): void {
+    if (!this._indicatorManager) return;
+    for (const [id, cfg] of this._activeIndicatorConfigs) {
+      if (cfg.type === 'RSI' && cfg.enabled) {
+        this._indicatorManager.rebuildRSISubView(id, vr);
+      }
+    }
   }
 
   private _syncLegend(): void {

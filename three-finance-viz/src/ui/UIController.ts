@@ -388,6 +388,8 @@ export class UIController {
 
     // Instantiate NavigatorBar against the canvas already in the DOM
     const navCanvas = this.root.querySelector<HTMLCanvasElement>('#ui-navigator')!;
+    // Set drawing-buffer width to match panel content width (260px - 28px padding)
+    navCanvas.width = this.panel.clientWidth > 0 ? this.panel.clientWidth - 28 : 232;
     this._navigatorBar = new NavigatorBar(navCanvas, []);
     navCanvas.addEventListener('rangeChange', (e: Event) => {
       const { startIndex, endIndex } = (e as CustomEvent).detail;

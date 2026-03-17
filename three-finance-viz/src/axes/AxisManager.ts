@@ -123,8 +123,9 @@ function generateTimeTicks(
   const totalDuration = endTime - startTime;
   return thinned.map(d => {
     const frac = (d.getTime() - startTime) / totalDuration;
-    const approxIndex = startIndex + frac * (endIndex - startIndex);
-    return { date: d, world_x: indexToWorldX(approxIndex) };
+    const approxIndex = Math.round(startIndex + frac * (endIndex - startIndex));
+    const clampedIndex = Math.max(startIndex, Math.min(endIndex, approxIndex));
+    return { date: d, world_x: indexToWorldX(clampedIndex) };
   });
 }
 

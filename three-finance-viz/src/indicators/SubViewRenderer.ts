@@ -101,10 +101,11 @@ export class SubViewRenderer {
     this.subScene.add(line);
     this.lines.set(config.id, line);
 
-    // Add overbought/oversold reference lines at RSI 70 and 30.
-    // 70 maps to (70/100)*2-1 = 0.4, 30 maps to (30/100)*2-1 = -0.4
-    this._addHorizontalReference(0.4, '#ff4444');
-    this._addHorizontalReference(-0.4, '#44ff44');
+    // Add overbought/oversold reference lines using config values
+    const obY = (config.overbought / 100) * 2 - 1;
+    const osY = (config.oversold  / 100) * 2 - 1;
+    this._addHorizontalReference(obY, 'rgba(239,83,80,0.6)');
+    this._addHorizontalReference(osY, 'rgba(38,166,154,0.6)');
   }
 
   private _addHorizontalReference(y: number, color: string): void {

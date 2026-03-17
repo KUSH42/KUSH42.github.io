@@ -27,7 +27,7 @@ export class LegendPanel {
                     font:11px monospace;color:#ccc">
           <span style="display:inline-block;width:18px;height:3px;
                        background:${c.color};border-radius:2px"></span>
-          <span>${c.type}${(c as any).period ? `(${(c as any).period})` : ''}</span>
+          <span>${c.type}${'period' in c && (c as any).period ? `(${(c as any).period})` : ''}</span>
         </div>
       `).join('');
   }
