@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>RingRevealAnimator Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: monospace; }
+    canvas { display: block; }
+
+    #ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      color: #0ff;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #0ff3 transparent;
+      padding-right: 6px;
+    }
+
+    .section-label {
+      color: #0ff9;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-top: 6px;
+      border-bottom: 1px solid #0ff2;
+      padding-bottom: 3px;
+    }
+
+    #ui label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    #ui label span.lname {
+      min-width: 120px;
+      color: #0ffc;
+    }
+
+    #ui input[type=range] {
+      width: 130px;
+      accent-color: #0ff;
+      cursor: pointer;
+    }
+
+    #ui input[type=color] {
+      width: 36px;
+      height: 20px;
+      border: 1px solid #0ff4;
+      background: transparent;
+      cursor: pointer;
+      padding: 1px;
+    }
+
+    #ui select {
+      background: #001a1a;
+      color: #0ff;
+      border: 1px solid #0ff4;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+
+    .val {
+      min-width: 38px;
+      text-align: right;
+      color: #0ff;
+    }
+
+    .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    #ui button {
+      background: #001a1a;
+      color: #0ff;
+      border: 1px solid #0ff4;
+      padding: 4px 11px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #ui button:hover  { background: #003333; }
+    #ui button.active { background: #004444; border-color: #0ff; }
+
+    #progress-track {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #0ff;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    #progress-track input[type=range] {
+      width: 260px;
+      accent-color: #0ff;
+      cursor: pointer;
+    }
+    #progress-track span { min-width: 38px; }
+
+    /* morph preset buttons */
+    #presets { display: flex; gap: 6px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+
+<div id="ui">
+
+  <!-- Playback -->
+  <div class="section-label">Playback</div>
+  <div class="btn-row">
+    <button id="btnPlay">▶ Play</button>
+    <button id="btnReverse">◀ Reverse</button>
+    <button id="btnStop">⏸ Stop</button>
+    <button id="btnReset">↺ Reset</button>
+    <button id="btnLoop">⟳ Loop</button>
+  </div>
+
+  <!-- Animation -->
+  <div class="section-label">Animation</div>
+  <label>
+    <span class="lname">Direction</span>
+    <select id="selDirection">
+      <option value="south-to-north" selected>south → north</option>
+      <option value="north-to-south">north → south</option>
+      <option value="equator-out">equator out</option>
+    </select>
+  </label>
+  <label>
+    <span class="lname">Easing</span>
+    <select id="selEasing">
+      <option value="easeInOutCubic" selected>easeInOutCubic</option>
+      <option value="easeOutExpo">easeOutExpo</option>
+      <option value="backInOut">backInOut</option>
+      <option value="linear">linear</option>
+    </select>
+  </label>
+  <label>
+    <span class="lname">Duration</span>
+    <input type="range" id="slDuration" min="200" max="5000" step="100" value="1800">
+    <span class="val" id="vDuration">1800</span> ms
+  </label>
+  <label>
+    <span class="lname">Stagger</span>
+    <input type="range" id="slStagger" min="0" max="100" value="40">
+    <span class="val" id="vStagger">0.40</span>
+  </label>
+  <label>
+    <span class="lname">Ring duration</span>
+    <input type="range" id="slRingDur" min="1" max="99" value="35">
+    <span class="val" id="vRingDur">0.35</span>
+  </label>
+
+  <!-- Geometry -->
+  <div class="section-label">Geometry</div>
+  <label>
+    <span class="lname">Num rings</span>
+    <input type="range" id="slNumRings" min="2" max="120" value="48">
+    <span class="val" id="vNumRings">48</span>
+  </label>
+  <label>
+    <span class="lname">Samples/ring</span>
+    <input type="range" id="slSamples" min="8" max="512" step="8" value="256">
+    <span class="val" id="vSamples">256</span>
+  </label>
+  <label>
+    <span class="lname">Radius</span>
+    <input type="range" id="slRadius" min="50" max="200" value="103">
+    <span class="val" id="vRadius">1.03</span>
+  </label>
+
+  <!-- Appearance -->
+  <div class="section-label">Appearance</div>
+  <label>
+    <span class="lname">Line color</span>
+    <input type="color" id="colLine" value="#00ffcc">
+  </label>
+  <label>
+    <span class="lname">Glow color</span>
+    <input type="color" id="colGlow" value="#00ffcc">
+  </label>
+  <label>
+    <span class="lname">Opacity</span>
+    <input type="range" id="slOpacity" min="0" max="100" value="70">
+    <span class="val" id="vOpacity">0.70</span>
+  </label>
+  <label>
+    <span class="lname">Glow opacity</span>
+    <input type="range" id="slGlowOpacity" min="0" max="100" value="25">
+    <span class="val" id="vGlowOpacity">0.25</span>
+  </label>
+  <label>
+    <span class="lname">Emissive</span>
+    <input type="range" id="slEmissive" min="10" max="500" value="150">
+    <span class="val" id="vEmissive">1.50</span>
+  </label>
+  <label>
+    <span class="lname">Glow radius</span>
+    <input type="range" id="slGlowRad" min="100" max="120" value="108">
+    <span class="val" id="vGlowRad">1.008</span>
+  </label>
+
+  <!-- Morph presets -->
+  <div class="section-label">Morph Presets</div>
+  <div id="presets">
+    <button id="btnPresetCalm">◎ Calm</button>
+    <button id="btnPresetAlert">⚠ Alert</button>
+    <button id="btnPresetDense">▦ Dense</button>
+    <button id="btnPresetFade">◌ Fade out</button>
+  </div>
+  <label>
+    <span class="lname">Morph duration</span>
+    <input type="range" id="slMorphDur" min="100" max="3000" step="100" value="800">
+    <span class="val" id="vMorphDur">800</span> ms
+  </label>
+
+  <!-- Globe display -->
+  <div class="section-label">Scene</div>
+  <label>
+    <span class="lname">Show sphere</span>
+    <select id="selSphere">
+      <option value="wire" selected>Wireframe</option>
+      <option value="solid">Solid</option>
+      <option value="none">Hidden</option>
+    </select>
+  </label>
+  <label>
+    <span class="lname">Bloom strength</span>
+    <input type="range" id="slBloom" min="0" max="400" value="120">
+    <span class="val" id="vBloom">1.20</span>
+  </label>
+
+</div>
+
+<!-- Bottom progress scrubber -->
+<div id="progress-track">
+  <span>Progress</span>
+  <input type="range" id="slProgress" min="0" max="1000" value="0">
+  <span id="vProgress">0.000</span>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RingRevealAnimator } from './components/ring-reveal/index.js';
+import { easeInOutCubic, easeOutExpo, backInOut, linear } from './components/ring-reveal/easings.js';
+
+// ── Scene ──────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020808);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 3.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.6;
+
+// ── Post-processing ────────────────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.4, 0.28
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// ── Reference globe ────────────────────────────────────────────────────────
+const globeGeo = new THREE.SphereGeometry(1.0, 48, 48);
+
+const wireMat = new THREE.MeshBasicMaterial({
+  color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05,
+});
+const solidMat = new THREE.MeshStandardMaterial({
+  color: 0x001a14, roughness: 0.8, metalness: 0.1, transparent: true, opacity: 0.85,
+});
+const hiddenMat = new THREE.MeshBasicMaterial({ visible: false });
+
+let globeMesh = new THREE.Mesh(globeGeo, wireMat);
+scene.add(globeMesh);
+
+const SPHERE_MATS = { wire: wireMat, solid: solidMat, none: hiddenMat };
+
+// Dim ambient for solid mode
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+const dirLight = new THREE.DirectionalLight(0x00ffcc, 1.2);
+dirLight.position.set(2, 3, 2);
+scene.add(dirLight);
+
+// ── Easing map ─────────────────────────────────────────────────────────────
+const EASINGS = { easeInOutCubic, easeOutExpo, backInOut, linear };
+
+// ── Build animator ─────────────────────────────────────────────────────────
+let anim = null;
+
+function getOptions() {
+  return {
+    radius:            +document.getElementById('slRadius').value / 100,
+    numRings:          +document.getElementById('slNumRings').value,
+    samplesPerRing:    +document.getElementById('slSamples').value,
+    durationMs:        +document.getElementById('slDuration').value,
+    direction:         document.getElementById('selDirection').value,
+    stagger:           +document.getElementById('slStagger').value / 100,
+    ringDuration:      +document.getElementById('slRingDur').value / 100,
+    easingFn:          EASINGS[document.getElementById('selEasing').value],
+    lineColor:         parseInt(document.getElementById('colLine').value.slice(1), 16),
+    glowColor:         parseInt(document.getElementById('colGlow').value.slice(1), 16),
+    opacity:           +document.getElementById('slOpacity').value / 100,
+    glowOpacity:       +document.getElementById('slGlowOpacity').value / 100,
+    emissiveIntensity: +document.getElementById('slEmissive').value / 100,
+    glowRadius:        +document.getElementById('slGlowRad').value / 100,
+    morphDurationMs:   +document.getElementById('slMorphDur').value,
+  };
+}
+
+function buildAnim() {
+  if (anim) { anim.dispose(); anim = null; }
+  anim = new RingRevealAnimator(scene, getOptions());
+  anim.baseRings.renderOrder = 4;
+  anim.glowRings.renderOrder = 4;
+}
+
+buildAnim();
+
+// ── Progress scrubber ──────────────────────────────────────────────────────
+let scrubbing = false;
+const slProgress = document.getElementById('slProgress');
+const vProgress  = document.getElementById('vProgress');
+
+slProgress.addEventListener('mousedown', () => { scrubbing = true; anim.stop(); });
+slProgress.addEventListener('touchstart', () => { scrubbing = true; anim.stop(); });
+slProgress.addEventListener('mouseup',   () => { scrubbing = false; });
+slProgress.addEventListener('touchend',  () => { scrubbing = false; });
+slProgress.addEventListener('input', () => {
+  const p = slProgress.value / 1000;
+  // Directly set internal state so tick() resumes correctly from here
+  anim._progress = p;
+  anim._elapsed  = p * anim._options.durationMs;
+  anim._setProgress(p);
+  vProgress.textContent = p.toFixed(3);
+});
+
+// ── Playback controls ──────────────────────────────────────────────────────
+let looping = false;
+
+function startLoop() {
+  anim.reset();
+  anim.play(() => anim.reverse(() => { if (looping) startLoop(); }));
+}
+
+document.getElementById('btnPlay').addEventListener('click', () => {
+  looping = false;
+  document.getElementById('btnLoop').classList.remove('active');
+  anim.play();
+});
+
+document.getElementById('btnReverse').addEventListener('click', () => {
+  looping = false;
+  document.getElementById('btnLoop').classList.remove('active');
+  anim.reverse();
+});
+
+document.getElementById('btnStop').addEventListener('click', () => {
+  looping = false;
+  document.getElementById('btnLoop').classList.remove('active');
+  anim.stop();
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  looping = false;
+  document.getElementById('btnLoop').classList.remove('active');
+  anim.reset();
+  syncProgress(0);
+});
+
+document.getElementById('btnLoop').addEventListener('click', () => {
+  looping = !looping;
+  document.getElementById('btnLoop').classList.toggle('active', looping);
+  if (looping) startLoop();
+  else anim.stop();
+});
+
+// ── Animation params (live, no rebuild) ───────────────────────────────────
+document.getElementById('selDirection').addEventListener('change', e => {
+  anim._options.direction = e.target.value;
+  const dirMap = { 'south-to-north': 0, 'north-to-south': 1, 'equator-out': 2 };
+  const d = dirMap[e.target.value];
+  anim._baseRings.material.uniforms.uDirection.value = d;
+  anim._glowRings.material.uniforms.uDirection.value = d;
+});
+
+document.getElementById('selEasing').addEventListener('change', e => {
+  anim._options.easingFn = EASINGS[e.target.value];
+});
+
+document.getElementById('slDuration').addEventListener('input', e => {
+  anim._options.durationMs = +e.target.value;
+  document.getElementById('vDuration').textContent = e.target.value;
+});
+
+document.getElementById('slStagger').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vStagger').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uStagger.value = v;
+  anim._glowRings.material.uniforms.uStagger.value = v;
+  anim._options.stagger = v;
+});
+
+document.getElementById('slRingDur').addEventListener('input', e => {
+  const v = Math.max(0.001, e.target.value / 100);
+  document.getElementById('vRingDur').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uRingDuration.value = v;
+  anim._glowRings.material.uniforms.uRingDuration.value = v;
+  anim._options.ringDuration = v;
+});
+
+// ── Geometry params (rebuild needed) ──────────────────────────────────────
+function rebuildGeom() {
+  const progress = anim._progress;
+  const playing  = anim._playing;
+  buildAnim();
+  anim._progress = progress;
+  anim._elapsed  = progress * anim._options.durationMs;
+  anim._setProgress(progress);
+  if (playing) anim.play();
+}
+
+document.getElementById('slNumRings').addEventListener('change', e => {
+  document.getElementById('vNumRings').textContent = e.target.value;
+  rebuildGeom();
+});
+document.getElementById('slNumRings').addEventListener('input', e => {
+  document.getElementById('vNumRings').textContent = e.target.value;
+});
+
+document.getElementById('slSamples').addEventListener('change', e => {
+  document.getElementById('vSamples').textContent = e.target.value;
+  rebuildGeom();
+});
+document.getElementById('slSamples').addEventListener('input', e => {
+  document.getElementById('vSamples').textContent = e.target.value;
+});
+
+document.getElementById('slRadius').addEventListener('change', e => {
+  document.getElementById('vRadius').textContent = (e.target.value / 100).toFixed(3);
+  rebuildGeom();
+});
+document.getElementById('slRadius').addEventListener('input', e => {
+  document.getElementById('vRadius').textContent = (e.target.value / 100).toFixed(3);
+});
+
+// ── Appearance (immediate) ─────────────────────────────────────────────────
+document.getElementById('colLine').addEventListener('input', e => {
+  const hex = parseInt(e.target.value.slice(1), 16);
+  anim._baseRings.material.uniforms.uColor.value.set(hex);
+  anim._options.lineColor = hex;
+});
+
+document.getElementById('colGlow').addEventListener('input', e => {
+  const hex = parseInt(e.target.value.slice(1), 16);
+  anim._glowRings.material.uniforms.uColor.value.set(hex);
+  anim._options.glowColor = hex;
+});
+
+document.getElementById('slOpacity').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vOpacity').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uOpacity.value = v;
+  anim._options.opacity = v;
+});
+
+document.getElementById('slGlowOpacity').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vGlowOpacity').textContent = v.toFixed(2);
+  anim._glowRings.material.uniforms.uOpacity.value = v;
+  anim._options.glowOpacity = v;
+});
+
+document.getElementById('slEmissive').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vEmissive').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uEmissiveIntensity.value = v;
+  anim._glowRings.material.uniforms.uEmissiveIntensity.value = v;
+  anim._options.emissiveIntensity = v;
+});
+
+document.getElementById('slGlowRad').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vGlowRad').textContent = v.toFixed(3);
+  // Approximate live update via scale: glowRings geometry was built at oldRadius*oldGlowRadius
+  const oldGlowRadius = anim._options.glowRadius;
+  // new scale keeps the glow ring at radius * v
+  anim._glowRings.scale.setScalar(v / oldGlowRadius);
+  anim._options.glowRadius = v;
+});
+
+document.getElementById('slMorphDur').addEventListener('input', e => {
+  anim._options.morphDurationMs = +e.target.value;
+  document.getElementById('vMorphDur').textContent = e.target.value;
+});
+
+// ── Morph presets ──────────────────────────────────────────────────────────
+document.getElementById('btnPresetCalm').addEventListener('click', () => {
+  const dur = +document.getElementById('slMorphDur').value;
+  anim.morphTo({
+    lineColor:         0x00ffcc,
+    glowColor:         0x00ffcc,
+    opacity:           0.70,
+    glowOpacity:       0.25,
+    emissiveIntensity: 1.5,
+    stagger:           0.55,
+  }, dur);
+  syncUIToMorphTarget({ lineColor: '#00ffcc', glowColor: '#00ffcc', opacity: 70,
+    glowOpacity: 25, emissive: 150, stagger: 55 });
+});
+
+document.getElementById('btnPresetAlert').addEventListener('click', () => {
+  const dur = +document.getElementById('slMorphDur').value;
+  anim.morphTo({
+    lineColor:         0xff6600,
+    glowColor:         0xff2200,
+    opacity:           0.90,
+    glowOpacity:       0.45,
+    emissiveIntensity: 3.0,
+    stagger:           0.8,
+  }, dur);
+  syncUIToMorphTarget({ lineColor: '#ff6600', glowColor: '#ff2200', opacity: 90,
+    glowOpacity: 45, emissive: 300, stagger: 80 });
+});
+
+document.getElementById('btnPresetDense').addEventListener('click', () => {
+  const dur = +document.getElementById('slMorphDur').value;
+  anim.morphTo({
+    numRings:          96,
+    stagger:           0.3,
+    opacity:           0.5,
+    glowOpacity:       0.15,
+    emissiveIntensity: 1.2,
+  }, dur);
+  document.getElementById('slNumRings').value = 96;
+  document.getElementById('vNumRings').textContent = '96';
+});
+
+document.getElementById('btnPresetFade').addEventListener('click', () => {
+  const dur = +document.getElementById('slMorphDur').value;
+  anim.morphTo({ opacity: 0, glowOpacity: 0 }, dur);
+  syncUIToMorphTarget({ opacity: 0, glowOpacity: 0 });
+});
+
+function syncUIToMorphTarget({ lineColor, glowColor, opacity, glowOpacity, emissive, stagger } = {}) {
+  if (lineColor !== undefined)  document.getElementById('colLine').value = lineColor;
+  if (glowColor !== undefined)  document.getElementById('colGlow').value = glowColor;
+  if (opacity    !== undefined) { document.getElementById('slOpacity').value = opacity;     document.getElementById('vOpacity').textContent     = (opacity / 100).toFixed(2); }
+  if (glowOpacity !== undefined){ document.getElementById('slGlowOpacity').value = glowOpacity; document.getElementById('vGlowOpacity').textContent = (glowOpacity / 100).toFixed(2); }
+  if (emissive   !== undefined) { document.getElementById('slEmissive').value = emissive;   document.getElementById('vEmissive').textContent   = (emissive / 100).toFixed(2); }
+  if (stagger    !== undefined) { document.getElementById('slStagger').value = stagger;     document.getElementById('vStagger').textContent    = (stagger / 100).toFixed(2); }
+}
+
+// ── Globe toggle ───────────────────────────────────────────────────────────
+document.getElementById('selSphere').addEventListener('change', e => {
+  globeMesh.material = SPHERE_MATS[e.target.value] ?? wireMat;
+});
+
+// ── Bloom ──────────────────────────────────────────────────────────────────
+document.getElementById('slBloom').addEventListener('input', e => {
+  bloomPass.strength = e.target.value / 100;
+  document.getElementById('vBloom').textContent = (e.target.value / 100).toFixed(2);
+});
+
+// ── Resize ─────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  bloomPass.resolution.set(innerWidth, innerHeight);
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function syncProgress(p) {
+  slProgress.value = Math.round(p * 1000);
+  vProgress.textContent = p.toFixed(3);
+}
+
+// ── Animation loop ─────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta() * 1000; // ms
+
+  anim.tick(dt);
+
+  if (!scrubbing) syncProgress(anim.progress);
+
+  controls.update();
+  composer.render();
+});
+</script>
+</body>
+</html>
