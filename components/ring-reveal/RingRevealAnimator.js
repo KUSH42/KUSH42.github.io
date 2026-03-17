@@ -214,8 +214,14 @@ export class RingRevealAnimator {
         radius:            fromRadius,
       },
       to: {
-        lineColor:         new THREE.Color(targetConfig.lineColor         ?? opts.lineColor),
-        glowColor:         new THREE.Color(targetConfig.glowColor         ?? opts.glowColor),
+        // Use live uniform values as fallback (not stale opts) so that a partial
+        // morph that omits a property correctly holds that property constant.
+        lineColor:         targetConfig.lineColor         !== undefined
+                             ? new THREE.Color(targetConfig.lineColor)
+                             : baseMat.uniforms.uColor.value.clone(),
+        glowColor:         targetConfig.glowColor         !== undefined
+                             ? new THREE.Color(targetConfig.glowColor)
+                             : glowMat.uniforms.uColor.value.clone(),
         opacity:           targetConfig.opacity           ?? baseMat.uniforms.uOpacity.value,
         glowOpacity:       targetConfig.glowOpacity       ?? glowMat.uniforms.uOpacity.value,
         emissiveIntensity: targetConfig.emissiveIntensity ?? baseMat.uniforms.uEmissiveIntensity.value,
@@ -308,23 +314,35 @@ export class RingRevealAnimator {
 
     // Scalar lerp
     const lerp = (a, b) => a + (b - a) * t;
-    baseMat.uniforms.uOpacity.value          = lerp(from.opacity,           to.opacity);
-    glowMat.uniforms.uOpacity.value          = lerp(from.glowOpacity,       to.glowOpacity);
+    baseMat.uniforms.uOpacity.value           = lerp(from.opacity,           to.opacity);
+    glowMat.uniforms.uOpacity.value           = lerp(from.glowOpacity,       to.glowOpacity);
     baseMat.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
-    baseMat.uniforms.uStagger.value           = lerp(from.stagger,          to.stagger);
-    glowMat.uniforms.uStagger.value           = lerp(from.stagger,          to.stagger);
+    glowMat.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
+    baseMat.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
+    glowMat.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
 
     // Radius via scale
     const scale = lerp(from.radius, to.radius) / this._options.radius;
     this._baseRings.scale.setScalar(scale);
     this._glowRings.scale.setScalar(scale);
 
+    // Sync opts at completion so they match live uniform state for future morphs
+    if (t >= 1.0) {
+      const opts = this._options;
+      opts.opacity           = to.opacity;
+      opts.glowOpacity       = to.glowOpacity;
+      opts.emissiveIntensity = to.emissiveIntensity;
+      opts.stagger           = to.stagger;
+      opts.lineColor         = to.lineColor.getHex();
+      opts.glowColor         = to.glowColor.getHex();
+      opts.radius            = to.radius;
+    }
+
     // Deferred geometry rebuild at completion
     if (t >= 1.0 && this._morph.deferredGeom) {
       if (this._morph.toNumRings  !== null) this._options.numRings       = this._morph.toNumRings;
       if (this._morph.toSamples   !== null) this._options.samplesPerRing = this._morph.toSamples;
       this._rebuildGeometry();
-      this._options.radius = to.radius;
       this._baseRings.scale.setScalar(1);
       this._glowRings.scale.setScalar(1);
     }
