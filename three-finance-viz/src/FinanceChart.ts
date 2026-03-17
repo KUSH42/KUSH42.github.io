@@ -751,12 +751,28 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   /** Fit-to-bounds animated camera reset. */
   resetCamera(durationMs = 800): void {
     const bounds = this._layout.getWorldBounds(this._candleBuffer);
-    const center = new THREE.Vector3();
-    bounds.getCenter(center);
-    const size = new THREE.Vector3();
-    bounds.getSize(size);
-    const maxDim = Math.max(size.x, size.z, 10);
-    const camPos = center.clone().add(new THREE.Vector3(0, maxDim * 0.3, maxDim * 0.8));
+    const xMin = bounds.min.x;
+    const xMax = bounds.max.x;
+    const xRange = xMax - xMin;
+
+    // Focus on the most recent ~60 candles (30 world-units at default 0.5 spacing).
+    // For small datasets, centre on all candles instead.
+    const VIEW_HALF = 15; // world units — ~60 candles per side at default 0.5 spacing
+    const xCenter = xRange > VIEW_HALF * 2
+      ? xMax - VIEW_HALF       // most-recent window
+      : (xMin + xMax) / 2;    // centre on all candles
+
+    // priceToWorldY always maps the full price range to [0, 10]; midpoint = 5.
+    // bounds.getCenter().y = 0 (midpoint of [-1e9, 1e9]) — use the real midpoint.
+    const yCenter = 5;
+    const center = new THREE.Vector3(xCenter, yCenter, 0);
+
+    // Camera depth: enough to see the X window, with a floor so the Y range is visible.
+    const halfX = xRange > VIEW_HALF * 2 ? VIEW_HALF : xRange / 2;
+    const dist = Math.max(halfX, 15);
+    // Small fixed vertical offset (2 units) keeps the camera nearly level with the
+    // candle midpoint, avoiding foreshortening while still showing depth.
+    const camPos = new THREE.Vector3(xCenter, yCenter + 2, dist);
 
     if (durationMs <= 0) {
       this._chartScene.camera.position.copy(camPos);
