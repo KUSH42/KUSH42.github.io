@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Finance Chart — three-finance-viz Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body   { background: #0d0f14; overflow: hidden; font-family: system-ui, sans-serif; color: #e0e4f0; }
+    #chart { width: 100vw; height: 100vh; display: block; position: relative; }
+    #hud   { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 8px; padding: 8px 12px; pointer-events: none; z-index: 20; }
+    #hud button {
+      pointer-events: all;
+      background: #1e2130;
+      color: #e0e4f0;
+      border: 1px solid #3a3d4a;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #hud button:hover { background: #2a2d3a; }
+    #fps    { position: fixed; top: 8px; right: 12px; font-size: 11px; font-family: monospace; color: #555; z-index: 20; }
+    #status { position: fixed; bottom: 8px; left: 12px; font-size: 11px; font-family: monospace; color: #888; z-index: 20; }
+    .tfv-tooltip {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="chart" tabindex="0" role="application" aria-label="Interactive 3D financial chart"></div>
+  <div id="hud" aria-hidden="true">
+    <button id="btn-linear">Linear</button>
+    <button id="btn-helix">Helix</button>
+    <button id="btn-tunnel">Tunnel</button>
+    <button id="btn-reset">Reset Camera</button>
+    <button id="btn-theme">Toggle Theme</button>
+    <button id="btn-png">PNG</button>
+    <button id="btn-glb">GLB</button>
+    <button id="btn-csv">CSV</button>
+  </div>
+  <span id="fps" aria-hidden="true">-- fps</span>
+  <span id="status" aria-live="polite"></span>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
