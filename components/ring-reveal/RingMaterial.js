@@ -5,8 +5,8 @@
 import * as THREE from 'three';
 
 const vertexShader = /* glsl */`
-attribute float ringIndex;
-varying float vAlpha;
+in float ringIndex;
+out float vAlpha;
 
 uniform float uProgress;
 uniform float uNumRings;
@@ -38,14 +38,16 @@ void main() {
 `;
 
 const fragmentShader = /* glsl */`
-varying float vAlpha;
+in float vAlpha;
 uniform vec3  uColor;
 uniform float uOpacity;
 uniform float uEmissiveIntensity;
 
+out vec4 fragColor;
+
 void main() {
   if (vAlpha < 0.001) discard;
-  gl_FragColor = vec4(uColor * uEmissiveIntensity, vAlpha * uOpacity);
+  fragColor = vec4(uColor * uEmissiveIntensity, vAlpha * uOpacity);
 }
 `;
 
