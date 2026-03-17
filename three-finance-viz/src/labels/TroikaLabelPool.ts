@@ -2,6 +2,10 @@
 import * as THREE from 'three';
 import { Text as TroikaText, preloadFont } from 'troika-three-text';
 
+// Module-level scratch objects — avoids per-frame allocations in syncBillboards
+const _lookAtMatrix = new THREE.Matrix4();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+
 export class TroikaLabelPool {
   private pool:   TroikaText[] = [];
   private active: Map<string, TroikaText> = new Map();
@@ -88,12 +92,33 @@ export class TroikaLabelPool {
   }
 
   /**
-   * Camera-facing sync — call each frame for billboard labels
+   * Camera-facing sync — call each frame for billboard labels.
+   * Uses a proper lookAt so labels always face the camera regardless of orbit angle.
    * @param camera - Current camera
    */
   syncBillboards(camera: THREE.Camera): void {
+    const camPos = camera.position;
     for (const [, label] of this.active) {
-      if (label.visible) label.quaternion.copy(camera.quaternion);
+      if (!label.visible) continue;
+      // Matrix4.lookAt(eye, target, up): makes the -Z axis point from eye toward target.
+      // For a regular Object3D whose face is +Z, we want +Z toward the camera, so:
+      //   eye = label position (object space origin), target = camera → -Z toward camera
+      // But we want +Z toward camera, so swap eye/target:
+      //   eye = camera, target = label position → -Z of matrix points from camera to label
+      //   → object's -Z points toward label from camera → object's +Z points toward camera ✓
+      _lookAtMatrix.lookAt(camPos, label.position, _worldUp);
+      label.quaternion.setFromRotationMatrix(_lookAtMatrix);
+    }
+  }
+
+  /**
+   * Update the color of every label in the pool (active and pooled).
+   * Call from AxisManager.setTheme() to keep labels readable on both themes.
+   * @param color - Numeric color (e.g. 0xaaaaaa)
+   */
+  setColor(color: number): void {
+    for (const label of [...this.pool, ...this.active.values()]) {
+      label.color = color;
     }
   }
 

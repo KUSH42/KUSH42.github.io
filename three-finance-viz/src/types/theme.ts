@@ -42,8 +42,8 @@ export interface ChartTheme {
 
 export const DARK_THEME: ChartTheme = {
   background: '#0d0f14',
-  grid: '#1a1d24',
-  axis: '#3a3d4a',
+  grid: '#2e3247',
+  axis: '#6068a0',
   crosshair: '#ffffff44',
   tooltip: { background: '#1e2130', text: '#e0e4f0', border: '#3a3d4a' },
   candle: {
@@ -55,8 +55,8 @@ export const DARK_THEME: ChartTheme = {
     bearBodyEmissive: '#ff000033',
   },
   volume: {
-    bullBar: '#26a69a66',
-    bearBar: '#ef535066',
+    bullBar: '#26a69a99',
+    bearBar: '#ef535099',
     gradient: ['#1a1d24', '#26a69a'],
   },
   orderBook: {
@@ -70,8 +70,8 @@ export const DARK_THEME: ChartTheme = {
 
 export const LIGHT_THEME: ChartTheme = {
   background: '#f5f5f5',
-  grid: '#e0e0e0',
-  axis: '#9e9e9e',
+  grid: '#b8b8c8',
+  axis: '#5a5a6a',
   crosshair: '#00000044',
   tooltip: { background: '#ffffff', text: '#212121', border: '#bdbdbd' },
   candle: {

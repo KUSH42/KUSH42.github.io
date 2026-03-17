@@ -37,6 +37,7 @@ import { UIController } from './ui/UIController';
 import { TooltipSystem } from './interaction/TooltipSystem';
 import { LegendPanel } from './interaction/LegendPanel';
 import { PriceTicker } from './interaction/PriceTicker';
+import { ProviderBadge } from './ui/ProviderBadge';
 import { RangeController } from './data/RangeController';
 import type {
   IndicatorConfig, UIState, ScaleSet, OHLCV, VisibleRange, ThemePalette, LayoutMode,
@@ -44,7 +45,7 @@ import type {
 // v3.0 provider layer imports
 import { ProviderManager } from './providers/ProviderManager';
 import type { ProviderConfig } from './providers/types';
-import { ProviderError, INTERVAL_MS } from './providers/types';
+import { ProviderError, INTERVAL_MS, INTERVAL_DEFAULT_LIMIT } from './providers/types';
 import type { Interval } from './providers/types';
 import type { ExchangeAdapter } from './providers/adapters/ExchangeAdapter';
 // chart-types imports
@@ -130,6 +131,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _fpsTimer = 0;
   private _disposed = false;
   private _initialized = false;
+  private _logScale = false;
 
   // v3.0 provider layer
   private _providerManager?: ProviderManager;
@@ -149,6 +151,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _tooltipSystem?: TooltipSystem;
   private _legendPanel?: LegendPanel;
   private _priceTicker?: PriceTicker;
+  private _providerBadge?: ProviderBadge;
   private _rangeController?: RangeController;
   private _addendumData: OHLCV[] = [];
   private _addendumScales?: ScaleSet;
@@ -346,18 +349,28 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   }
 
   private _initAddendum(): void {
-    // Build a simple ScaleSet backed by _priceToWorldY
+    // Build a ScaleSet backed by _priceToWorldY (respects _logScale at call time).
     this._addendumScales = {
-      price:        (v: number) => this._priceToWorldY(v),
+      price: (v: number) => this._priceToWorldY(v),
       priceInverse: (worldY: number) => {
-        // Inverse of _priceToWorldY — requires buffer data
         if (this._candleBuffer.count === 0) return worldY * 1000;
         const { min, max } = this._getPriceRange();
+        if (this._logScale) {
+          const logMin = Math.log(Math.max(min, 1e-10));
+          const logMax = Math.log(Math.max(max, 1e-10));
+          return Math.exp(logMin + (worldY / 10) * (logMax - logMin));
+        }
         return min + (worldY / 10) * (max - min);
       },
       priceHeight: (dataHeight: number) => {
         if (this._candleBuffer.count === 0) return dataHeight * 0.001;
         const { min, max } = this._getPriceRange();
+        if (this._logScale) {
+          // Derivative of the log mapping at the geometric midpoint
+          const mid      = Math.sqrt(Math.max(min, 1e-10) * Math.max(max, 1e-10));
+          const logRange = Math.log(Math.max(max, 1e-10)) - Math.log(Math.max(min, 1e-10));
+          return logRange > 0 ? (dataHeight / (mid * logRange)) * 10 : 0;
+        }
         return (dataHeight / (max - min)) * 10;
       },
     };
@@ -408,9 +421,13 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       },
     );
 
+    // Apply initial theme to axis grid + labels (constructor uses a hardcoded default)
+    this._axisManager.setTheme(buildThemePalette(this._theme));
+
     // Legend and price ticker
-    this._legendPanel  = new LegendPanel(this._container);
-    this._priceTicker  = new PriceTicker(this._container);
+    this._legendPanel    = new LegendPanel(this._container);
+    this._priceTicker    = new PriceTicker(this._container);
+    this._providerBadge  = new ProviderBadge(this._container);
 
     // Initial UIState
     const initialState: UIState = {
@@ -418,6 +435,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       interval:         '1h',
       layoutMode:       'Linear',
       theme:            'dark',
+      scaleMode:        'linear',
       visibleRange:     {
         startIndex: 0, endIndex: 0,
         startTime: 0, endTime: 0,
@@ -473,19 +491,37 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     bus.on('indicatorRemove', (p: { id: string }) => this.removeIndicatorV2(p.id));
 
     bus.on('intervalChange', (p: { interval: string }) => {
-      this._axisManager?.setInterval(p.interval);
-      // Update tick aggregator so future ticks aggregate at new interval
-      const intervalMs = (INTERVAL_MS as Record<string, number>)[p.interval] ?? 60_000;
+      // 'all' is a special view option: show maximum history at daily resolution
+      const isAll           = p.interval === 'all';
+      const effectiveInterval = isAll ? '1d' : p.interval;
+
+      this._axisManager?.setInterval(effectiveInterval);
+      const intervalMs = (INTERVAL_MS as Record<string, number>)[effectiveInterval] ?? 60_000;
       if (this._tickAggregator) {
         this._tickAggregator = new TickAggregator(intervalMs);
       }
-      // Reconnect provider with new interval if one is active
+
       if (this._providerManager && this._activeProviderConfig) {
-        const newCfg = { ...this._activeProviderConfig, interval: p.interval as Interval };
+        // Use the per-interval sensible default (or 1500 for "All")
+        const limit = isAll
+          ? 1500
+          : (INTERVAL_DEFAULT_LIMIT as Record<string, number>)[effectiveInterval] ?? 500;
+        const newCfg = {
+          ...this._activeProviderConfig,
+          interval:       effectiveInterval as Interval,
+          historicalLimit: limit,
+        };
         this._activeProviderConfig = newCfg;
         void this._providerManager.connect(this, newCfg).catch((err: unknown) =>
           console.warn('[tfv] interval change reconnect failed:', err));
+      } else if (isAll) {
+        // No provider — just zoom to fit all currently loaded data
+        this.resetCamera(0);
       }
+    });
+
+    bus.on('scaleChange', (p: { mode: 'linear' | 'log' }) => {
+      this.setScaleMode(p.mode);
     });
 
     bus.on('symbolChange', (p: { symbol: string }) =>
@@ -521,7 +557,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _createLayout(mode: 'linear' | 'helix' | 'tunnel'): LayoutEngine {
     switch (mode) {
       case 'linear':
-        return new LinearLayout({ candleSpacing: 0.45, candleWidth: 0.35 });
+        return new LinearLayout({ candleSpacing: 0.6, candleWidth: 0.5 });
       case 'helix':
         return new HelixLayout({
           radius: 15,
@@ -547,10 +583,14 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   }
 
   private _priceToWorldY(price: number): number {
-    // Simple linear mapping — in production this would use a D3 scale
-    // with auto-computed domain from the buffer
     if (this._candleBuffer.count === 0) return price * 0.001;
     const { min, max } = this._getPriceRange();
+    if (this._logScale) {
+      const logMin = Math.log(Math.max(min, 1e-10));
+      const logMax = Math.log(Math.max(max, 1e-10));
+      const logP   = Math.log(Math.max(price, 1e-10));
+      return logMax > logMin ? ((logP - logMin) / (logMax - logMin)) * 10 : 0;
+    }
     return ((price - min) / (max - min)) * 10;
   }
 
@@ -743,6 +783,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._uiController?.dispose();
     this._legendPanel?.dispose();
     this._priceTicker?.dispose();
+    this._providerBadge?.dispose();
 
     // Dispose custom layers
     for (const layer of this._customLayers.values()) {
@@ -781,11 +822,14 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     }
 
     this._volumeChart.recalculateScale();
+    // Reset slot maps so ghost instances from any previous dataset don't persist.
+    this._candleChart.resetSlotMaps();
     this._candleChart.updateRange(0, this._candleBuffer.count);
     this._volumeChart.updateRange(0, this._candleBuffer.count);
 
-    // chart-types: rebuild active non-candlestick renderer and update market cap
-    if (this._chartTypeManager && this._chartTypeManager.activeType !== 'candlestick') {
+    // chart-types: rebuild ALL cached renderers (active and hidden) so switching
+    // chart types after a data reload never shows stale geometry.
+    if (this._chartTypeManager) {
       this._chartTypeManager.onDataLoaded();
     }
     if (this._marketCapChart) {
@@ -868,6 +912,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       const idx = this._addendumData.length - 1;
       this._indicatorManager?.onStreamTick(idx, this._addendumData[idx]);
       this._priceTicker?.update(candle.close, candle.close >= candle.open);
+      this._providerBadge?.flashUpdate();
+      this.emit('stream:tick', {});
       this._uiController?.updateNavigatorData(this._addendumData);
     }
   }
@@ -893,6 +939,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       if (partial.volume !== undefined) last.volume = partial.volume;
       if (partial.close !== undefined) {
         this._priceTicker?.update(last.close, last.close >= last.open);
+        this._providerBadge?.flashUpdate();
+        this.emit('stream:tick', {});
       }
     }
   }
@@ -978,6 +1026,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
    * Requires `enableAddendum: true` in constructor options.
    * @param type - The chart type to switch to
    */
+  /**
+   * Switch between linear and logarithmic price axis.
+   * Rebuilds all chart geometry so candle positions reflect the new scale.
+   * @param mode - 'linear' (default) or 'log'
+   */
+  setScaleMode(mode: 'linear' | 'log'): void {
+    if (this._logScale === (mode === 'log')) return; // no change
+    this._logScale = mode === 'log';
+    this._uiController?.syncScaleMode(mode);
+    this._refreshChartGeometry();
+  }
+
   setChartType(type: ChartType): void {
     if (!this._chartTypeManager) {
       console.warn('[three-finance-viz] setChartType() requires enableAddendum: true.');
@@ -1019,6 +1079,23 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       this._marketCapChart!.deriveFromSupply(this._candleBuffer, supply);
     }
     this._marketCapChart!.setEnabled(true);
+  }
+
+  /** Rebuild all chart geometry using the current scale function (_priceToWorldY). */
+  private _refreshChartGeometry(): void {
+    if (this._candleBuffer.count === 0) return;
+    const count = this._candleBuffer.count;
+    this._volumeChart.recalculateScale();
+    this._candleChart.updateRange(0, count);
+    this._volumeChart.updateRange(0, count);
+    // v1 indicator layer — rebuild lines so Y positions reflect new scale
+    this._indicatorLayer.onLayoutChange(this._layout);
+    if (this._chartTypeManager && this._chartTypeManager.activeType !== 'candlestick') {
+      this._chartTypeManager.onDataLoaded();
+    }
+    if (this._indicatorManager && this._addendumData.length > 0) {
+      this._indicatorManager.onDataUpdate(this._addendumData);
+    }
   }
 
   private _ensureMarketCapChart(): void {
@@ -1193,8 +1270,12 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   }
 
   disconnectStream(): void {
+    // Disconnect WebSocket first so no new messages are enqueued
     this._wsAdapter?.disconnect();
     this._wsAdapter = undefined;
+    // Flush any buffered appends/patches before disposing so the last
+    // in-flight candle is committed rather than silently dropped.
+    this._scheduler?.flush();
     this._scheduler?.dispose();
     this._scheduler = undefined;
     this._tickAggregator?.reset();
@@ -1241,6 +1322,17 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     }
     this._activeProviderConfig = config;
     await this._providerManager.connect(this, config);
+
+    // Update the badge with the resolved exchange name
+    const activeEx = this._providerManager.activeExchange;
+    if (activeEx && this._providerBadge) {
+      this._providerBadge.setProvider(activeEx);
+    }
+
+    // Track failovers
+    this._providerManager.on('provider:change', (ev) => {
+      this._providerBadge?.setProvider(ev.to);
+    });
   }
 
   /**

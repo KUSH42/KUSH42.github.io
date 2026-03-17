@@ -40,6 +40,14 @@
       font-size: 11px; font-family: monospace; font-weight: 600;
       padding: 3px 8px; border-radius: 3px; background: #555;
       color: #fff; white-space: nowrap; pointer-events: none;
+      transition: background 0.5s ease;
+    }
+    @keyframes badge-flash {
+      0%   { background: #ef5350; }
+      100% { background: var(--badge-base, #555); }
+    }
+    #provider-badge.flash {
+      animation: badge-flash 0.5s ease forwards;
     }
 
     #fps    { position: fixed; top: 8px; right: 12px; font-size: 11px; font-family: monospace; color: #555; z-index: 20; }

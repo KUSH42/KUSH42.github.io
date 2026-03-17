@@ -41,8 +41,28 @@ export class UpdateScheduler {
     });
   }
 
+  /** Synchronously drain any pending appends/patches and cancel the scheduled RAF. */
+  flush(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    if (this.pendingAppends.length > 0) {
+      const batch = this.pendingAppends;
+      this.pendingAppends = [];
+      this.onAppend(batch);
+    }
+    if (this.pendingPatches !== null) {
+      const patch = this.pendingPatches;
+      this.pendingPatches = null;
+      this.onPatch(patch);
+    }
+  }
+
   dispose(): void {
     if (this.rafId !== null) cancelAnimationFrame(this.rafId);
     this.rafId = null;
+    this.pendingAppends = [];
+    this.pendingPatches = null;
   }
 }

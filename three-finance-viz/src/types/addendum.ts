@@ -85,6 +85,7 @@ export interface UIState {
   interval: string;               // '1h'
   layoutMode: LayoutMode;
   theme: 'dark' | 'light';
+  scaleMode: 'linear' | 'log';   // price-axis scale type
   visibleRange: VisibleRange;
   indicators: IndicatorConfig[];
   paletteOverrides: Partial<ThemePalette>;

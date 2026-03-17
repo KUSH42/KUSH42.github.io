@@ -49,6 +49,11 @@ export class HeikinAshiCandleChart implements ChartRenderer {
     this._haBuf.count    = this._rawBuf.count;
   }
 
+  /** Delegates to the inner CandleChart so full buffer reloads start clean. */
+  resetSlotMaps(): void {
+    this._candleChart.resetSlotMaps();
+  }
+
   updateRange(start: number, end: number): void {
     // Recompute HA for entire buffer, then sync the requested range
     this._xform.recompute(this._rawBuf);

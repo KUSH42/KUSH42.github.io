@@ -23,7 +23,9 @@ export class ChartScene {
   ) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(theme.background);
-    this.scene.fog = new THREE.FogExp2(new THREE.Color(theme.background).getHex(), 0.002);
+    // Linear fog: starts fading at 60 units, fully opaque background at 400 units.
+    // This makes the vertical grid backdrop fade smoothly toward its edges.
+    this.scene.fog = new THREE.Fog(new THREE.Color(theme.background).getHex(), 60, 400);
 
     this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 2000);
     this.camera.position.set(0, 5, 30);
@@ -65,7 +67,7 @@ export class ChartScene {
 
   onThemeChange(theme: ChartTheme): void {
     this.scene.background = new THREE.Color(theme.background);
-    (this.scene.fog as THREE.FogExp2).color.set(theme.background);
+    (this.scene.fog as THREE.Fog).color.set(theme.background);
     this._gridFloor.onThemeChange(theme);
     this._axesLabels.onThemeChange(theme);
   }

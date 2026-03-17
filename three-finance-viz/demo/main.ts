@@ -67,7 +67,16 @@ let mockIntervalId: ReturnType<typeof setInterval> | null = null;
 function setBadge(text: string, color: string) {
   providerBadge.textContent = text;
   providerBadge.style.background = color;
+  providerBadge.style.setProperty('--badge-base', color);
 }
+
+// Flash the HUD badge red on every incoming stream tick
+chart.on('stream:tick', () => {
+  providerBadge.classList.remove('flash');
+  // Force reflow so re-adding the class restarts the animation
+  void (providerBadge as HTMLElement).offsetWidth;
+  providerBadge.classList.add('flash');
+});
 
 // ── 3. Mock streaming (offline / default) ───────────────────────────────────
 

@@ -230,6 +230,31 @@ export interface CacheKey {
 
 // ── Interval → milliseconds mapping ─────────────────────────────────────────
 
+/**
+ * Recommended historicalLimit per interval so the chart always opens with a
+ * meaningful, human-readable time span (not a fixed 500 regardless of scale).
+ *
+ * Rule of thumb: show roughly 2 weeks–2 years depending on bar size so the
+ * chart density feels natural at the default zoom level.
+ */
+export const INTERVAL_DEFAULT_LIMIT: Record<Interval, number> = {
+  '1m':  720,   // ~12 h
+  '3m':  960,   // ~2 d
+  '5m':  576,   // ~2 d
+  '15m': 672,   // ~7 d
+  '30m': 720,   // ~15 d
+  '1h':  500,   // ~20 d
+  '2h':  500,   // ~41 d
+  '4h':  500,   // ~83 d
+  '6h':  480,   // ~120 d
+  '8h':  450,   // ~150 d
+  '12h': 365,   // ~6 mo
+  '1d':  500,   // ~1.5 y
+  '3d':  240,   // ~2 y
+  '1w':  156,   // ~3 y
+  '1M':  60,    // ~5 y
+};
+
 export const INTERVAL_MS: Record<Interval, number> = {
   '1m':  60_000,
   '3m':  180_000,

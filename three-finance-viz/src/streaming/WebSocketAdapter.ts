@@ -105,8 +105,15 @@ export class WebSocketAdapter extends EventEmitter<StreamEvents> {
   disconnect(): void {
     this.manualClose = true;
     this._stopHeartbeat();
-    this.ws?.close();
-    this.ws = null;
+    if (this.ws) {
+      // Null out handlers before close() so any queued microtasks don't
+      // fire stale onmessage/onclose callbacks on the old socket.
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.close();
+      this.ws = null;
+    }
   }
 
   private _scheduleReconnect(): void {

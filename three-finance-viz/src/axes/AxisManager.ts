@@ -163,9 +163,9 @@ export class AxisManager {
     this.labelPool = config.labelPool;
 
     this.gridMaterial = new THREE.LineBasicMaterial({
-      color: 0x333333,
+      color: 0x2e3247,   // matches DARK_THEME.grid default; overridden by setTheme()
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.6,
     });
 
     this.gridManager = new GridGeometryManager(this.gridMaterial);
@@ -235,18 +235,20 @@ export class AxisManager {
       );
       frustum.setFromProjectionMatrix(projMatrix);
 
+      // Anchor price labels to the left edge of the visible range so they
+      // always appear on-screen regardless of how far right the user has scrolled.
+      const priceAxisX = this.scales.indexToWorldX(visibleRange.startIndex) - 1.5;
       priceTicks.forEach((tick, i) => {
-        const pos = new THREE.Vector3(this.config.gridXMin - 1.5, tick.world_y, 0);
-        if (!frustum.containsPoint(pos)) return;
+        const pos = new THREE.Vector3(priceAxisX, tick.world_y, 0);
         const text = tick.value >= 1000
           ? tick.value.toLocaleString('en-US', { maximumFractionDigits: 0 })
           : tick.value.toFixed(2);
         this.labelPool!.acquire(`price_${i}`, text, pos);
       });
 
-      // Create time labels
+      // Create time labels just below the candle area (Y=0 is chart bottom).
       timeTicks.forEach((tick, i) => {
-        const pos = new THREE.Vector3(tick.world_x, -5.5, 0);
+        const pos = new THREE.Vector3(tick.world_x, -0.7, 0);
         if (!frustum.containsPoint(pos)) return;
         const text = this._formatTime(tick.date, visibleRange.endTime - visibleRange.startTime);
         this.labelPool!.acquire(`time_${i}`, text, pos);
@@ -279,6 +281,18 @@ export class AxisManager {
    */
   setTheme(palette: ThemePalette): void {
     this.gridMaterial.color.set(palette.gridLines);
+
+    // Dark grid colors need higher opacity; light grid colors are already close
+    // to the foreground so a lower opacity keeps them subtle.
+    const col    = new THREE.Color(palette.gridLines);
+    const isDark = (col.r + col.g + col.b) / 3 < 0.45;
+    this.gridMaterial.opacity = isDark ? 0.7 : 0.55;
+
+    // Keep axis labels readable against the current theme background.
+    if (this.labelPool) {
+      const labelCol = new THREE.Color(palette.axisLabels);
+      this.labelPool.setColor(labelCol.getHex());
+    }
   }
 
   dispose(): void {

@@ -197,11 +197,22 @@ export class ChartTypeManager {
   }
 
   /**
-   * Called when the full data buffer has been loaded.
-   * Rebuilds the active renderer's geometry.
+   * Called when the full data buffer has been loaded (or replaced).
+   * Resets slot maps on all candle-type renderers and rebuilds every cached
+   * renderer so hidden types don't serve stale geometry on the next switch.
    */
   onDataLoaded(): void {
-    this._cache.get(this._active)?.updateRange(0, this._buffer.count);
+    const count = this._buffer.count;
+    for (const [, renderer] of this._cache) {
+      // Reset candle slot maps before a full rebuild to prevent ghost instances
+      // from a previous dataset leaking into the new one.
+      if (renderer instanceof CandleChart) {
+        renderer.resetSlotMaps();
+      } else if (renderer instanceof HeikinAshiCandleChart) {
+        renderer.resetSlotMaps();
+      }
+      renderer.updateRange(0, count);
+    }
   }
 
   /**

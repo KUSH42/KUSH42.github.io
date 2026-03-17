@@ -280,6 +280,27 @@ export class CandleChart implements Disposable {
     this.bearWickMesh.count = this.bearCount;
   }
 
+  /**
+   * Reset slot maps so stale instance assignments from a previous dataset
+   * don't contaminate a full buffer reload. Call before updateRange(0, count)
+   * when the CandleBuffer has been completely replaced.
+   */
+  resetSlotMaps(): void {
+    this.bullCount = 0;
+    this.bearCount = 0;
+    this.bullSlot.fill(-1);
+    this.bearSlot.fill(-1);
+    this.bullRevMap.fill(-1);
+    this.bearRevMap.fill(-1);
+    this.dirtyBullSlots.clear();
+    this.dirtyBearSlots.clear();
+    // Zero visible counts immediately so stale instances stop rendering
+    this.bullBodyMesh.count = 0;
+    this.bearBodyMesh.count = 0;
+    this.bullWickMesh.count = 0;
+    this.bearWickMesh.count = 0;
+  }
+
   /** Rebuild instance matrices + colors for candle indices [start, end) */
   updateRange(start: number, end: number): void {
     for (let i = start; i < end; i++) {

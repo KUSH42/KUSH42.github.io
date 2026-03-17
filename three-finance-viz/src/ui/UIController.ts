@@ -35,6 +35,7 @@ const UI_TEMPLATE = `
         <button class="chart-ui__pill" data-value="4h">4h</button>
         <button class="chart-ui__pill" data-value="1d">1D</button>
         <button class="chart-ui__pill" data-value="1w">1W</button>
+        <button class="chart-ui__pill" data-value="all">All</button>
       </div>
     </section>
 
@@ -70,6 +71,15 @@ const UI_TEMPLATE = `
         <button class="chart-ui__pill" data-value="line">Line</button>
         <button class="chart-ui__pill" data-value="area">Area</button>
         <button class="chart-ui__pill" data-value="volume">Volume</button>
+      </div>
+    </section>
+
+    <!-- Section: Scale -->
+    <section class="chart-ui__section">
+      <label class="chart-ui__label">Scale</label>
+      <div class="chart-ui__pill-group" id="ui-scale-group">
+        <button class="chart-ui__pill chart-ui__pill--active" data-value="linear">Linear</button>
+        <button class="chart-ui__pill" data-value="log">Log</button>
       </div>
     </section>
 
@@ -156,7 +166,7 @@ const UI_STYLES = `
 
 .chart-ui__label {
   display: block;
-  color: #666;
+  color: #888;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -179,14 +189,14 @@ const UI_STYLES = `
 .chart-ui__pill {
   padding: 3px 8px; border-radius: 3px; cursor: pointer;
   background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-  color: #888; font-size: 11px; pointer-events: all;
+  color: #9ea3b8; font-size: 11px; pointer-events: all;
   transition: background 0.15s, color 0.15s;
 }
 .chart-ui__pill--active { background: rgba(38,166,154,0.25); color: #26a69a; border-color: #26a69a; }
 
 .chart-ui__range-row {
   display: flex; align-items: center; gap: 4px; margin: 6px 0;
-  color: #666;
+  color: #888;
 }
 .chart-ui__range-row input {
   flex: 1;
@@ -268,7 +278,7 @@ const UI_STYLES = `
 .chart-ui__remove-btn {
   background: none;
   border: none;
-  color: #666;
+  color: #778;
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
@@ -315,10 +325,78 @@ const UI_STYLES = `
   pointer-events: all;
 }
 
-[data-theme="light"] .chart-ui__panel { background: rgba(248,248,248,0.95); }
-[data-theme="light"] .chart-ui__pill  { color: #444; background: rgba(0,0,0,0.05); }
-[data-theme="light"] .chart-ui__label { color: #888; }
-[data-theme="light"] .chart-ui__symbol-input input { color: #333; background: rgba(0,0,0,0.05); }
+/* ── Light theme overrides ───────────────────────────────────────────────── */
+
+[data-theme="light"] .chart-ui__panel {
+  background: rgba(246,246,250,0.96);
+  border-left-color: rgba(0,0,0,0.1);
+}
+[data-theme="light"] .chart-ui__section {
+  border-bottom-color: rgba(0,0,0,0.07);
+}
+[data-theme="light"] .chart-ui__toggle {
+  background: rgba(232,232,238,0.95);
+  border-color: rgba(0,0,0,0.15);
+  color: #333;
+}
+[data-theme="light"] .chart-ui__label { color: #555; }
+[data-theme="light"] .chart-ui__symbol-input input {
+  color: #111;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .chart-ui__pill {
+  color: #444;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.12);
+}
+[data-theme="light"] .chart-ui__range-row { color: #444; }
+[data-theme="light"] .chart-ui__range-row input {
+  color: #111;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .chart-ui__btn {
+  background: rgba(0,137,123,0.12);
+  border-color: rgba(0,137,123,0.35);
+  color: #006f64;
+}
+[data-theme="light"] .chart-ui__indicator-row {
+  border-bottom-color: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .chart-ui__indicator-type { color: #333; }
+[data-theme="light"] .chart-ui__period-input {
+  color: #111;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .chart-ui__remove-btn { color: #888; }
+[data-theme="light"] .chart-ui__remove-btn:hover { color: #c62828; }
+[data-theme="light"] .chart-ui__switch-track { background: rgba(0,0,0,0.15); }
+[data-theme="light"] .chart-ui__color-row { color: #444; }
+[data-theme="light"] .chart-ui__color-row input[type=color] {
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .chart-ui__picker {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.1);
+}
+[data-theme="light"] .chart-ui__picker select,
+[data-theme="light"] .chart-ui__picker input[type=number] {
+  color: #111;
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .chart-ui__picker-btn-cancel {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.12);
+  color: #444;
+}
+[data-theme="light"] .chart-ui__add-btn {
+  background: rgba(0,137,123,0.15);
+  border-color: rgba(0,137,123,0.35);
+  color: #006f64;
+}
 
 .chart-ui__picker {
   margin-top: 8px;
@@ -449,6 +527,19 @@ export class UIController {
         this.state.layoutMode = btn.dataset.value as UIState['layoutMode'];
         this.bus.emit('layoutChange', { mode: this.state.layoutMode });
       });
+
+    // Scale pills
+    const scaleGroup = this.root.querySelector('#ui-scale-group');
+    if (scaleGroup) {
+      scaleGroup.addEventListener('click', (e: Event) => {
+        const btn = (e.target as HTMLElement).closest('[data-value]') as HTMLElement | null;
+        if (!btn) return;
+        const mode = btn.dataset.value as 'linear' | 'log';
+        this._setActivePill('#ui-scale-group', mode);
+        this.state.scaleMode = mode;
+        this.bus.emit('scaleChange', { mode });
+      });
+    }
 
     // Chart type pills
     const chartTypeGroup = this.root.querySelector('#ui-chart-type-group');
@@ -581,6 +672,18 @@ export class UIController {
     if (state.chartType !== undefined) {
       this._setActivePill('#ui-chart-type-group', state.chartType);
     }
+    if (state.scaleMode !== undefined) {
+      this._setActivePill('#ui-scale-group', state.scaleMode);
+    }
+  }
+
+  /**
+   * Sync the active scale-mode pill without emitting a bus event.
+   * Called by FinanceChart.setScaleMode() to keep the UI consistent.
+   */
+  syncScaleMode(mode: 'linear' | 'log'): void {
+    this._setActivePill('#ui-scale-group', mode);
+    this.state.scaleMode = mode;
   }
 
   /**
