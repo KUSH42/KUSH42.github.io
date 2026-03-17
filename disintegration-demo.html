@@ -88,7 +88,7 @@
   <div class="btn-row">
     <button id="btnDisintegrate">▼ Disintegrate</button>
     <button id="btnReconstruct">▲ Reconstruct</button>
-    <button id="btnStop">■ Stop</button>
+    <button id="btnLoop">⟳ Loop</button>
   </div>
   <button id="btnReset">↺ Reset</button>
 
@@ -239,15 +239,26 @@ document.getElementById('selObject').addEventListener('change', e => {
 });
 
 document.getElementById('btnDisintegrate').addEventListener('click', () => {
-  fx.disintegrate(2500, () => console.log('gone'));
+  looping = false;
+  document.getElementById('btnLoop').classList.remove('active');
+  fx.disintegrate(2500);
 });
 
 document.getElementById('btnReconstruct').addEventListener('click', () => {
-  fx.reconstruct(2500, () => console.log('back'));
+  looping = false;
+  document.getElementById('btnLoop').classList.remove('active');
+  fx.reconstruct(2500);
 });
 
-document.getElementById('btnStop').addEventListener('click', () => {
-  fx.stopAnimation();
+let looping = false;
+function startLoop() {
+  fx.disintegrate(2500, () => fx.reconstruct(2500, () => { if (looping) startLoop(); }));
+}
+document.getElementById('btnLoop').addEventListener('click', () => {
+  looping = !looping;
+  document.getElementById('btnLoop').classList.toggle('active', looping);
+  if (looping) startLoop();
+  else fx.stopAnimation();
 });
 
 document.getElementById('btnReset').addEventListener('click', () => {
