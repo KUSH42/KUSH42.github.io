@@ -29,6 +29,18 @@ import { ScreenshotExporter } from './export/ScreenshotExporter';
 import { GLBExporter } from './export/GLBExporter';
 import { CSVExporter } from './export/CSVExporter';
 import { lowerBound, upperBound } from './utils/MathUtils';
+// v2.0 addendum imports
+import { IndicatorManager } from './indicators/IndicatorManager';
+import { TroikaLabelPool } from './labels/TroikaLabelPool';
+import { AxisManager } from './axes/AxisManager';
+import { UIController } from './ui/UIController';
+import { TooltipSystem } from './interaction/TooltipSystem';
+import { LegendPanel } from './interaction/LegendPanel';
+import { PriceTicker } from './interaction/PriceTicker';
+import { RangeController } from './data/RangeController';
+import type {
+  IndicatorConfig, UIState, ScaleSet, OHLCV,
+} from './types/addendum';
 
 export interface FinanceChartOptions {
   container: HTMLElement;
@@ -45,6 +57,12 @@ export interface FinanceChartOptions {
   maxPixelRatio?: number;
   /** Called when WebGPU is unavailable and WebGL2 fallback is used */
   onRendererFallback?: (reason: string) => void;
+  /**
+   * Enable v2.0 addendum systems (IndicatorManager, AxisManager, UIController,
+   * TooltipSystem, LegendPanel, PriceTicker, RangeController, TroikaLabelPool).
+   * Defaults to false for backward compatibility.
+   */
+  enableAddendum?: boolean;
 }
 
 export class FinanceChart extends EventEmitter<ChartEvents> {
@@ -86,6 +104,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
   // DOF hover unsub handle
   private _dofHoverUnsub?: () => void;
+
+  // ── v2.0 Addendum systems (opt-in via enableAddendum option) ───────────────
+  private _indicatorManager?: IndicatorManager;
+  private _labelPool?: TroikaLabelPool;
+  private _axisManager?: AxisManager;
+  private _uiController?: UIController;
+  private _tooltipSystem?: TooltipSystem;
+  private _legendPanel?: LegendPanel;
+  private _priceTicker?: PriceTicker;
+  private _rangeController?: RangeController;
+  private _addendumData: OHLCV[] = [];
+  private _addendumScales?: ScaleSet;
 
   constructor(options: FinanceChartOptions) {
     super();
@@ -170,6 +200,9 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       this._postProc.resize(w, h);
       this._chartScene.camera.aspect = w / h;
       this._chartScene.camera.updateProjectionMatrix();
+      // v2.0: update resolution for all LineMaterial instances
+      const resolution = new THREE.Vector2(w, h);
+      this._indicatorManager?.onResize(resolution);
     });
 
     // Interaction
@@ -219,9 +252,127 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._onKey = this._handleKeyboard.bind(this);
     this._container.addEventListener('keydown', this._onKey);
 
+    // v2.0 Addendum systems — opt-in via enableAddendum option
+    if (this._opts.enableAddendum) {
+      this._initAddendum();
+    }
+
     // Start render loop
     this._lastTime = performance.now();
     this._renderLoop();
+  }
+
+  private _getPriceRange(): { min: number; max: number } {
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < this._candleBuffer.count; i++) {
+      const l = this._candleBuffer.low(i);
+      const h = this._candleBuffer.high(i);
+      if (l < min) min = l;
+      if (h > max) max = h;
+    }
+    return { min, max: max > min ? max : min + 1 };
+  }
+
+  private _initAddendum(): void {
+    // Build a simple ScaleSet backed by _priceToWorldY
+    this._addendumScales = {
+      price:        (v: number) => this._priceToWorldY(v),
+      priceInverse: (worldY: number) => {
+        // Inverse of _priceToWorldY — requires buffer data
+        if (this._candleBuffer.count === 0) return worldY * 1000;
+        const { min, max } = this._getPriceRange();
+        return min + (worldY / 10) * (max - min);
+      },
+      priceHeight: (dataHeight: number) => {
+        if (this._candleBuffer.count === 0) return dataHeight * 0.001;
+        const { min, max } = this._getPriceRange();
+        return (dataHeight / (max - min)) * 10;
+      },
+    };
+
+    // Reuse a single output object to avoid per-call allocations in positionFn.
+    // Safe because callers always read x/z immediately before the next call.
+    const _posOut = {
+      position:   new THREE.Vector3(),
+      quaternion: new THREE.Quaternion(),
+      normal:     new THREE.Vector3(),
+    };
+    const positionFn = (i: number): THREE.Vector3 => {
+      this._layout.getCandleTransform(i, this._candleBuffer, _posOut);
+      return _posOut.position;
+    };
+
+    // Label pool (pre-allocate 256 instances)
+    this._labelPool = new TroikaLabelPool(this._chartScene.scene, 256);
+
+    // Indicator manager
+    this._indicatorManager = new IndicatorManager(
+      this._chartScene.scene,
+      this._addendumData,
+      this._addendumScales,
+      positionFn,
+      this._rendererManager.renderer,
+    );
+
+    // Axis manager
+    this._axisManager = new AxisManager(
+      this._chartScene.scene,
+      {
+        priceToWorldY: this._addendumScales.price,
+        worldYToPrice: this._addendumScales.priceInverse,
+        indexToWorldX: (i: number) => positionFn(i).x,
+      },
+      {
+        gridXMin: -50,
+        gridXMax:  500,
+        labelPool: this._labelPool,
+      },
+    );
+
+    // Legend and price ticker
+    this._legendPanel  = new LegendPanel(this._container);
+    this._priceTicker  = new PriceTicker(this._container);
+
+    // Initial UIState
+    const initialState: UIState = {
+      symbol:           'BTCUSDT',
+      interval:         '1h',
+      layoutMode:       'Linear',
+      theme:            'dark',
+      visibleRange:     {
+        startIndex: 0, endIndex: 0,
+        startTime: 0, endTime: 0,
+        priceMin: 0, priceMax: 1, volumeMax: 1,
+      },
+      indicators:       [],
+      paletteOverrides: {},
+      crosshairEnabled: true,
+      tooltipsEnabled:  true,
+    };
+
+    // Simple EventBus adapter using existing EventEmitter
+    const bus = {
+      on:   (event: string, handler: (...args: any[]) => void) => { this.on(event as any, handler as any); },
+      off:  (event: string, handler: (...args: any[]) => void) => { this.off(event as any, handler as any); },
+      emit: (event: string, payload?: any) => { this.emit(event as any, payload); },
+    };
+
+    this._uiController = new UIController(this._container, initialState, bus);
+
+    // TooltipSystem — only create after data is loaded (uses data reference)
+    // We create it now with an empty data array; it will be updated on loadData
+    this._tooltipSystem = new TooltipSystem(
+      this._rendererManager.renderer,
+      this._chartScene.scene,
+      this._chartScene.camera,
+      this._addendumData,
+      this._labelPool,
+      this._addendumScales,
+      positionFn,
+    );
+
+    // RangeController
+    this._rangeController = new RangeController(this._addendumData, initialState);
   }
 
   private _createLayout(mode: 'linear' | 'helix' | 'tunnel'): LayoutEngine {
@@ -256,15 +407,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // Simple linear mapping — in production this would use a D3 scale
     // with auto-computed domain from the buffer
     if (this._candleBuffer.count === 0) return price * 0.001;
-    let min = Infinity, max = -Infinity;
-    for (let i = 0; i < this._candleBuffer.count; i++) {
-      const l = this._candleBuffer.low(i);
-      const h = this._candleBuffer.high(i);
-      if (l < min) min = l;
-      if (h > max) max = h;
-    }
-    const range = max - min || 1;
-    return ((price - min) / range) * 10;
+    const { min, max } = this._getPriceRange();
+    return ((price - min) / (max - min)) * 10;
   }
 
   private _renderLoop = (): void => {
@@ -302,8 +446,19 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     // Emit frame event
     this.emit('render:frame', { deltaMs, fps: this._fps });
 
-    // Render
+    // v2.0: Label billboard sync (cheap quaternion copy — every frame)
+    if (this._labelPool) {
+      this._labelPool.syncBillboards(this._chartScene.camera);
+      this._labelPool.syncAll();
+    }
+
+    // Render main scene
     this._postProc.render(deltaMs / 1000);
+
+    // v2.0: Sub-view render (RSI/MACD panels) — AFTER main, uses scissor/viewport
+    if (this._indicatorManager) {
+      this._indicatorManager.renderSubViews(this._rendererManager.renderer);
+    }
   };
 
   private _handleKeyboard(e: KeyboardEvent): void {
@@ -374,6 +529,15 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._crosshair?.dispose();
     this._tooltip?.dispose();
 
+    // v2.0: Dispose addendum systems
+    this._tooltipSystem?.dispose();
+    this._indicatorManager?.dispose();
+    this._axisManager?.dispose();
+    this._labelPool?.dispose();
+    this._uiController?.dispose();
+    this._legendPanel?.dispose();
+    this._priceTicker?.dispose();
+
     // Dispose custom layers
     for (const layer of this._customLayers.values()) {
       layer.dispose();
@@ -412,6 +576,26 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._candleChart.updateRange(0, this._candleBuffer.count);
     this._volumeChart.updateRange(0, this._candleBuffer.count);
 
+    // v2.0: sync addendum data (OHLCVCandle → OHLCV conversion: time → timestamp)
+    if (this._indicatorManager || this._rangeController) {
+      this._addendumData.length = 0;
+      for (const c of candles) {
+        this._addendumData.push({
+          timestamp: c.time,
+          open: c.open, high: c.high, low: c.low,
+          close: c.close, volume: c.volume,
+        });
+      }
+      this._indicatorManager?.onDataUpdate(this._addendumData);
+      this._rangeController?.updateData(this._addendumData);
+
+      // Update price ticker with last candle
+      if (this._priceTicker && candles.length > 0) {
+        const last = candles[candles.length - 1];
+        this._priceTicker.update(last.close, last.close >= last.open);
+      }
+    }
+
     // Reset camera to fit data
     this.resetCamera(0);
   }
@@ -425,6 +609,18 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     this._candleBuffer.append(candle);
     this._candleChart.append(candle);
     this._volumeChart.append(candle);
+
+    // v2.0: keep addendum data in sync for streaming
+    if (this._indicatorManager || this._rangeController) {
+      this._addendumData.push({
+        timestamp: candle.time,
+        open: candle.open, high: candle.high, low: candle.low,
+        close: candle.close, volume: candle.volume,
+      });
+      const idx = this._addendumData.length - 1;
+      this._indicatorManager?.onStreamTick(idx, this._addendumData[idx]);
+      this._priceTicker?.update(candle.close, candle.close >= candle.open);
+    }
   }
 
   /** Patch the last (in-progress) candle with streaming data. */
@@ -432,6 +628,19 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     if (this._candleBuffer.count === 0) return;
     this._candleChart.patchLast(partial);
     this._volumeChart.patchLast(partial);
+
+    // v2.0: keep last addendum entry in sync
+    if (this._addendumData.length > 0 && (this._indicatorManager || this._rangeController)) {
+      const last = this._addendumData[this._addendumData.length - 1];
+      if (partial.open  !== undefined) last.open  = partial.open;
+      if (partial.high  !== undefined) last.high  = partial.high;
+      if (partial.low   !== undefined) last.low   = partial.low;
+      if (partial.close !== undefined) last.close = partial.close;
+      if (partial.volume !== undefined) last.volume = partial.volume;
+      if (partial.close !== undefined) {
+        this._priceTicker?.update(last.close, last.close >= last.open);
+      }
+    }
   }
 
   // ── Indicators ─────────────────────────────────────────────────────────────
@@ -459,6 +668,47 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
   removeIndicator(id: string): void {
     this._indicatorLayer.remove(id);
+  }
+
+  // ── v2.0 Indicators (addendum) ─────────────────────────────────────────────
+
+  /**
+   * Add a v2.0 indicator using the new IndicatorManager system.
+   * Requires `enableAddendum: true` in constructor options.
+   * @param config - Indicator configuration
+   */
+  addIndicatorV2(config: IndicatorConfig): void {
+    this._indicatorManager?.add(config);
+    // Update legend with single new config entry
+    if (this._legendPanel) {
+      this._legendPanel.update([config]);
+    }
+  }
+
+  /**
+   * Remove a v2.0 indicator by ID.
+   * @param id - Indicator ID
+   */
+  removeIndicatorV2(id: string): void {
+    this._indicatorManager?.remove(id);
+  }
+
+  /**
+   * Update a v2.0 indicator's config (can trigger recalculation).
+   * @param id - Indicator ID
+   * @param partial - Partial config with changed fields
+   */
+  updateIndicatorV2(id: string, partial: Partial<IndicatorConfig>): void {
+    this._indicatorManager?.update(id, partial);
+  }
+
+  /**
+   * Toggle v2.0 indicator visibility.
+   * @param id - Indicator ID
+   * @param enabled - Whether to show the indicator
+   */
+  toggleIndicatorV2(id: string, enabled: boolean): void {
+    this._indicatorManager?.toggle(id, enabled);
   }
 
   // ── Presentation ───────────────────────────────────────────────────────────
