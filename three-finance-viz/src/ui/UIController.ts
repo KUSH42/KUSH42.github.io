@@ -1,6 +1,8 @@
 // src/ui/UIController.ts
 import { debounce, throttle } from '../utils/timing';
-import type { UIState, IndicatorConfig, EventBus, IndicatorType } from '../types/addendum';
+import type { UIState, IndicatorConfig, EventBus, IndicatorType, PriceSource } from '../types/addendum';
+import { NavigatorBar } from './NavigatorBar';
+import type { OHLCV } from '../types/addendum';
 
 // ── HTML Template ─────────────────────────────────────────────────────────────
 
@@ -304,17 +306,69 @@ const UI_STYLES = `
 [data-theme="light"] .chart-ui__pill  { color: #444; background: rgba(0,0,0,0.05); }
 [data-theme="light"] .chart-ui__label { color: #888; }
 [data-theme="light"] .chart-ui__symbol-input input { color: #333; background: rgba(0,0,0,0.05); }
+
+.chart-ui__picker {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chart-ui__picker select,
+.chart-ui__picker input[type=number] {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #ccc;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  pointer-events: all;
+  box-sizing: border-box;
+}
+.chart-ui__picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chart-ui__picker-actions {
+  display: flex;
+  gap: 6px;
+}
+.chart-ui__picker-actions button {
+  flex: 1;
+  padding: 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  pointer-events: all;
+}
+.chart-ui__picker-btn-add {
+  background: rgba(38,166,154,0.25);
+  border: 1px solid #26a69a44;
+  color: #26a69a;
+}
+.chart-ui__picker-btn-cancel {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #888;
+}
 `;
 
 // ── UIController ─────────────────────────────────────────────────────────────
 
 export class UIController {
-  private root:      HTMLElement;
-  private panel:     HTMLElement;
-  private state:     UIState;
-  private bus:       EventBus;
-  private collapsed  = false;
-  private styleEl:   HTMLStyleElement;
+  private root:           HTMLElement;
+  private panel:          HTMLElement;
+  private state:          UIState;
+  private bus:            EventBus;
+  private collapsed       = false;
+  private styleEl:        HTMLStyleElement;
+  private _navigatorBar:  NavigatorBar | null = null;
+  private _pickerEl:      HTMLElement | null  = null;
 
   constructor(container: HTMLElement, initialState: UIState, bus: EventBus) {
     this.state = { ...initialState };
@@ -331,6 +385,14 @@ export class UIController {
     container.appendChild(this.root);
     this._bindEvents();
     this.syncFromState(this.state);
+
+    // Instantiate NavigatorBar against the canvas already in the DOM
+    const navCanvas = this.root.querySelector<HTMLCanvasElement>('#ui-navigator')!;
+    this._navigatorBar = new NavigatorBar(navCanvas, []);
+    navCanvas.addEventListener('rangeChange', (e: Event) => {
+      const { startIndex, endIndex } = (e as CustomEvent).detail;
+      this.bus.emit('rangeChange', { startIndex, endIndex });
+    });
   }
 
   private _createDOM(): HTMLElement {
@@ -441,6 +503,23 @@ export class UIController {
     list.appendChild(row);
   }
 
+  /** Update the NavigatorBar minimap with new data */
+  updateNavigatorData(data: OHLCV[]): void {
+    this._navigatorBar?.updateData(data);
+  }
+
+  /** Add a row for an indicator that was added externally (external sync helper) */
+  addIndicatorRow(config: IndicatorConfig): void {
+    this.removeIndicatorRow(config.id);
+    this._renderIndicatorRow(config);
+  }
+
+  /** Remove the row for an indicator that was removed externally (external sync helper) */
+  removeIndicatorRow(id: string): void {
+    const row = this.root.querySelector(`[data-id="${id}"]`);
+    if (row) row.remove();
+  }
+
   /**
    * Force a UI re-render from external state change
    * @param state - Partial state to sync
@@ -492,21 +571,109 @@ export class UIController {
     });
   }
 
-  // NOTE: This is a placeholder implementation using native `prompt()` dialogs.
-  // Production builds should replace this with a proper modal UI.
   private _openIndicatorPicker(): void {
-    const type = prompt('Indicator type: SMA, EMA, BB, RSI, MACD') as IndicatorType;
-    if (!type) return;
-    const period = parseInt(prompt('Period:', '20') || '20', 10);
-    const id = `${type.toLowerCase()}_${period}_${Date.now()}`;
-    const config = {
-      id, type: type as 'SMA', enabled: true,
-      period, source: 'close' as const,
-      color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'),
-      opacity: 1, lineWidth: 2,
+    // Toggle: if already open, close it
+    if (this._pickerEl) {
+      this._pickerEl.remove();
+      this._pickerEl = null;
+      return;
+    }
+
+    const DEFAULT_COLORS: Record<string, string> = {
+      SMA: '#ffb74d', EMA: '#4dd0e1', BB: '#ce93d8', RSI: '#80cbc4', MACD: '#f48fb1',
     };
-    this.state.indicators.push(config);
-    this._renderIndicatorRow(config);
-    this.bus.emit('indicatorAdd', config);
+
+    const section = this.root.querySelector('#ui-indicators-section')!;
+    const form = document.createElement('div');
+    form.className = 'chart-ui__picker';
+    form.innerHTML = `
+      <select id="ui-pick-type">
+        <option value="SMA">SMA</option>
+        <option value="EMA">EMA</option>
+        <option value="BB">BB</option>
+        <option value="RSI">RSI</option>
+        <option value="MACD">MACD</option>
+      </select>
+      <div class="ui-pick-period-wrap">
+        <input type="number" id="ui-pick-period" value="20" min="2" max="500" placeholder="Period" />
+      </div>
+      <div class="ui-pick-macd-wrap" style="display:none">
+        <input type="number" id="ui-pick-fast"   value="12" min="2" max="200" placeholder="Fast" />
+        <input type="number" id="ui-pick-slow"   value="26" min="2" max="200" placeholder="Slow" />
+        <input type="number" id="ui-pick-signal" value="9"  min="2" max="200" placeholder="Signal" />
+      </div>
+      <select id="ui-pick-source">
+        <option value="close">close</option>
+        <option value="open">open</option>
+        <option value="high">high</option>
+        <option value="low">low</option>
+        <option value="hl2">hl2</option>
+        <option value="ohlc4">ohlc4</option>
+      </select>
+      <div class="chart-ui__picker-row">
+        <span style="color:#888;font-size:11px">Color</span>
+        <input type="color" id="ui-pick-color" value="#ffb74d" style="flex:1;pointer-events:all" />
+      </div>
+      <div class="chart-ui__picker-actions">
+        <button id="ui-pick-add"    class="chart-ui__picker-btn-add">Add</button>
+        <button id="ui-pick-cancel" class="chart-ui__picker-btn-cancel">Cancel</button>
+      </div>
+    `;
+
+    const typeSelect  = form.querySelector<HTMLSelectElement>('#ui-pick-type')!;
+    const periodWrap  = form.querySelector<HTMLElement>('.ui-pick-period-wrap')!;
+    const macdWrap    = form.querySelector<HTMLElement>('.ui-pick-macd-wrap')!;
+    const colorInput  = form.querySelector<HTMLInputElement>('#ui-pick-color')!;
+
+    typeSelect.addEventListener('change', () => {
+      const isMacd = typeSelect.value === 'MACD';
+      periodWrap.style.display = isMacd ? 'none' : '';
+      macdWrap.style.display   = isMacd ? ''     : 'none';
+      colorInput.value = DEFAULT_COLORS[typeSelect.value] ?? '#ffffff';
+    });
+
+    form.querySelector('#ui-pick-cancel')!.addEventListener('click', () => {
+      form.remove();
+      this._pickerEl = null;
+    });
+
+    form.querySelector('#ui-pick-add')!.addEventListener('click', () => {
+      const type    = typeSelect.value as IndicatorType;
+      const source  = (form.querySelector<HTMLSelectElement>('#ui-pick-source')!).value as PriceSource;
+      const color   = colorInput.value;
+      const id      = `${type.toLowerCase()}_${Date.now()}`;
+
+      let config: IndicatorConfig;
+      if (type === 'MACD') {
+        const fast   = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-fast')!).value, 10)   || 12;
+        const slow   = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-slow')!).value, 10)   || 26;
+        const signal = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-signal')!).value, 10) || 9;
+        config = { id, type: 'MACD', enabled: true, color, opacity: 1, lineWidth: 2,
+          fastPeriod: fast, slowPeriod: slow, signalPeriod: signal, source, subView: true };
+      } else if (type === 'RSI') {
+        const period = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-period')!).value, 10) || 14;
+        config = { id, type: 'RSI', enabled: true, color, opacity: 1, lineWidth: 2,
+          period, source, overbought: 70, oversold: 30, subView: true };
+      } else if (type === 'BB') {
+        const period = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-period')!).value, 10) || 20;
+        config = { id, type: 'BB', enabled: true, color, opacity: 1, lineWidth: 2,
+          period, source, stdDev: 2, showMid: true, bandOpacity: 0.15 };
+      } else if (type === 'EMA') {
+        const period = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-period')!).value, 10) || 20;
+        config = { id, type: 'EMA', enabled: true, color, opacity: 1, lineWidth: 2, period, source };
+      } else {
+        const period = parseInt((form.querySelector<HTMLInputElement>('#ui-pick-period')!).value, 10) || 20;
+        config = { id, type: 'SMA', enabled: true, color, opacity: 1, lineWidth: 2, period, source };
+      }
+
+      this.state.indicators.push(config);
+      this._renderIndicatorRow(config);
+      this.bus.emit('indicatorAdd', config);
+      form.remove();
+      this._pickerEl = null;
+    });
+
+    section.appendChild(form);
+    this._pickerEl = form;
   }
 }

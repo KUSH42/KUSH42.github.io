@@ -6,7 +6,7 @@ import type { ChartEvents } from './types/events';
 import type { OHLCVCandle, Tick } from './types/market';
 import type { IndicatorSeries } from './types/indicators';
 import type { ChartTheme } from './types/theme';
-import { DARK_THEME } from './types/theme';
+import { DARK_THEME, LIGHT_THEME } from './types/theme';
 import type { ChartLayer } from './types/ChartLayer';
 import type { LayoutEngine } from './layout/LayoutEngine';
 import { CandleBuffer } from './types/CandleBuffer';
@@ -39,8 +39,23 @@ import { LegendPanel } from './interaction/LegendPanel';
 import { PriceTicker } from './interaction/PriceTicker';
 import { RangeController } from './data/RangeController';
 import type {
-  IndicatorConfig, UIState, ScaleSet, OHLCV,
+  IndicatorConfig, UIState, ScaleSet, OHLCV, VisibleRange, ThemePalette, LayoutMode,
 } from './types/addendum';
+
+// ── Module-level helpers ────────────────────────────────────────────────────
+
+function buildThemePalette(t: ChartTheme): ThemePalette {
+  return {
+    background: t.background,
+    gridLines:  t.grid,
+    axisLabels: t.axis,
+    bullCandle: t.candle.bullBody,
+    bearCandle: t.candle.bearBody,
+    wick:       t.candle.bullWick,
+    volume:     t.volume.bullBar,
+    crosshair:  t.crosshair,
+  };
+}
 
 export interface FinanceChartOptions {
   container: HTMLElement;
@@ -116,6 +131,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
   private _rangeController?: RangeController;
   private _addendumData: OHLCV[] = [];
   private _addendumScales?: ScaleSet;
+  private _activeIndicatorConfigs = new Map<string, IndicatorConfig>();
 
   constructor(options: FinanceChartOptions) {
     super();
@@ -373,6 +389,51 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
     // RangeController
     this._rangeController = new RangeController(this._addendumData, initialState);
+
+    // ── Wire bus events ────────────────────────────────────────────────────
+    bus.on('layoutChange', (p: { mode: LayoutMode }) =>
+      this.setLayout(p.mode.toLowerCase() as 'linear' | 'helix' | 'tunnel'));
+
+    bus.on('themeChange', (p: { theme: 'dark' | 'light' }) =>
+      this.setTheme(p.theme === 'dark' ? DARK_THEME : LIGHT_THEME));
+
+    bus.on('paletteChange', (p: Partial<ThemePalette>) =>
+      this._applyPaletteOverrides(p));
+
+    bus.on('zoomToFit', () => this.resetCamera());
+
+    bus.on('indicatorAdd', (cfg: IndicatorConfig) => this.addIndicatorV2(cfg));
+    bus.on('indicatorToggle', (p: { id: string; enabled: boolean }) =>
+      this.toggleIndicatorV2(p.id, p.enabled));
+    bus.on('indicatorUpdate', (p: { id: string } & Partial<IndicatorConfig>) =>
+      this.updateIndicatorV2(p.id, p));
+    bus.on('indicatorRemove', (p: { id: string }) => this.removeIndicatorV2(p.id));
+
+    bus.on('intervalChange', (p: { interval: string }) =>
+      this._axisManager?.setInterval(p.interval));
+
+    bus.on('symbolChange', (p: { symbol: string }) =>
+      this.emit('symbol:change' as any, p));
+
+    bus.on('rangeChange', (p: { startIndex: number; endIndex: number }) => {
+      if (this._candleBuffer.count === 0) return;
+      const si = Math.max(0, p.startIndex);
+      const ei = Math.min(this._candleBuffer.count - 1, p.endIndex);
+      this.emit('range:change', { startIndex: si, endIndex: ei });
+      const out = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), normal: new THREE.Vector3() };
+      this._layout.getCandleTransform(si, this._candleBuffer, out);
+      const startX = out.position.x;
+      this._layout.getCandleTransform(ei, this._candleBuffer, out);
+      const endX  = out.position.x;
+      const midX  = (startX + endX) / 2;
+      const halfX = (endX - startX) / 2 + 1;
+      const dist  = Math.max(halfX, 15);
+      this._cameraAnimator.flyTo(
+        new THREE.Vector3(midX, 7, dist),
+        new THREE.Vector3(midX, 5, 0),
+        600,
+      );
+    });
   }
 
   private _createLayout(mode: 'linear' | 'helix' | 'tunnel'): LayoutEngine {
@@ -411,6 +472,39 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     return ((price - min) / (max - min)) * 10;
   }
 
+  private _computeVisibleRange(): VisibleRange | null {
+    if (this._candleBuffer.count === 0) return null;
+    const cam = this._chartScene.camera;
+    const frustum = new THREE.Frustum();
+    const pm = new THREE.Matrix4().multiplyMatrices(
+      cam.projectionMatrix, cam.matrixWorldInverse);
+    frustum.setFromProjectionMatrix(pm);
+
+    const count  = this._candleBuffer.count;
+    const posOut = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), normal: new THREE.Vector3() };
+    let si = 0, ei = count - 1;
+    for (let i = 0; i < count; i++) {
+      this._layout.getCandleTransform(i, this._candleBuffer, posOut);
+      if (frustum.containsPoint(posOut.position)) { si = i; break; }
+    }
+    for (let i = count - 1; i >= si; i--) {
+      this._layout.getCandleTransform(i, this._candleBuffer, posOut);
+      if (frustum.containsPoint(posOut.position)) { ei = i; break; }
+    }
+
+    const { min: priceMin, max: priceMax } = this._getPriceRange();
+    let volumeMax = 0;
+    for (let i = si; i <= ei; i++) volumeMax = Math.max(volumeMax, this._candleBuffer.volume(i));
+
+    return {
+      startIndex: si, endIndex: ei,
+      startTime:  this._candleBuffer.time[si],
+      endTime:    this._candleBuffer.time[ei],
+      priceMin, priceMax,
+      volumeMax: volumeMax || 1,
+    };
+  }
+
   private _renderLoop = (): void => {
     if (this._disposed) return;
     this._rafId = requestAnimationFrame(this._renderLoop);
@@ -433,6 +527,14 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
 
     // Update camera animation
     this._cameraAnimator.update(deltaMs);
+
+    // v2.0: AxisManager tick update
+    if (this._axisManager && this._candleBuffer.count > 0) {
+      const vr = this._computeVisibleRange();
+      if (vr) {
+        this._axisManager.update(vr, this._chartScene.camera);
+      }
+    }
 
     // LOD update
     const camDist = this._chartScene.camera.position.length();
@@ -588,6 +690,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       }
       this._indicatorManager?.onDataUpdate(this._addendumData);
       this._rangeController?.updateData(this._addendumData);
+      this._uiController?.updateNavigatorData(this._addendumData);
 
       // Update price ticker with last candle
       if (this._priceTicker && candles.length > 0) {
@@ -620,6 +723,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
       const idx = this._addendumData.length - 1;
       this._indicatorManager?.onStreamTick(idx, this._addendumData[idx]);
       this._priceTicker?.update(candle.close, candle.close >= candle.open);
+      this._uiController?.updateNavigatorData(this._addendumData);
     }
   }
 
@@ -679,10 +783,9 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
    */
   addIndicatorV2(config: IndicatorConfig): void {
     this._indicatorManager?.add(config);
-    // Update legend with single new config entry
-    if (this._legendPanel) {
-      this._legendPanel.update([config]);
-    }
+    this._activeIndicatorConfigs.set(config.id, config);
+    this._syncLegend();
+    this._uiController?.syncFromState({ indicators: [...this._activeIndicatorConfigs.values()] });
   }
 
   /**
@@ -691,6 +794,9 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
    */
   removeIndicatorV2(id: string): void {
     this._indicatorManager?.remove(id);
+    this._activeIndicatorConfigs.delete(id);
+    this._syncLegend();
+    this._uiController?.syncFromState({ indicators: [...this._activeIndicatorConfigs.values()] });
   }
 
   /**
@@ -700,6 +806,8 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
    */
   updateIndicatorV2(id: string, partial: Partial<IndicatorConfig>): void {
     this._indicatorManager?.update(id, partial);
+    const cfg = this._activeIndicatorConfigs.get(id);
+    if (cfg) { Object.assign(cfg, partial); this._syncLegend(); }
   }
 
   /**
@@ -709,6 +817,24 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
    */
   toggleIndicatorV2(id: string, enabled: boolean): void {
     this._indicatorManager?.toggle(id, enabled);
+    const cfg = this._activeIndicatorConfigs.get(id);
+    if (cfg) { cfg.enabled = enabled; this._syncLegend(); }
+  }
+
+  private _syncLegend(): void {
+    this._legendPanel?.update([...this._activeIndicatorConfigs.values()].filter(c => c.enabled));
+  }
+
+  private _applyPaletteOverrides(overrides: Partial<ThemePalette>): void {
+    const merged: ChartTheme = {
+      ...this._theme,
+      candle: {
+        ...this._theme.candle,
+        bullBody: overrides.bullCandle ?? this._theme.candle.bullBody,
+        bearBody: overrides.bearCandle ?? this._theme.candle.bearBody,
+      },
+    };
+    this.setTheme(merged);
   }
 
   // ── Presentation ───────────────────────────────────────────────────────────
@@ -723,6 +849,7 @@ export class FinanceChart extends EventEmitter<ChartEvents> {
     for (const layer of this._customLayers.values()) {
       layer.onThemeChange(theme);
     }
+    this._axisManager?.setTheme(buildThemePalette(theme));
   }
 
   setLayout(mode: 'linear' | 'helix' | 'tunnel'): void {

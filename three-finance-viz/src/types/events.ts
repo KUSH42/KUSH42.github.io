@@ -10,6 +10,7 @@ export interface ChartEvents extends Record<string, unknown> {
   'range:change': { startIndex: number; endIndex: number };
   'camera:move': { position: THREE.Vector3; target: THREE.Vector3 };
   'render:frame': { deltaMs: number; fps: number };
+  'symbol:change': { symbol: string };
 }
 
 /** Events emitted by WebSocketAdapter (consumed by FinanceChart internals) */
