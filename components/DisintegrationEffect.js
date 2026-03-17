@@ -16,65 +16,6 @@
 
 import * as THREE from 'three';
 
-// ---------------------------------------------------------------------------
-// 3D simplex noise GLSL (Stefan Gustavson / Ashima Arts, public domain)
-// ---------------------------------------------------------------------------
-const NOISE_GLSL = /* glsl */`
-vec3 mod289v3(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 mod289v4(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 permute(vec4 x)  { return mod289v4(((x * 34.0) + 10.0) * x); }
-vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-
-float snoise3(vec3 v) {
-  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-  vec3 i  = floor(v + dot(v, C.yyy));
-  vec3 x0 = v - i + dot(i, C.xxx);
-  vec3 g  = step(x0.yzx, x0.xyz);
-  vec3 l  = 1.0 - g;
-  vec3 i1 = min(g.xyz, l.zxy);
-  vec3 i2 = max(g.xyz, l.zxy);
-  vec3 x1 = x0 - i1 + C.xxx;
-  vec3 x2 = x0 - i2 + C.yyy;
-  vec3 x3 = x0 - D.yyy;
-  i = mod289v3(i);
-  vec4 p = permute(permute(permute(
-             i.z + vec4(0.0, i1.z, i2.z, 1.0))
-           + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-           + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-  float n_ = 0.142857142857;
-  vec3 ns = n_ * D.wyz - D.xzx;
-  vec4 j  = p - 49.0 * floor(p * ns.z * ns.z);
-  vec4 x_ = floor(j * ns.z);
-  vec4 y_ = floor(j - 7.0 * x_);
-  vec4 x  = x_ * ns.x + ns.yyyy;
-  vec4 y  = y_ * ns.x + ns.yyyy;
-  vec4 h  = 1.0 - abs(x) - abs(y);
-  vec4 b0 = vec4(x.xy, y.xy);
-  vec4 b1 = vec4(x.zw, y.zw);
-  vec4 s0 = floor(b0) * 2.0 + 1.0;
-  vec4 s1 = floor(b1) * 2.0 + 1.0;
-  vec4 sh = -step(h, vec4(0.0));
-  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-  vec3 p0 = vec3(a0.xy, h.x);
-  vec3 p1 = vec3(a0.zw, h.y);
-  vec3 p2 = vec3(a1.xy, h.z);
-  vec3 p3 = vec3(a1.zw, h.w);
-  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-  m = m * m;
-  return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-
-// Layered noise: two octaves for a more organic disintegration boundary.
-float disintegrateNoise(vec3 p, float t, float speed) {
-  float n  = snoise3(p + t * speed);
-  float n2 = snoise3(p * 2.1 + t * speed * 1.3 + 17.3);
-  return n * 0.65 + n2 * 0.35;  // -1..1
-}
-`;
 
 // ---------------------------------------------------------------------------
 // Vertex shader injection — passes model-space position to fragment
@@ -85,58 +26,78 @@ const VERT_INJECT   = /* glsl */`vDisintPos = position;`;
 // ---------------------------------------------------------------------------
 // Fragment shader injection — discard + edge glow
 // ---------------------------------------------------------------------------
-function buildFragPreamble(cfg) {
+
+// Shared helper: computes cell ID and per-cell random threshold.
+// All pixels inside the same cell share one _cellRand value, so entire
+// rectangular blocks pop off together rather than dissolving smoothly.
+const FRAG_CELL_HELPERS = /* glsl */`
+  // Hash a vec3 cell index to a single float in [0, 1].
+  float _cellHash(vec3 c) {
+    float h1 = fract(sin(dot(c,          vec3(127.1, 311.7,  74.7))) * 43758.5453);
+    float h2 = fract(sin(dot(c + 17.31,  vec3(269.5, 183.3, 246.1))) * 35793.4219);
+    float h3 = fract(sin(dot(c - 31.17,  vec3( 93.7, 421.9, 152.3))) * 58329.7341);
+    return fract(h1 * 0.5 + h2 * 0.3 + h3 * 0.2);
+  }
+
+  // Returns per-cell random [0,1] and axis-normalized position [0,1].
+  // uDisintNoiseScale controls cell grid density — higher = smaller blocks.
+  void _disintegrateVals(out float cellRand, out float axisPos) {
+    vec3 _cellID = floor(vDisintPos * uDisintNoiseScale);
+    cellRand = _cellHash(_cellID);
+    axisPos  = (dot(vDisintPos, uDisintAxis) - uDisintBoundsMin)
+               / max(uDisintBoundsRange, 0.0001);
+  }
+`;
+
+function buildFragPreamble() {
   return /* glsl */`
     varying vec3 vDisintPos;
-    uniform float uDisintProgress;  // 0=intact, 1=gone
-    uniform vec3  uDisintAxis;      // unit vector, disintegration direction
-    uniform float uDisintBoundsMin; // dot(boundsMin, axis)
+    uniform float uDisintProgress;    // 0=intact, 1=gone
+    uniform vec3  uDisintAxis;        // unit vector, disintegration direction
+    uniform float uDisintBoundsMin;   // dot(boundsMin, axis)
     uniform float uDisintBoundsRange;
-    uniform float uDisintEdgeWidth; // normalized (0..1 range of axisPos)
-    uniform float uDisintNoiseScale;
+    uniform float uDisintEdgeWidth;   // scatter band width in normalized axis units
+    uniform float uDisintNoiseScale;  // cell grid density (higher = smaller blocks)
     uniform float uDisintTime;
-    uniform float uDisintNoiseSpeed;
+    uniform float uDisintNoiseSpeed;  // edge shimmer speed
     uniform vec3  uDisintEdgeColor;
     uniform float uDisintEdgeIntensity;
-    ${NOISE_GLSL}
+    ${FRAG_CELL_HELPERS}
   `;
 }
 
 // Injected at #include <clipping_planes_fragment> — runs before color is computed.
+// Each cell gets a random offset from the sweep front — those with a lower
+// random value dissolve before the main front, those with higher survive longer.
+// The result is a ragged band of rectangular blocks popping off.
 const FRAG_DISCARD = /* glsl */`
-  // Normalize position along the disintegration axis to [0, 1].
-  float _axisPos = (dot(vDisintPos, uDisintAxis) - uDisintBoundsMin)
-                   / max(uDisintBoundsRange, 0.0001);
-
-  // Noise in [-1, 1], remapped to [0, 1], scaled by edge softness.
-  float _rawNoise = disintegrateNoise(
-    vDisintPos * uDisintNoiseScale,
-    uDisintTime,
-    uDisintNoiseSpeed
-  );
-  float _noise = (_rawNoise * 0.5 + 0.5) * uDisintEdgeWidth;
-
-  // Dissolution threshold: axisPos < (progress + noise) → discard.
-  float _dissolveThreshold = uDisintProgress + _noise - uDisintEdgeWidth * 0.5;
-  if (_axisPos < _dissolveThreshold) discard;
+  {
+    float _cr, _ap;
+    _disintegrateVals(_cr, _ap);
+    // Cell dissolves when progress sweeps past its individual threshold.
+    // edgeWidth controls the scatter band width (how ragged the boundary is).
+    float _cellThreshold = _ap + (_cr - 0.5) * uDisintEdgeWidth * 2.0;
+    if (_cellThreshold < uDisintProgress) discard;
+  }
 `;
 
 // Injected at #include <dithering_fragment> — runs after base color is computed.
+// Glows intact cells that are near the dissolution front.
 const FRAG_EDGE_GLOW = /* glsl */`
   {
-    // Distance from the disintegration front in normalized axis units.
-    float _axisPos2 = (dot(vDisintPos, uDisintAxis) - uDisintBoundsMin)
-                      / max(uDisintBoundsRange, 0.0001);
-    float _dissolveCenter = uDisintProgress;
-    float _dist = abs(_axisPos2 - _dissolveCenter);
+    float _cr2, _ap2;
+    _disintegrateVals(_cr2, _ap2);
+    float _cellThreshold2 = _ap2 + (_cr2 - 0.5) * uDisintEdgeWidth * 2.0;
+    float _distToFront = _cellThreshold2 - uDisintProgress;  // > 0 = intact
 
-    // Smooth band around the front edge.
-    float _edgeBand = 1.0 - smoothstep(0.0, uDisintEdgeWidth, _dist);
-    _edgeBand *= _edgeBand;  // sharpen toward the center
+    // Glow band on surviving cells close to the front.
+    float _edgeBand = 1.0 - smoothstep(0.0, uDisintEdgeWidth, _distToFront);
+    _edgeBand = _edgeBand * _edgeBand;
 
-    // Only glow on the "intact" side of the boundary.
-    float _intactSide = step(_dissolveCenter, _axisPos2);
-    gl_FragColor.rgb += uDisintEdgeColor * uDisintEdgeIntensity * _edgeBand * _intactSide;
+    // Pulse with time so the edge shimmers slightly.
+    float _pulse = 0.75 + 0.25 * sin(uDisintTime * uDisintNoiseSpeed * 6.0 + _cr2 * 12.0);
+
+    gl_FragColor.rgb += uDisintEdgeColor * uDisintEdgeIntensity * _edgeBand * _pulse;
   }
 `;
 
@@ -145,9 +106,9 @@ const FRAG_EDGE_GLOW = /* glsl */`
 // ---------------------------------------------------------------------------
 const DEFAULTS = {
   axis:           new THREE.Vector3(0, 1, 0),
-  noiseScale:     2.5,
-  noiseSpeed:     0.35,
-  edgeWidth:      0.12,
+  noiseScale:     10.0,  // cell grid density — tune to object size for visible blocks
+  noiseSpeed:     1.5,   // edge shimmer speed
+  edgeWidth:      0.15,  // scatter band width (0=sharp line, 1=full range)
   edgeColor:      new THREE.Color(0x00ffcc),
   edgeIntensity:  6.0,
 };
@@ -270,7 +231,7 @@ export class DisintegrationEffect {
         );
 
       // --- Fragment shader ---
-      const fragPreamble = buildFragPreamble(cfg);
+      const fragPreamble = buildFragPreamble();
 
       // Prepend uniforms + noise functions at the top of the fragment shader.
       // (Three.js adds 'precision highp float' at runtime, after onBeforeCompile,

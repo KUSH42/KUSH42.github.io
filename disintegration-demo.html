@@ -43,11 +43,11 @@
   <label>Progress <input type="range" id="sliderProgress" min="0" max="100" value="0" style="width:200px">
     <span id="valProgress">0.00</span>
   </label>
-  <label>Noise scale <input type="range" id="sliderNoise" min="1" max="80" value="25">
-    <span id="valNoise">2.5</span>
+  <label>Block size <input type="range" id="sliderNoise" min="1" max="200" value="100">
+    <span id="valNoise">10.0</span>
   </label>
-  <label>Edge width <input type="range" id="sliderEdge" min="1" max="50" value="12">
-    <span id="valEdge">0.12</span>
+  <label>Edge scatter <input type="range" id="sliderEdge" min="1" max="80" value="15">
+    <span id="valEdge">0.15</span>
   </label>
   <label>Edge glow <input type="range" id="sliderGlow" min="0" max="200" value="60">
     <span id="valGlow">6.0</span>
@@ -195,6 +195,7 @@ document.getElementById('sliderProgress').addEventListener('input', e => {
 document.getElementById('sliderNoise').addEventListener('input', e => {
   const v = e.target.value / 10;
   document.getElementById('valNoise').textContent = v.toFixed(1);
+  // higher slider value = higher noiseScale = smaller blocks
   // Noise scale requires shader recompile — rebuild fx
   if (fx) {
     const p = fx.progress;
@@ -207,6 +208,8 @@ document.getElementById('sliderEdge').addEventListener('input', e => {
   const v = e.target.value / 100;
   fx.edgeWidth = v;
   document.getElementById('valEdge').textContent = v.toFixed(2);
+  // edgeWidth also controls the scatter band in the discard shader —
+  // changing it live updates via uniform, no recompile needed
 });
 
 document.getElementById('sliderGlow').addEventListener('input', e => {
