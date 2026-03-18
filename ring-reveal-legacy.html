@@ -55,8 +55,10 @@ controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
-// ── Same geometry as right side, same base colour — differences are the point ─
-const COLOR = 0xff6600;   // single flat orange — no B gradient endpoint
+// ── Same geometry/timing as right side — only rendering differs ────────────
+const DURATION = 1800; // ms — must match line2 page
+
+const COLOR = 0xff6600; // single flat orange — no B gradient endpoint
 
 const geomArgs = {
   radius: 1.030, numRings: 48, samplesPerRing: 256,
@@ -67,14 +69,14 @@ const sharedMatArgs = {
   stagger: 0.55, ringDuration: 0.35,
   warpAmount: 0.37, emissiveIntensity: 3.00,
   direction: 'south-to-north',
-  colorSpread: 0.52, brightSpread: 0.28,
+  colorSpread: 0.52, brightSpread: 0.12,
   flickerAmp: 0.15, flickerSpeed: 4.0,
-  arcColorSpread: 0,   // no arc gradient — arcPosition wasn't wired up
+  arcColorSpread: 0,
 };
 
 const baseMat = createRingMaterial({
   ...sharedMatArgs,
-  lineColor: COLOR, lineColorB: COLOR,   // B == A → no gradient
+  lineColor: COLOR, lineColorB: COLOR,
   opacity: 0.90, blending: THREE.NormalBlending,
 });
 const baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), baseMat);
@@ -117,16 +119,8 @@ window.addEventListener('message', e => {
   syncingCamera = false;
 });
 
-// ── RAF loop ───────────────────────────────────────────────────────────────
-let elapsed = 0, reversed = false, time = 0;
-const durationMs = 1800;
-
-window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
+// ── RAF — progress driven by performance.now() so both iframes stay in sync ─
+let time = 0;
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta() * 1000, 100);
@@ -134,14 +128,19 @@ renderer.setAnimationLoop(() => {
   baseMat.uniforms.uTime.value = time;
   glowMat.uniforms.uTime.value = time;
 
-  elapsed += dt;
-  const rawT   = Math.min(elapsed / durationMs, 1.0);
-  const easedT = easeInOutCubic(rawT);
-  setProgress(reversed ? 1.0 - easedT : easedT);
-  if (rawT >= 1.0) { elapsed = 0; reversed = !reversed; }
+  // Derive progress from shared wall-clock: play → reverse → repeat
+  const phase = (performance.now() / DURATION) % 2;
+  const rawT  = phase < 1 ? phase : 2 - phase;
+  setProgress(easeInOutCubic(rawT));
 
   controls.update();
-  renderer.render(scene, camera);   // plain render — no composer
+  renderer.render(scene, camera);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
 });
 </script>
 </body>

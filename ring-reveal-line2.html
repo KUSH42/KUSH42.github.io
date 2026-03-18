@@ -62,6 +62,8 @@ composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new EffectPass(camera, bloomEffect));
 
 // ── Animator ───────────────────────────────────────────────────────────────
+const DURATION = 1800; // ms — must match legacy page
+
 const anim = new RingRevealAnimator(scene, {
   radius:                  1.030,
   numRings:                48,
@@ -72,7 +74,7 @@ const anim = new RingRevealAnimator(scene, {
   glowColorB:              0x00aaff,
   lineWidth:               2,
   opacity:                 0.90,
-  glowOpacity:             0.45,
+  glowOpacity:             0.30,
   glowRadius:              1.108,
   glowLayers:              4,
   glowLayerRadiusStep:     0.013,
@@ -81,10 +83,10 @@ const anim = new RingRevealAnimator(scene, {
   warpAmount:              0.37,
   stagger:                 0.55,
   ringDuration:            0.35,
-  durationMs:              1800,
+  durationMs:              DURATION,
   direction:               'south-to-north',
   colorSpread:             0.52,
-  brightSpread:            0.28,
+  brightSpread:            0.12,
   flickerAmp:              0.15,
   flickerSpeed:            4.0,
   arcColorSpread:          1.00,
@@ -113,9 +115,22 @@ window.addEventListener('message', e => {
   syncingCamera = false;
 });
 
-// ── Loop ───────────────────────────────────────────────────────────────────
-function loop() { anim.play(() => anim.reverse(loop)); }
-loop();
+// ── RAF — progress driven by performance.now() so both iframes stay in sync ─
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta() * 1000, 100);
+
+  // Drive time uniform for flicker (tick with _playing=false only advances _time)
+  anim.tick(dt);
+
+  // Derive progress from shared wall-clock: play → reverse → repeat
+  const phase = (performance.now() / DURATION) % 2;
+  const rawT  = phase < 1 ? phase : 2 - phase;
+  anim._setProgress(easeInOutCubic(rawT));
+
+  controls.update();
+  composer.render();
+});
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -123,13 +138,6 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   anim.setResolution(innerWidth, innerHeight);
-});
-
-const clock = new THREE.Clock();
-renderer.setAnimationLoop(() => {
-  anim.tick(Math.min(clock.getDelta() * 1000, 100));
-  controls.update();
-  composer.render();
 });
 </script>
 </body>
