@@ -41,6 +41,12 @@ export interface RingRevealOptions {
   glowOpacity?: number;
   /** Glow ring radius multiplier. Default: 1.008 */
   glowRadius?: number;
+  /** Number of concentric glow layers (neon-tube stack). Default: 3 */
+  glowLayers?: number;
+  /** Per-layer radius increment as a multiplier delta added to glowRadius. Default: 0.004 */
+  glowLayerRadiusStep?: number;
+  /** Opacity multiplied by this for each successive glow layer. Default: 0.5 */
+  glowLayerOpacityFalloff?: number;
   /** Fragment colour multiplier — values >1 push above bloom threshold. Default: 1.5 */
   emissiveIntensity?: number;
   /** Radial warp: rings snap from (1-warpAmount) scale to 1.0 with easeOutBack overshoot. Default: 0.12 */
@@ -70,8 +76,10 @@ export declare class RingRevealAnimator {
 
   /** Direct reference to base LineSegments (set renderOrder here). */
   readonly baseRings: THREE.LineSegments;
-  /** Direct reference to glow LineSegments (set renderOrder here). */
+  /** Innermost glow layer (layer 0) — backward-compatible alias for glowLayers[0]. */
   readonly glowRings: THREE.LineSegments;
+  /** All glow layer LineSegments, ordered innermost → outermost. */
+  readonly glowLayers: THREE.LineSegments[];
 
   play(onComplete?: () => void): void;
   reverse(onComplete?: () => void): void;

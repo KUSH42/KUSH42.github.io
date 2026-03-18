@@ -283,6 +283,21 @@
     <span class="val" id="vGlowRad">1.008</span>
   </label>
   <label>
+    <span class="lname">Glow layers</span>
+    <input type="range" id="slGlowLayers" min="1" max="6" step="1" value="3">
+    <span class="val" id="vGlowLayers">3</span>
+  </label>
+  <label>
+    <span class="lname">Layer step</span>
+    <input type="range" id="slGlowStep" min="0" max="20" value="4">
+    <span class="val" id="vGlowStep">0.004</span>
+  </label>
+  <label>
+    <span class="lname">Layer falloff</span>
+    <input type="range" id="slGlowFalloff" min="10" max="100" value="50">
+    <span class="val" id="vGlowFalloff">0.50</span>
+  </label>
+  <label>
     <span class="lname">Warp amount</span>
     <input type="range" id="slWarp" min="0" max="80" value="12">
     <span class="val" id="vWarp">0.12</span>
@@ -400,12 +415,12 @@ const PRESETS = {
   ghost:     { label: 'Ghost',     lineColor: 0x88ccff, glowColor: 0x4499ff, opacity: 0.35, glowOpacity: 0.08, emissiveIntensity: 0.8,  stagger: 0.70, warpAmount: 0.35, numRings: 16, direction: 'north-to-south', easingKey: 'easeOutExpo',    durationMs: 3200, ringDuration: 0.50, colorSpread: 0.12, brightSpread: 0.30, flickerAmp: 0.08, flickerSpeed: 0.8 },
   scanner:   { label: 'Scanner',   lineColor: 0x00ff44, glowColor: 0x00cc33, opacity: 0.85, glowOpacity: 0.30, emissiveIntensity: 2.5,  stagger: 0.95, warpAmount: 0.04, numRings: 32, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs:  900, ringDuration: 0.20, colorSpread: 0.10, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
   cosmic:    { label: 'Cosmic',    lineColor: 0x8844ff, lineColorB: 0x00ffee, glowColor: 0x4422cc, glowColorB: 0x0088bb, opacity: 0.70, glowOpacity: 0.35, emissiveIntensity: 2.2,  stagger: 0.50, warpAmount: 0.20, numRings: 64, direction: 'equator-out',    easingKey: 'easeInOutCubic', durationMs: 2500, ringDuration: 0.35, colorSpread: 0.25, brightSpread: 0.20, flickerAmp: 0.05, flickerSpeed: 1.5 },
-  ignition:  { label: 'Ignition',  lineColor: 0xffee00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28, colorSpread: 0.15, brightSpread: 0.35, flickerAmp: 0.20, flickerSpeed: 6.0 },
-  neon:      { label: 'Neon',      lineColor: 0xff00ff, lineColorB: 0x00ffff, glowColor: 0xff00cc, glowColorB: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32, colorSpread: 0.30, brightSpread: 0.15, flickerAmp: 0.10, flickerSpeed: 3.0 },
+  ignition:  { label: 'Ignition',  lineColor: 0xffee00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28, colorSpread: 0.15, brightSpread: 0.35, flickerAmp: 0.20, flickerSpeed: 6.0, glowLayers: 4, glowLayerRadiusStep: 0.006, glowLayerOpacityFalloff: 0.40 },
+  neon:      { label: 'Neon',      lineColor: 0xff00ff, lineColorB: 0x00ffff, glowColor: 0xff00cc, glowColorB: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32, colorSpread: 0.30, brightSpread: 0.15, flickerAmp: 0.10, flickerSpeed: 3.0, glowLayers: 5, glowLayerRadiusStep: 0.005, glowLayerOpacityFalloff: 0.45 },
   stealth:   { label: 'Stealth',   lineColor: 0x003322, glowColor: 0x004433, opacity: 0.30, glowOpacity: 0.06, emissiveIntensity: 0.6,  stagger: 0.20, warpAmount: 0.03, numRings: 24, direction: 'north-to-south', easingKey: 'linear',         durationMs: 4000, ringDuration: 0.45, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  solar:     { label: 'Solar',     lineColor: 0xffffff, lineColorB: 0xff4400, glowColor: 0xffcc00, glowColorB: 0xff2200, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25, colorSpread: 0.20, brightSpread: 0.40, flickerAmp: 0.25, flickerSpeed: 2.5 },
+  solar:     { label: 'Solar',     lineColor: 0xffffff, lineColorB: 0xff4400, glowColor: 0xffcc00, glowColorB: 0xff2200, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25, colorSpread: 0.20, brightSpread: 0.40, flickerAmp: 0.25, flickerSpeed: 2.5, glowLayers: 4, glowLayerRadiusStep: 0.007, glowLayerOpacityFalloff: 0.38 },
   wisp:      { label: 'Wisp',      lineColor: 0xffffff, lineColorB: 0x88aaff, glowColor: 0xccddff, glowColorB: 0x4466cc, opacity: 0.20, glowOpacity: 0.05, emissiveIntensity: 0.5,  stagger: 0.85, warpAmount: 0.55, numRings:  8, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 5000, ringDuration: 0.60, colorSpread: 0.15, brightSpread: 0.50, flickerAmp: 0.12, flickerSpeed: 0.5 },
-  pulse:     { label: 'Pulse',     lineColor: 0xff0066, glowColor: 0xff0033, opacity: 0.95, glowOpacity: 0.60, emissiveIntensity: 6.0,  stagger: 1.00, warpAmount: 0.25, numRings: 48, direction: 'equator-out',    easingKey: 'backInOut',      durationMs:  700, ringDuration: 0.15, colorSpread: 0.05, brightSpread: 0.10, flickerAmp: 0.30, flickerSpeed: 8.0 },
+  pulse:     { label: 'Pulse',     lineColor: 0xff0066, glowColor: 0xff0033, opacity: 0.95, glowOpacity: 0.60, emissiveIntensity: 6.0,  stagger: 1.00, warpAmount: 0.25, numRings: 48, direction: 'equator-out',    easingKey: 'backInOut',      durationMs:  700, ringDuration: 0.15, colorSpread: 0.05, brightSpread: 0.10, flickerAmp: 0.30, flickerSpeed: 8.0, glowLayers: 6, glowLayerRadiusStep: 0.004, glowLayerOpacityFalloff: 0.42 },
   arctic:    { label: 'Arctic',    lineColor: 0x00eeff, lineColorB: 0xffffff, glowColor: 0x88ffff, glowColorB: 0xaaffee, opacity: 0.55, glowOpacity: 0.20, emissiveIntensity: 1.8,  stagger: 0.45, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 2200, ringDuration: 0.38, colorSpread: 0.08, brightSpread: 0.25, flickerAmp: 0.06, flickerSpeed: 1.2 },
   grid:      { label: 'Grid',      lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.60, glowOpacity: 0.15, emissiveIntensity: 1.0,  stagger: 0.00, warpAmount: 0.00, numRings: 48, direction: 'south-to-north', easingKey: 'linear',         durationMs: 2000, ringDuration: 0.08, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
   ember:     { label: 'Ember',     lineColor: 0xffcc00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.65, glowOpacity: 0.30, emissiveIntensity: 2.8,  stagger: 0.65, warpAmount: 0.30, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 2800, ringDuration: 0.55, colorSpread: 0.12, brightSpread: 0.35, flickerAmp: 0.08, flickerSpeed: 1.8 },
@@ -447,7 +462,10 @@ function getOptions() {
     glowOpacity:       +document.getElementById('slGlowOpacity').value / 100,
     emissiveIntensity: +document.getElementById('slEmissive').value / 100,
     warpAmount:        +document.getElementById('slWarp').value / 100,
-    glowRadius:        +document.getElementById('slGlowRad').value / 100,
+    glowRadius:              +document.getElementById('slGlowRad').value / 100,
+    glowLayers:              +document.getElementById('slGlowLayers').value,
+    glowLayerRadiusStep:     +document.getElementById('slGlowStep').value / 1000,
+    glowLayerOpacityFalloff: +document.getElementById('slGlowFalloff').value / 100,
     colorSpread:       +document.getElementById('slColorSpread').value / 100,
     brightSpread:      +document.getElementById('slBrightSpread').value / 100,
     flickerAmp:        +document.getElementById('slFlickerAmp').value / 100,
@@ -494,6 +512,9 @@ function syncUI(cfg) {
   set('slBrightSpread', cfg.brightSpread !== undefined ? Math.round(cfg.brightSpread * 100) : undefined, 'vBrightSpread', v => (v / 100).toFixed(2));
   set('slFlickerAmp',   cfg.flickerAmp   !== undefined ? Math.round(cfg.flickerAmp   * 100) : undefined, 'vFlickerAmp',   v => (v / 100).toFixed(2));
   set('slFlickerSpeed', cfg.flickerSpeed !== undefined ? Math.round(cfg.flickerSpeed * 10)  : undefined, 'vFlickerSpeed', v => (v / 10).toFixed(1));
+  set('slGlowLayers',   cfg.glowLayers,                                                                   'vGlowLayers');
+  set('slGlowStep',     cfg.glowLayerRadiusStep     !== undefined ? Math.round(cfg.glowLayerRadiusStep     * 1000) : undefined, 'vGlowStep',    v => (v / 1000).toFixed(3));
+  set('slGlowFalloff',  cfg.glowLayerOpacityFalloff !== undefined ? Math.round(cfg.glowLayerOpacityFalloff * 100)  : undefined, 'vGlowFalloff', v => (v / 100).toFixed(2));
   if (cfg.ringDuration !== undefined) {
     const v = Math.max(0.001, cfg.ringDuration);
     set('slRingDur', Math.round(v * 100), 'vRingDur', x => (x / 100).toFixed(2));
@@ -507,7 +528,7 @@ function syncUI(cfg) {
     const d = dirMap[cfg.direction] ?? 0;
     if (anim) {
       anim._baseRings.material.uniforms.uDirection.value = d;
-      anim._glowRings.material.uniforms.uDirection.value = d;
+      anim._glowLayers.forEach(l => { l.material.uniforms.uDirection.value = d; });
     }
   }
   if (cfg.easingKey) {
@@ -533,21 +554,24 @@ function applyPreset(key, withMorph = true) {
   const dur = withMorph ? +document.getElementById('slMorphDur').value : 0;
 
   anim.morphTo({
-    lineColor:         p.lineColor,
-    lineColorB:        p.lineColorB  ?? p.lineColor,
-    glowColor:         p.glowColor,
-    glowColorB:        p.glowColorB  ?? p.glowColor,
-    opacity:           p.opacity,
-    glowOpacity:       p.glowOpacity,
-    emissiveIntensity: p.emissiveIntensity,
-    stagger:           p.stagger,
-    warpAmount:        p.warpAmount,
-    numRings:          p.numRings,
-    ringDuration:      p.ringDuration,
-    colorSpread:       p.colorSpread  ?? 0,
-    brightSpread:      p.brightSpread ?? 0,
-    flickerAmp:        p.flickerAmp   ?? 0,
-    flickerSpeed:      p.flickerSpeed ?? 2.0,
+    lineColor:               p.lineColor,
+    lineColorB:              p.lineColorB  ?? p.lineColor,
+    glowColor:               p.glowColor,
+    glowColorB:              p.glowColorB  ?? p.glowColor,
+    opacity:                 p.opacity,
+    glowOpacity:             p.glowOpacity,
+    emissiveIntensity:       p.emissiveIntensity,
+    stagger:                 p.stagger,
+    warpAmount:              p.warpAmount,
+    numRings:                p.numRings,
+    ringDuration:            p.ringDuration,
+    colorSpread:             p.colorSpread             ?? 0,
+    brightSpread:            p.brightSpread            ?? 0,
+    flickerAmp:              p.flickerAmp              ?? 0,
+    flickerSpeed:            p.flickerSpeed            ?? 2.0,
+    glowLayers:              p.glowLayers              ?? 3,
+    glowLayerRadiusStep:     p.glowLayerRadiusStep     ?? 0.004,
+    glowLayerOpacityFalloff: p.glowLayerOpacityFalloff ?? 0.5,
   }, dur);
 
   syncUI(p);
@@ -681,7 +705,7 @@ document.getElementById('selDirection').addEventListener('change', e => {
   const d = dirMap[e.target.value] ?? 0;
   anim._options.direction = e.target.value;
   anim._baseRings.material.uniforms.uDirection.value = d;
-  anim._glowRings.material.uniforms.uDirection.value = d;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uDirection.value = d; });
 });
 
 document.getElementById('selEasing').addEventListener('change', e => {
@@ -697,7 +721,7 @@ document.getElementById('slStagger').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vStagger').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uStagger.value = v;
-  anim._glowRings.material.uniforms.uStagger.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uStagger.value = v; });
   anim._options.stagger = v;
 });
 
@@ -705,7 +729,7 @@ document.getElementById('slRingDur').addEventListener('input', e => {
   const v = Math.max(0.001, e.target.value / 100);
   document.getElementById('vRingDur').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uRingDuration.value = v;
-  anim._glowRings.material.uniforms.uRingDuration.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uRingDuration.value = v; });
   anim._options.ringDuration = v;
 });
 
@@ -742,12 +766,12 @@ document.getElementById('colLineB').addEventListener('input', e => {
 });
 document.getElementById('colGlow').addEventListener('input', e => {
   const hex = parseInt(e.target.value.slice(1), 16);
-  anim._glowRings.material.uniforms.uColor.value.set(hex);
+  anim._glowLayers.forEach(l => l.material.uniforms.uColor.value.set(hex));
   anim._options.glowColor = hex;
 });
 document.getElementById('colGlowB').addEventListener('input', e => {
   const hex = parseInt(e.target.value.slice(1), 16);
-  anim._glowRings.material.uniforms.uColorB.value.set(hex);
+  anim._glowLayers.forEach(l => l.material.uniforms.uColorB.value.set(hex));
   anim._options.glowColorB = hex;
 });
 document.getElementById('slOpacity').addEventListener('input', e => {
@@ -759,56 +783,73 @@ document.getElementById('slOpacity').addEventListener('input', e => {
 document.getElementById('slGlowOpacity').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vGlowOpacity').textContent = v.toFixed(2);
-  anim._glowRings.material.uniforms.uOpacity.value = v;
+  anim._glowLayers.forEach((l, i) => {
+    l.material.uniforms.uOpacity.value = v * Math.pow(anim._options.glowLayerOpacityFalloff, i);
+  });
   anim._options.glowOpacity = v;
 });
 document.getElementById('slEmissive').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vEmissive').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uEmissiveIntensity.value = v;
-  anim._glowRings.material.uniforms.uEmissiveIntensity.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uEmissiveIntensity.value = v; });
   anim._options.emissiveIntensity = v;
 });
 document.getElementById('slWarp').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vWarp').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uWarpAmount.value = v;
-  anim._glowRings.material.uniforms.uWarpAmount.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uWarpAmount.value = v; });
   anim._options.warpAmount = v;
 });
 document.getElementById('slGlowRad').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vGlowRad').textContent = v.toFixed(3);
   const old = anim._options.glowRadius;
-  anim._glowRings.scale.setScalar(v / old);
+  anim._glowLayers.forEach(l => l.scale.setScalar(v / old));
   anim._options.glowRadius = v;
+});
+document.getElementById('slGlowLayers').addEventListener('change', e => {
+  const v = +e.target.value;
+  document.getElementById('vGlowLayers').textContent = v;
+  anim.morphTo({ glowLayers: v }, 0);
+});
+document.getElementById('slGlowStep').addEventListener('change', e => {
+  const v = e.target.value / 1000;
+  document.getElementById('vGlowStep').textContent = v.toFixed(3);
+  anim.morphTo({ glowLayerRadiusStep: v }, 0);
+});
+document.getElementById('slGlowFalloff').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vGlowFalloff').textContent = v.toFixed(2);
+  anim.morphTo({ glowLayerOpacityFalloff: v }, 0);
 });
 document.getElementById('slColorSpread').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vColorSpread').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uColorSpread.value = v;
-  anim._glowRings.material.uniforms.uColorSpread.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uColorSpread.value = v; });
   anim._options.colorSpread = v;
 });
 document.getElementById('slBrightSpread').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vBrightSpread').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uBrightSpread.value = v;
-  anim._glowRings.material.uniforms.uBrightSpread.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uBrightSpread.value = v; });
   anim._options.brightSpread = v;
 });
 document.getElementById('slFlickerAmp').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('vFlickerAmp').textContent = v.toFixed(2);
   anim._baseRings.material.uniforms.uFlickerAmp.value = v;
-  anim._glowRings.material.uniforms.uFlickerAmp.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uFlickerAmp.value = v; });
   anim._options.flickerAmp = v;
 });
 document.getElementById('slFlickerSpeed').addEventListener('input', e => {
   const v = e.target.value / 10;
   document.getElementById('vFlickerSpeed').textContent = v.toFixed(1);
   anim._baseRings.material.uniforms.uFlickerSpeed.value = v;
-  anim._glowRings.material.uniforms.uFlickerSpeed.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uFlickerSpeed.value = v; });
   anim._options.flickerSpeed = v;
 });
 document.getElementById('slMorphDur').addEventListener('input', e => {

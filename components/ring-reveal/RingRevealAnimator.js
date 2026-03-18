@@ -13,32 +13,35 @@ const _tmpColor  = new THREE.Color();
 const _tmpColor2 = new THREE.Color();
 
 const DEFAULTS = {
-  radius:            1.0,
-  numRings:          48,
-  samplesPerRing:    256,
-  latitudeMin:       -Math.PI / 2,
-  latitudeMax:        Math.PI / 2,
-  durationMs:        1800,
-  easingFn:          easeInOutCubic,
-  direction:         'south-to-north',
-  stagger:           0.4,
-  ringDuration:      0.35,
-  lineColor:         0x00ffcc,
-  lineColorB:        0x00ffcc,
-  lineWidth:         1.0,
-  opacity:           0.7,
-  glowColor:         0x00ffcc,
-  glowColorB:        0x00ffcc,
-  glowOpacity:       0.25,
-  glowRadius:        1.008,
-  emissiveIntensity: 1.5,
-  warpAmount:        0.12,
-  morphDurationMs:   800,
-  upAxis:            'y',
-  colorSpread:       0.0,
-  brightSpread:      0.0,
-  flickerAmp:        0.0,
-  flickerSpeed:      2.0,
+  radius:                  1.0,
+  numRings:                48,
+  samplesPerRing:          256,
+  latitudeMin:             -Math.PI / 2,
+  latitudeMax:              Math.PI / 2,
+  durationMs:              1800,
+  easingFn:                easeInOutCubic,
+  direction:               'south-to-north',
+  stagger:                 0.4,
+  ringDuration:            0.35,
+  lineColor:               0x00ffcc,
+  lineColorB:              0x00ffcc,
+  lineWidth:               1.0,
+  opacity:                 0.7,
+  glowColor:               0x00ffcc,
+  glowColorB:              0x00ffcc,
+  glowOpacity:             0.25,
+  glowRadius:              1.008,
+  glowLayers:              3,
+  glowLayerRadiusStep:     0.004,
+  glowLayerOpacityFalloff: 0.5,
+  emissiveIntensity:       1.5,
+  warpAmount:              0.12,
+  morphDurationMs:         800,
+  upAxis:                  'y',
+  colorSpread:             0.0,
+  brightSpread:            0.0,
+  flickerAmp:              0.0,
+  flickerSpeed:            2.0,
 };
 
 export class RingRevealAnimator {
@@ -51,20 +54,21 @@ export class RingRevealAnimator {
     this._options = { ...DEFAULTS, ...options };
 
     // Clamp/validate
-    this._options.ringDuration = Math.max(0.001, this._options.ringDuration);
-    this._options.numRings     = Math.max(2,     this._options.numRings);
-    this._options.samplesPerRing = Math.max(3,   this._options.samplesPerRing);
-    this._options.stagger      = Math.max(0, Math.min(1, this._options.stagger));
-    this._options.radius       = Math.max(Number.EPSILON, this._options.radius);
-    this._options.glowRadius   = Math.max(Number.EPSILON, this._options.glowRadius);
+    this._options.ringDuration   = Math.max(0.001, this._options.ringDuration);
+    this._options.numRings       = Math.max(2,     this._options.numRings);
+    this._options.samplesPerRing = Math.max(3,     this._options.samplesPerRing);
+    this._options.stagger        = Math.max(0, Math.min(1, this._options.stagger));
+    this._options.radius         = Math.max(Number.EPSILON, this._options.radius);
+    this._options.glowRadius     = Math.max(Number.EPSILON, this._options.glowRadius);
+    this._options.glowLayers     = Math.max(1, Math.round(this._options.glowLayers));
 
-    this._playing   = false;
-    this._reversed  = false;
-    this._elapsed   = 0;
-    this._progress  = 0;
+    this._playing    = false;
+    this._reversed   = false;
+    this._elapsed    = 0;
+    this._progress   = 0;
     this._onComplete = null;
-    this._morph     = null;
-    this._time      = 0;
+    this._morph      = null;
+    this._time       = 0;
 
     this._build();
   }
@@ -76,8 +80,10 @@ export class RingRevealAnimator {
 
   /** Direct reference to base LineSegments (for renderOrder etc.) */
   get baseRings() { return this._baseRings; }
-  /** Direct reference to glow LineSegments (for renderOrder etc.) */
-  get glowRings() { return this._glowRings; }
+  /** Direct reference to innermost glow layer (layer 0) — backward-compatible alias. */
+  get glowRings() { return this._glowLayers[0]; }
+  /** All glow layer LineSegments, ordered from innermost to outermost. */
+  get glowLayers() { return this._glowLayers; }
 
   // ── Lifecycle ───────────────────────────────────────────────
 
@@ -86,8 +92,8 @@ export class RingRevealAnimator {
    * @param {(() => void) | undefined} onComplete
    */
   play(onComplete) {
-    this._reversed  = false;
-    this._playing   = true;
+    this._reversed   = false;
+    this._playing    = true;
     this._onComplete = onComplete ?? null;
   }
 
@@ -96,8 +102,8 @@ export class RingRevealAnimator {
    * @param {(() => void) | undefined} onComplete
    */
   reverse(onComplete) {
-    this._reversed  = true;
-    this._playing   = true;
+    this._reversed   = true;
+    this._playing    = true;
     this._onComplete = onComplete ?? null;
     // Find the rawT where easingFn(rawT) === 1 - currentProgress so the visual
     // position is continuous when direction flips.  Simple rawT mirroring is only
@@ -118,13 +124,13 @@ export class RingRevealAnimator {
 
   /** Reset to fully hidden state. */
   reset() {
-    this._playing   = false;
-    this._reversed  = false;
-    this._elapsed   = 0;
-    this._progress  = 0;
+    this._playing    = false;
+    this._reversed   = false;
+    this._elapsed    = 0;
+    this._progress   = 0;
     this._onComplete = null;
     this._disposeCrossFade();
-    this._morph     = null;
+    this._morph      = null;
     this._setProgress(0);
   }
 
@@ -138,11 +144,11 @@ export class RingRevealAnimator {
     // 0. Advance time for per-ring flicker
     this._time += deltaMs / 1000;
     this._baseRings.material.uniforms.uTime.value = this._time;
-    this._glowRings.material.uniforms.uTime.value = this._time;
+    this._glowLayers.forEach(l => { l.material.uniforms.uTime.value = this._time; });
     const cf = this._morph?.crossFade;
     if (cf) {
       cf.oldBase.material.uniforms.uTime.value = this._time;
-      cf.oldGlow.material.uniforms.uTime.value = this._time;
+      cf.oldGlowLayers.forEach(l => { l.material.uniforms.uTime.value = this._time; });
     }
 
     // 1. Advance reveal animation
@@ -180,7 +186,7 @@ export class RingRevealAnimator {
    */
   setColors(lineColor, glowColor) {
     this._baseRings.material.uniforms.uColor.value.set(lineColor);
-    this._glowRings.material.uniforms.uColor.value.set(glowColor);
+    this._glowLayers.forEach(l => l.material.uniforms.uColor.value.set(glowColor));
     this._options.lineColor = lineColor;
     this._options.glowColor = glowColor;
   }
@@ -194,7 +200,10 @@ export class RingRevealAnimator {
     this._baseRings.material.uniforms.uOpacity.value = base;
     this._options.opacity = base;
     if (glow !== undefined) {
-      this._glowRings.material.uniforms.uOpacity.value = glow;
+      this._glowLayers.forEach((l, i) => {
+        l.material.uniforms.uOpacity.value =
+          glow * Math.pow(this._options.glowLayerOpacityFalloff, i);
+      });
       this._options.glowOpacity = glow;
     }
   }
@@ -207,41 +216,62 @@ export class RingRevealAnimator {
    * @param {number} [durationMs]
    */
   morphTo(targetConfig, durationMs) {
-    const dur = durationMs ?? this._options.morphDurationMs;
+    const dur  = durationMs ?? this._options.morphDurationMs;
     const opts = this._options;
-    const baseMat = this._baseRings.material;
-    const glowMat = this._glowRings.material;
+    const baseMat  = this._baseRings.material;
+    const glowMat0 = this._glowLayers[0].material;
 
     // Apply non-morphable props immediately
-    if (targetConfig.durationMs  !== undefined) opts.durationMs  = targetConfig.durationMs;
-    if (targetConfig.easingFn    !== undefined) opts.easingFn    = targetConfig.easingFn;
-    if (targetConfig.direction   !== undefined) opts.direction   = targetConfig.direction;
+    if (targetConfig.durationMs      !== undefined) opts.durationMs      = targetConfig.durationMs;
+    if (targetConfig.easingFn        !== undefined) opts.easingFn        = targetConfig.easingFn;
+    if (targetConfig.direction       !== undefined) opts.direction       = targetConfig.direction;
     if (targetConfig.morphDurationMs !== undefined) opts.morphDurationMs = targetConfig.morphDurationMs;
-    if (targetConfig.upAxis      !== undefined) opts.upAxis      = targetConfig.upAxis;
-    if (targetConfig.latitudeMin !== undefined) opts.latitudeMin = targetConfig.latitudeMin;
-    if (targetConfig.latitudeMax !== undefined) opts.latitudeMax = targetConfig.latitudeMax;
-    if (targetConfig.lineWidth   !== undefined) {
+    if (targetConfig.upAxis          !== undefined) opts.upAxis          = targetConfig.upAxis;
+    if (targetConfig.latitudeMin     !== undefined) opts.latitudeMin     = targetConfig.latitudeMin;
+    if (targetConfig.latitudeMax     !== undefined) opts.latitudeMax     = targetConfig.latitudeMax;
+    if (targetConfig.lineWidth       !== undefined) {
       opts.lineWidth = targetConfig.lineWidth;
       baseMat.linewidth = targetConfig.lineWidth;
-      glowMat.linewidth = targetConfig.lineWidth;
+      this._glowLayers.forEach(l => { l.material.linewidth = targetConfig.lineWidth; });
     }
+
+    // Apply glow layer falloff immediately (no rebuild needed)
+    if (targetConfig.glowLayerOpacityFalloff !== undefined &&
+        targetConfig.glowLayerOpacityFalloff !== opts.glowLayerOpacityFalloff) {
+      opts.glowLayerOpacityFalloff = targetConfig.glowLayerOpacityFalloff;
+      this._glowLayers.forEach((l, i) => {
+        l.material.uniforms.uOpacity.value =
+          opts.glowOpacity * Math.pow(opts.glowLayerOpacityFalloff, i);
+      });
+    }
+
+    // Rebuild glow layers when count or radius step changes
+    const glowLayersChanged = targetConfig.glowLayers           !== undefined
+                           && targetConfig.glowLayers           !== opts.glowLayers;
+    const glowStepChanged   = targetConfig.glowLayerRadiusStep  !== undefined
+                           && targetConfig.glowLayerRadiusStep  !== opts.glowLayerRadiusStep;
+    if (glowLayersChanged)  opts.glowLayers          = Math.max(1, Math.round(targetConfig.glowLayers));
+    if (glowStepChanged)    opts.glowLayerRadiusStep = targetConfig.glowLayerRadiusStep;
+    if (glowLayersChanged || glowStepChanged) this._rebuildGlowLayers();
 
     const fromRadius = opts.radius;
     const toRadius   = targetConfig.radius ?? opts.radius;
 
     // Cross-fade when ring count changes: build new geometry immediately, fade old rings out.
-    const numRingsChanged   = targetConfig.numRings       !== undefined && targetConfig.numRings       !== opts.numRings;
-    const samplesChanged    = targetConfig.samplesPerRing !== undefined && targetConfig.samplesPerRing !== opts.samplesPerRing;
+    const numRingsChanged = targetConfig.numRings       !== undefined
+                         && targetConfig.numRings       !== opts.numRings;
+    const samplesChanged  = targetConfig.samplesPerRing !== undefined
+                         && targetConfig.samplesPerRing !== opts.samplesPerRing;
     let crossFade = null;
 
     if (numRingsChanged || samplesChanged) {
-      const oldBase         = this._baseRings;
-      const oldGlow         = this._glowRings;
-      const oldBaseOpacity  = baseMat.uniforms.uOpacity.value;
-      const oldGlowOpacity  = glowMat.uniforms.uOpacity.value;
+      const oldBase             = this._baseRings;
+      const oldGlowLayers       = this._glowLayers.slice();
+      const oldBaseOpacity      = baseMat.uniforms.uOpacity.value;
+      const oldGlowLayerOpacities = oldGlowLayers.map(l => l.material.uniforms.uOpacity.value);
 
-      if (numRingsChanged)  opts.numRings       = targetConfig.numRings;
-      if (samplesChanged)   opts.samplesPerRing = targetConfig.samplesPerRing;
+      if (numRingsChanged) opts.numRings       = targetConfig.numRings;
+      if (samplesChanged)  opts.samplesPerRing = targetConfig.samplesPerRing;
 
       const geomArgs = {
         radius: opts.radius, numRings: opts.numRings, samplesPerRing: opts.samplesPerRing,
@@ -249,41 +279,48 @@ export class RingRevealAnimator {
       };
       const sharedArgs = {
         lineWidth: opts.lineWidth, numRings: opts.numRings,
-        stagger:      baseMat.uniforms.uStagger.value,
-        ringDuration: baseMat.uniforms.uRingDuration.value,
-        warpAmount:   baseMat.uniforms.uWarpAmount.value,
+        stagger:           baseMat.uniforms.uStagger.value,
+        ringDuration:      baseMat.uniforms.uRingDuration.value,
+        warpAmount:        baseMat.uniforms.uWarpAmount.value,
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
-        direction:    opts.direction,
-        colorSpread:  baseMat.uniforms.uColorSpread.value,
-        brightSpread: baseMat.uniforms.uBrightSpread.value,
-        flickerAmp:   baseMat.uniforms.uFlickerAmp.value,
-        flickerSpeed: baseMat.uniforms.uFlickerSpeed.value,
+        direction:         opts.direction,
+        colorSpread:       baseMat.uniforms.uColorSpread.value,
+        brightSpread:      baseMat.uniforms.uBrightSpread.value,
+        flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
+        flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
       };
       const newBaseMat = createRingMaterial({ ...sharedArgs,
         lineColor:  baseMat.uniforms.uColor.value.getHex(),
         lineColorB: baseMat.uniforms.uColorB.value.getHex(),
-        opacity: 0,
-        blending: THREE.NormalBlending });
-      const newGlowMat = createRingMaterial({ ...sharedArgs,
-        lineColor:  glowMat.uniforms.uColor.value.getHex(),
-        lineColorB: glowMat.uniforms.uColorB.value.getHex(),
-        opacity: 0,
-        blending: THREE.AdditiveBlending });
+        opacity: 0, blending: THREE.NormalBlending });
 
       this._baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), newBaseMat);
-      this._glowRings = new THREE.LineSegments(
-        buildRingGeometry({ ...geomArgs, radius: opts.radius * opts.glowRadius }), newGlowMat);
       this._baseRings.renderOrder = oldBase.renderOrder;
-      this._glowRings.renderOrder = oldGlow.renderOrder;
       this._scene.add(this._baseRings);
-      this._scene.add(this._glowRings);
+
+      this._glowLayers = [];
+      for (let i = 0; i < opts.glowLayers; i++) {
+        const layerRadius = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
+        const layerMat = createRingMaterial({ ...sharedArgs,
+          lineColor:  glowMat0.uniforms.uColor.value.getHex(),
+          lineColorB: glowMat0.uniforms.uColorB.value.getHex(),
+          opacity: 0, blending: THREE.AdditiveBlending });
+        const layer = new THREE.LineSegments(
+          buildRingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+        layer.renderOrder = oldGlowLayers[0]?.renderOrder ?? 0;
+        this._scene.add(layer);
+        this._glowLayers.push(layer);
+      }
+
       this._setProgress(this._progress);
       this._baseRings.material.uniforms.uTime.value = this._time;
-      this._glowRings.material.uniforms.uTime.value = this._time;
+      this._glowLayers.forEach(l => { l.material.uniforms.uTime.value = this._time; });
 
-      crossFade = { oldBase, oldGlow, oldBaseOpacity, oldGlowOpacity };
+      crossFade = { oldBase, oldGlowLayers, oldBaseOpacity, oldGlowLayerOpacities };
     }
 
+    // Snapshot from/to. glowOpacity = layer-0 opacity (= base glow opacity before falloff scaling).
+    const glowMat = this._glowLayers[0].material; // may be new after cross-fade rebuild
     this._morph = {
       elapsed:    0,
       durationMs: Math.max(dur, 0),
@@ -291,10 +328,10 @@ export class RingRevealAnimator {
       from: {
         lineColor:         baseMat.uniforms.uColor.value.clone(),
         lineColorB:        baseMat.uniforms.uColorB.value.clone(),
-        glowColor:         glowMat.uniforms.uColor.value.clone(),
-        glowColorB:        glowMat.uniforms.uColorB.value.clone(),
+        glowColor:         glowMat0.uniforms.uColor.value.clone(),
+        glowColorB:        glowMat0.uniforms.uColorB.value.clone(),
         opacity:           crossFade ? 0 : baseMat.uniforms.uOpacity.value,
-        glowOpacity:       crossFade ? 0 : glowMat.uniforms.uOpacity.value,
+        glowOpacity:       crossFade ? 0 : glowMat0.uniforms.uOpacity.value,
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
         stagger:           baseMat.uniforms.uStagger.value,
         warpAmount:        baseMat.uniforms.uWarpAmount.value,
@@ -308,16 +345,16 @@ export class RingRevealAnimator {
       to: {
         // Use live uniform values as fallback (not stale opts) so that a partial
         // morph that omits a property correctly holds that property constant.
-        lineColor:         targetConfig.lineColor         !== undefined
+        lineColor:         targetConfig.lineColor  !== undefined
                              ? new THREE.Color(targetConfig.lineColor)
                              : baseMat.uniforms.uColor.value.clone(),
-        lineColorB:        targetConfig.lineColorB        !== undefined
+        lineColorB:        targetConfig.lineColorB !== undefined
                              ? new THREE.Color(targetConfig.lineColorB)
                              : baseMat.uniforms.uColorB.value.clone(),
-        glowColor:         targetConfig.glowColor         !== undefined
+        glowColor:         targetConfig.glowColor  !== undefined
                              ? new THREE.Color(targetConfig.glowColor)
                              : glowMat.uniforms.uColor.value.clone(),
-        glowColorB:        targetConfig.glowColorB        !== undefined
+        glowColorB:        targetConfig.glowColorB !== undefined
                              ? new THREE.Color(targetConfig.glowColorB)
                              : glowMat.uniforms.uColorB.value.clone(),
         opacity:           targetConfig.opacity           ?? baseMat.uniforms.uOpacity.value,
@@ -348,11 +385,13 @@ export class RingRevealAnimator {
   dispose() {
     this._disposeCrossFade();
     this._scene.remove(this._baseRings);
-    this._scene.remove(this._glowRings);
     this._baseRings.geometry.dispose();
-    this._glowRings.geometry.dispose();
     this._baseRings.material.dispose();
-    this._glowRings.material.dispose();
+    this._glowLayers.forEach(l => {
+      this._scene.remove(l);
+      l.geometry.dispose();
+      l.material.dispose();
+    });
   }
 
   // ── Private ─────────────────────────────────────────────────
@@ -362,9 +401,11 @@ export class RingRevealAnimator {
     const cf = this._morph?.crossFade;
     if (!cf) return;
     this._scene.remove(cf.oldBase);
-    this._scene.remove(cf.oldGlow);
     cf.oldBase.geometry.dispose(); cf.oldBase.material.dispose();
-    cf.oldGlow.geometry.dispose(); cf.oldGlow.material.dispose();
+    cf.oldGlowLayers.forEach(l => {
+      this._scene.remove(l);
+      l.geometry.dispose(); l.material.dispose();
+    });
   }
 
   _build() {
@@ -378,9 +419,6 @@ export class RingRevealAnimator {
       latitudeMax:    opts.latitudeMax,
       upAxis:         opts.upAxis,
     };
-
-    const baseGeo  = buildRingGeometry(geomArgs);
-    const glowGeo  = buildRingGeometry({ ...geomArgs, radius: opts.radius * opts.glowRadius });
 
     const sharedMatArgs = {
       lineWidth:         opts.lineWidth,
@@ -404,81 +442,148 @@ export class RingRevealAnimator {
       blending:   THREE.NormalBlending,
     });
 
-    const glowMat = createRingMaterial({
-      ...sharedMatArgs,
-      lineColor:  opts.glowColor,
-      lineColorB: opts.glowColorB,
-      opacity:    opts.glowOpacity,
-      blending:   THREE.AdditiveBlending,
-    });
-
-    this._baseRings = new THREE.LineSegments(baseGeo, baseMat);
-    this._glowRings = new THREE.LineSegments(glowGeo, glowMat);
-
+    this._baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), baseMat);
     this._scene.add(this._baseRings);
-    this._scene.add(this._glowRings);
+
+    this._glowLayers = [];
+    for (let i = 0; i < opts.glowLayers; i++) {
+      const layerRadius  = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
+      const layerOpacity = opts.glowOpacity * Math.pow(opts.glowLayerOpacityFalloff, i);
+      const layerMat = createRingMaterial({
+        ...sharedMatArgs,
+        lineColor:  opts.glowColor,
+        lineColorB: opts.glowColorB,
+        opacity:    layerOpacity,
+        blending:   THREE.AdditiveBlending,
+      });
+      const layer = new THREE.LineSegments(
+        buildRingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+      this._scene.add(layer);
+      this._glowLayers.push(layer);
+    }
   }
 
-  /** Update uProgress uniform on both materials. */
+  /** Rebuild glow layers in place (used when glowLayers count or radius step changes). */
+  _rebuildGlowLayers() {
+    const opts = this._options;
+    const mat0 = this._glowLayers[0]?.material;
+    const currentColor   = mat0 ? mat0.uniforms.uColor.value.getHex()  : opts.glowColor;
+    const currentColorB  = mat0 ? mat0.uniforms.uColorB.value.getHex() : opts.glowColorB;
+    const renderOrder    = this._glowLayers[0]?.renderOrder ?? 0;
+
+    this._glowLayers.forEach(l => {
+      this._scene.remove(l);
+      l.geometry.dispose(); l.material.dispose();
+    });
+
+    const baseMat = this._baseRings.material;
+    const geomArgs = {
+      radius: opts.radius, numRings: opts.numRings, samplesPerRing: opts.samplesPerRing,
+      latitudeMin: opts.latitudeMin, latitudeMax: opts.latitudeMax, upAxis: opts.upAxis,
+    };
+    const sharedArgs = {
+      lineWidth: opts.lineWidth, numRings: opts.numRings,
+      stagger:           baseMat.uniforms.uStagger.value,
+      ringDuration:      baseMat.uniforms.uRingDuration.value,
+      warpAmount:        baseMat.uniforms.uWarpAmount.value,
+      emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
+      direction:         opts.direction,
+      colorSpread:       baseMat.uniforms.uColorSpread.value,
+      brightSpread:      baseMat.uniforms.uBrightSpread.value,
+      flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
+      flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+    };
+
+    this._glowLayers = [];
+    for (let i = 0; i < opts.glowLayers; i++) {
+      const layerRadius  = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
+      const layerOpacity = opts.glowOpacity * Math.pow(opts.glowLayerOpacityFalloff, i);
+      const layerMat = createRingMaterial({
+        ...sharedArgs,
+        lineColor: currentColor, lineColorB: currentColorB,
+        opacity: layerOpacity, blending: THREE.AdditiveBlending,
+      });
+      const layer = new THREE.LineSegments(
+        buildRingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+      layer.renderOrder = renderOrder;
+      layer.material.uniforms.uProgress.value = this._progress;
+      layer.material.uniforms.uTime.value = this._time;
+      this._scene.add(layer);
+      this._glowLayers.push(layer);
+    }
+  }
+
+  /** Update uProgress uniform on base and all glow layers. */
   _setProgress(p) {
     this._baseRings.material.uniforms.uProgress.value = p;
-    this._glowRings.material.uniforms.uProgress.value = p;
+    this._glowLayers.forEach(l => { l.material.uniforms.uProgress.value = p; });
   }
 
   /** Linearly interpolate all morphable uniforms at normalised time t. */
   _applyMorphT(t) {
     const { from, to } = this._morph;
     const baseMat = this._baseRings.material;
-    const glowMat = this._glowRings.material;
+    const lerp = (a, b) => a + (b - a) * t;
 
-    // Colour lerp (primary and gradient endpoint)
+    // Base ring: colour lerp
     _tmpColor.lerpColors(from.lineColor, to.lineColor, t);
     baseMat.uniforms.uColor.value.copy(_tmpColor);
     _tmpColor2.lerpColors(from.lineColorB, to.lineColorB, t);
     baseMat.uniforms.uColorB.value.copy(_tmpColor2);
-    _tmpColor.lerpColors(from.glowColor, to.glowColor, t);
-    glowMat.uniforms.uColor.value.copy(_tmpColor);
-    _tmpColor2.lerpColors(from.glowColorB, to.glowColorB, t);
-    glowMat.uniforms.uColorB.value.copy(_tmpColor2);
 
-    // Scalar lerp
-    const lerp = (a, b) => a + (b - a) * t;
+    // Base ring: scalar lerp
     baseMat.uniforms.uOpacity.value           = lerp(from.opacity,           to.opacity);
-    glowMat.uniforms.uOpacity.value           = lerp(from.glowOpacity,       to.glowOpacity);
     baseMat.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
-    glowMat.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
     baseMat.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
-    glowMat.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
     baseMat.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
-    glowMat.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
     baseMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
-    glowMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
     baseMat.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
-    glowMat.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
     baseMat.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
-    glowMat.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
     baseMat.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
-    glowMat.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
     baseMat.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
-    glowMat.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
+
+    // Glow layers: colour and shared uniforms
+    _tmpColor.lerpColors(from.glowColor, to.glowColor, t);
+    _tmpColor2.lerpColors(from.glowColorB, to.glowColorB, t);
+    const baseGlowOpacity = lerp(from.glowOpacity, to.glowOpacity, t);
+    const falloff = this._options.glowLayerOpacityFalloff;
+
+    this._glowLayers.forEach((l, i) => {
+      const m = l.material;
+      m.uniforms.uColor.value.copy(_tmpColor);
+      m.uniforms.uColorB.value.copy(_tmpColor2);
+      m.uniforms.uOpacity.value           = baseGlowOpacity * Math.pow(falloff, i);
+      m.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
+      m.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
+      m.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
+      m.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
+      m.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
+      m.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
+      m.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
+      m.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
+    });
 
     // Radius via scale
     const scale = lerp(from.radius, to.radius) / this._options.radius;
     this._baseRings.scale.setScalar(scale);
-    this._glowRings.scale.setScalar(scale);
+    this._glowLayers.forEach(l => l.scale.setScalar(scale));
 
     // Cross-fade: fade old rings out in parallel with new rings fading in
     if (this._morph.crossFade) {
-      const { oldBase, oldGlow, oldBaseOpacity, oldGlowOpacity } = this._morph.crossFade;
-      oldBase.material.uniforms.uOpacity.value  = oldBaseOpacity  * (1 - t);
-      oldGlow.material.uniforms.uOpacity.value  = oldGlowOpacity  * (1 - t);
+      const { oldBase, oldGlowLayers, oldBaseOpacity, oldGlowLayerOpacities } = this._morph.crossFade;
+      oldBase.material.uniforms.uOpacity.value  = oldBaseOpacity * (1 - t);
       oldBase.material.uniforms.uProgress.value = this._progress;
-      oldGlow.material.uniforms.uProgress.value = this._progress;
+      oldGlowLayers.forEach((l, i) => {
+        l.material.uniforms.uOpacity.value  = oldGlowLayerOpacities[i] * (1 - t);
+        l.material.uniforms.uProgress.value = this._progress;
+      });
       if (t >= 1.0) {
         this._scene.remove(oldBase);
-        this._scene.remove(oldGlow);
         oldBase.geometry.dispose(); oldBase.material.dispose();
-        oldGlow.geometry.dispose(); oldGlow.material.dispose();
+        oldGlowLayers.forEach(l => {
+          this._scene.remove(l);
+          l.geometry.dispose(); l.material.dispose();
+        });
       }
     }
 
