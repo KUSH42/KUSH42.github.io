@@ -107,6 +107,7 @@ export class RingRevealAnimator {
     this._elapsed   = 0;
     this._progress  = 0;
     this._onComplete = null;
+    this._disposeCrossFade();
     this._morph     = null;
     this._setProgress(0);
   }
@@ -202,14 +203,60 @@ export class RingRevealAnimator {
     const fromRadius = opts.radius;
     const toRadius   = targetConfig.radius ?? opts.radius;
 
+    // Cross-fade when ring count changes: build new geometry immediately, fade old rings out.
+    const numRingsChanged   = targetConfig.numRings       !== undefined && targetConfig.numRings       !== opts.numRings;
+    const samplesChanged    = targetConfig.samplesPerRing !== undefined && targetConfig.samplesPerRing !== opts.samplesPerRing;
+    let crossFade = null;
+
+    if (numRingsChanged || samplesChanged) {
+      const oldBase         = this._baseRings;
+      const oldGlow         = this._glowRings;
+      const oldBaseOpacity  = baseMat.uniforms.uOpacity.value;
+      const oldGlowOpacity  = glowMat.uniforms.uOpacity.value;
+
+      if (numRingsChanged)  opts.numRings       = targetConfig.numRings;
+      if (samplesChanged)   opts.samplesPerRing = targetConfig.samplesPerRing;
+
+      const geomArgs = {
+        radius: opts.radius, numRings: opts.numRings, samplesPerRing: opts.samplesPerRing,
+        latitudeMin: opts.latitudeMin, latitudeMax: opts.latitudeMax, upAxis: opts.upAxis,
+      };
+      const sharedArgs = {
+        lineWidth: opts.lineWidth, numRings: opts.numRings,
+        stagger:      baseMat.uniforms.uStagger.value,
+        ringDuration: baseMat.uniforms.uRingDuration.value,
+        warpAmount:   baseMat.uniforms.uWarpAmount.value,
+        emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
+        direction: opts.direction,
+      };
+      const newBaseMat = createRingMaterial({ ...sharedArgs,
+        lineColor: baseMat.uniforms.uColor.value.getHex(), opacity: 0,
+        blending: THREE.NormalBlending });
+      const newGlowMat = createRingMaterial({ ...sharedArgs,
+        lineColor: glowMat.uniforms.uColor.value.getHex(), opacity: 0,
+        blending: THREE.AdditiveBlending });
+
+      this._baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), newBaseMat);
+      this._glowRings = new THREE.LineSegments(
+        buildRingGeometry({ ...geomArgs, radius: opts.radius * opts.glowRadius }), newGlowMat);
+      this._baseRings.renderOrder = oldBase.renderOrder;
+      this._glowRings.renderOrder = oldGlow.renderOrder;
+      this._scene.add(this._baseRings);
+      this._scene.add(this._glowRings);
+      this._setProgress(this._progress);
+
+      crossFade = { oldBase, oldGlow, oldBaseOpacity, oldGlowOpacity };
+    }
+
     this._morph = {
       elapsed:    0,
       durationMs: dur,
+      crossFade,
       from: {
         lineColor:         baseMat.uniforms.uColor.value.clone(),
         glowColor:         glowMat.uniforms.uColor.value.clone(),
-        opacity:           baseMat.uniforms.uOpacity.value,
-        glowOpacity:       glowMat.uniforms.uOpacity.value,
+        opacity:           crossFade ? 0 : baseMat.uniforms.uOpacity.value,
+        glowOpacity:       crossFade ? 0 : glowMat.uniforms.uOpacity.value,
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
         stagger:           baseMat.uniforms.uStagger.value,
         warpAmount:        baseMat.uniforms.uWarpAmount.value,
@@ -233,10 +280,6 @@ export class RingRevealAnimator {
         ringDuration:      targetConfig.ringDuration      ?? baseMat.uniforms.uRingDuration.value,
         radius:            toRadius,
       },
-      deferredGeom: (targetConfig.numRings !== undefined && targetConfig.numRings !== opts.numRings)
-                 || (targetConfig.samplesPerRing !== undefined && targetConfig.samplesPerRing !== opts.samplesPerRing),
-      toNumRings:  targetConfig.numRings       ?? null,
-      toSamples:   targetConfig.samplesPerRing ?? null,
     };
   }
 
@@ -244,6 +287,7 @@ export class RingRevealAnimator {
 
   /** Remove from scene and dispose GPU resources. */
   dispose() {
+    this._disposeCrossFade();
     this._scene.remove(this._baseRings);
     this._scene.remove(this._glowRings);
     this._baseRings.geometry.dispose();
@@ -253,6 +297,16 @@ export class RingRevealAnimator {
   }
 
   // ── Private ─────────────────────────────────────────────────
+
+  /** Dispose old rings from an in-progress cross-fade (if any). */
+  _disposeCrossFade() {
+    const cf = this._morph?.crossFade;
+    if (!cf) return;
+    this._scene.remove(cf.oldBase);
+    this._scene.remove(cf.oldGlow);
+    cf.oldBase.geometry.dispose(); cf.oldBase.material.dispose();
+    cf.oldGlow.geometry.dispose(); cf.oldGlow.material.dispose();
+  }
 
   _build() {
     const opts = this._options;
@@ -336,6 +390,21 @@ export class RingRevealAnimator {
     this._baseRings.scale.setScalar(scale);
     this._glowRings.scale.setScalar(scale);
 
+    // Cross-fade: fade old rings out in parallel with new rings fading in
+    if (this._morph.crossFade) {
+      const { oldBase, oldGlow, oldBaseOpacity, oldGlowOpacity } = this._morph.crossFade;
+      oldBase.material.uniforms.uOpacity.value  = oldBaseOpacity  * (1 - t);
+      oldGlow.material.uniforms.uOpacity.value  = oldGlowOpacity  * (1 - t);
+      oldBase.material.uniforms.uProgress.value = this._progress;
+      oldGlow.material.uniforms.uProgress.value = this._progress;
+      if (t >= 1.0) {
+        this._scene.remove(oldBase);
+        this._scene.remove(oldGlow);
+        oldBase.geometry.dispose(); oldBase.material.dispose();
+        oldGlow.geometry.dispose(); oldGlow.material.dispose();
+      }
+    }
+
     // Sync opts at completion so they match live uniform state for future morphs
     if (t >= 1.0) {
       const opts = this._options;
@@ -349,41 +418,6 @@ export class RingRevealAnimator {
       opts.glowColor         = to.glowColor.getHex();
       opts.radius            = to.radius;
     }
-
-    // Deferred geometry rebuild at completion
-    if (t >= 1.0 && this._morph.deferredGeom) {
-      if (this._morph.toNumRings  !== null) this._options.numRings       = this._morph.toNumRings;
-      if (this._morph.toSamples   !== null) this._options.samplesPerRing = this._morph.toSamples;
-      this._rebuildGeometry();
-      this._baseRings.scale.setScalar(1);
-      this._glowRings.scale.setScalar(1);
-    }
   }
 
-  /**
-   * Dispose existing geometry, build new geometry from current options,
-   * and reattach to both LineSegments.
-   */
-  _rebuildGeometry() {
-    const opts = this._options;
-
-    this._baseRings.geometry.dispose();
-    this._glowRings.geometry.dispose();
-
-    const geomArgs = {
-      radius:         opts.radius,
-      numRings:       opts.numRings,
-      samplesPerRing: opts.samplesPerRing,
-      latitudeMin:    opts.latitudeMin,
-      latitudeMax:    opts.latitudeMax,
-      upAxis:         opts.upAxis,
-    };
-
-    this._baseRings.geometry = buildRingGeometry(geomArgs);
-    this._glowRings.geometry = buildRingGeometry({ ...geomArgs, radius: opts.radius * opts.glowRadius });
-
-    // Sync uNumRings uniform on both materials
-    this._baseRings.material.uniforms.uNumRings.value = opts.numRings;
-    this._glowRings.material.uniforms.uNumRings.value = opts.numRings;
-  }
 }

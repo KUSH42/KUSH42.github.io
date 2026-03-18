@@ -769,8 +769,8 @@ function mutateColor(hex, strength) {
   const hsl = {};
   c.getHSL(hsl);
   const h = (hsl.h + rand(-strength, strength) * 0.15 + 1) % 1;
-  s = Math.max(0.2, Math.min(1, hsl.s + rand(-strength, strength) * 0.3));
-  l = Math.max(0.2, Math.min(0.85, hsl.l + rand(-strength, strength) * 0.2));
+  const s = Math.max(0.2, Math.min(1, hsl.s + rand(-strength, strength) * 0.3));
+  const l = Math.max(0.2, Math.min(0.85, hsl.l + rand(-strength, strength) * 0.2));
   const out = new THREE.Color().setHSL(h, s, l);
   return (Math.round(out.r * 255) << 16) | (Math.round(out.g * 255) << 8) | Math.round(out.b * 255);
 }
@@ -786,13 +786,10 @@ function nudge(val, min, max, strength) {
 // Apply a config diff immediately (no morph, used for randomize)
 function applyImmediate(cfg) {
   stopLoop();
-  anim.morphTo(cfg, 0);
+  anim.morphTo(cfg, 0); // numRings change handled by cross-fade inside morphTo
   syncUI(cfg);
-  if (cfg.numRings !== undefined || cfg.samplesPerRing !== undefined) {
-    if (cfg.numRings)       { document.getElementById('slNumRings').value = cfg.numRings; document.getElementById('vNumRings').textContent = cfg.numRings; }
-    if (cfg.samplesPerRing) { document.getElementById('slSamples').value = cfg.samplesPerRing; document.getElementById('vSamples').textContent = cfg.samplesPerRing; }
-    rebuildGeom();
-  }
+  if (cfg.numRings)       { document.getElementById('slNumRings').value = cfg.numRings; document.getElementById('vNumRings').textContent = cfg.numRings; }
+  if (cfg.samplesPerRing) { document.getElementById('slSamples').value = cfg.samplesPerRing; document.getElementById('vSamples').textContent = cfg.samplesPerRing; }
 }
 
 // ── Randomize All ──────────────────────────────────────────────────────────
