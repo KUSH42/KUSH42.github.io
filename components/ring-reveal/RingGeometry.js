@@ -75,8 +75,9 @@ export function buildRingGeometry({ radius, numRings, samplesPerRing, latitudeMi
 export function buildLine2RingGeometry({ radius, numRings, samplesPerRing, latitudeMin, latitudeMax, upAxis }) {
   const totalSegments = numRings * samplesPerRing;
   // LineSegmentsGeometry.setPositions expects [startX,startY,startZ, endX,endY,endZ, ...]
-  const positions  = new Float32Array(totalSegments * 6);
-  const ringIndices = new Float32Array(totalSegments);
+  const positions    = new Float32Array(totalSegments * 6);
+  const ringIndices  = new Float32Array(totalSegments);
+  const arcPositions = new Float32Array(totalSegments);
 
   let pIdx = 0;
   let rIdx = 0;
@@ -98,14 +99,17 @@ export function buildLine2RingGeometry({ radius, numRings, samplesPerRing, latit
       positions[pIdx++] = radius * sinPhi;
       positions[pIdx++] = radius * cosPhi * Math.sin(lambdaB);
 
-      ringIndices[rIdx++] = r;
+      ringIndices[rIdx]  = r;
+      arcPositions[rIdx] = s / samplesPerRing;
+      rIdx++;
     }
   }
 
   const geo = new LineSegmentsGeometry();
   geo.setPositions(positions);
-  // Per-segment (instanced) ring index — stepped once per instance, not per vertex
-  geo.setAttribute('ringIndex', new THREE.InstancedBufferAttribute(ringIndices, 1));
+  // Per-segment (instanced) attributes — stepped once per instance, not per vertex
+  geo.setAttribute('ringIndex',   new THREE.InstancedBufferAttribute(ringIndices,  1));
+  geo.setAttribute('arcPosition', new THREE.InstancedBufferAttribute(arcPositions, 1));
 
   if (upAxis === 'z') {
     geo.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));

@@ -60,6 +60,8 @@ export interface RingRevealOptions {
   flickerAmp?: number;
   /** Flicker oscillation speed in Hz. Default: 2.0 */
   flickerSpeed?: number;
+  /** Arc hue rotation — shifts colour around each ring's circumference [0..1]. 0 = uniform, 1 = full rainbow per ring. Default: 0 */
+  arcColorSpread?: number;
 
   /** Default morph duration in ms. Default: 800 */
   morphDurationMs?: number;

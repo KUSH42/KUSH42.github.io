@@ -22,6 +22,7 @@ uniform float uBrightSpread;
 uniform float uFlickerAmp;
 uniform float uFlickerSpeed;
 uniform float uTime;
+uniform float uArcColorSpread;
 `;
 
 /** HSL colour helpers shared between both factories. */
@@ -90,6 +91,7 @@ const RING_REVEAL_VERTEX_PRELUDE = /* glsl */`
   vec3 hsl = _rgb2hsl(gradientBase);
   hsl.x = fract(hsl.x + (rng1 - 0.5) * uColorSpread);
   hsl.z = clamp(hsl.z + (rng2 - 0.5) * uBrightSpread, 0.02, 0.98);
+  hsl.x = fract(hsl.x + arcPosition * uArcColorSpread);
   vRingColor = _hsl2rgb(hsl.x, hsl.y, hsl.z);
 
   // ── per-ring flicker ───────────────────────────────────────────────────────
@@ -100,6 +102,7 @@ const RING_REVEAL_VERTEX_PRELUDE = /* glsl */`
 
 const _vertexShader = /* glsl */`
 in float ringIndex;
+in float arcPosition;
 out float vAlpha;
 out vec3  vRingColor;
 out float vFlickerMult;
@@ -139,7 +142,7 @@ function _directionIndex(direction) {
 
 function _buildUniforms({ lineColor, lineColorB, opacity, emissiveIntensity, numRings, stagger,
                           ringDuration, warpAmount, direction, colorSpread, brightSpread,
-                          flickerAmp, flickerSpeed }) {
+                          flickerAmp, flickerSpeed, arcColorSpread }) {
   return {
     uProgress:          { value: 0.0 },
     uNumRings:          { value: numRings },
@@ -156,6 +159,7 @@ function _buildUniforms({ lineColor, lineColorB, opacity, emissiveIntensity, num
     uFlickerAmp:        { value: flickerAmp },
     uFlickerSpeed:      { value: flickerSpeed },
     uTime:              { value: 0.0 },
+    uArcColorSpread:    { value: arcColorSpread ?? 0.0 },
   };
 }
 
@@ -212,6 +216,7 @@ function _injectRingRevealShader(shader) {
     '#include <common>',
     `#include <common>
 attribute float ringIndex;
+attribute float arcPosition;
 varying float vAlpha;
 varying vec3  vRingColor;
 varying float vFlickerMult;

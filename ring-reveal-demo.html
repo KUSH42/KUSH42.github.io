@@ -249,6 +249,11 @@
     <input type="range" id="slFlickerSpeed" min="1" max="300" value="20">
     <span class="val" id="vFlickerSpeed">2.0</span> Hz
   </label>
+  <label>
+    <span class="lname">Arc color spread</span>
+    <input type="range" id="slArcColorSpread" min="0" max="100" value="0">
+    <span class="val" id="vArcColorSpread">0.00</span>
+  </label>
 
   <!-- Appearance -->
   <div class="section-label">Appearance</div>
@@ -470,6 +475,7 @@ function getOptions() {
     brightSpread:      +document.getElementById('slBrightSpread').value / 100,
     flickerAmp:        +document.getElementById('slFlickerAmp').value / 100,
     flickerSpeed:      +document.getElementById('slFlickerSpeed').value / 10,
+    arcColorSpread:    +document.getElementById('slArcColorSpread').value / 100,
     morphDurationMs:   +document.getElementById('slMorphDur').value,
   };
 }
@@ -512,7 +518,8 @@ function syncUI(cfg) {
   set('slColorSpread',  cfg.colorSpread  !== undefined ? Math.round(cfg.colorSpread  * 100) : undefined, 'vColorSpread',  v => (v / 100).toFixed(2));
   set('slBrightSpread', cfg.brightSpread !== undefined ? Math.round(cfg.brightSpread * 100) : undefined, 'vBrightSpread', v => (v / 100).toFixed(2));
   set('slFlickerAmp',   cfg.flickerAmp   !== undefined ? Math.round(cfg.flickerAmp   * 100) : undefined, 'vFlickerAmp',   v => (v / 100).toFixed(2));
-  set('slFlickerSpeed', cfg.flickerSpeed !== undefined ? Math.round(cfg.flickerSpeed * 10)  : undefined, 'vFlickerSpeed', v => (v / 10).toFixed(1));
+  set('slFlickerSpeed',    cfg.flickerSpeed    !== undefined ? Math.round(cfg.flickerSpeed    * 10)  : undefined, 'vFlickerSpeed',    v => (v / 10).toFixed(1));
+  set('slArcColorSpread', cfg.arcColorSpread  !== undefined ? Math.round(cfg.arcColorSpread  * 100) : undefined, 'vArcColorSpread',  v => (v / 100).toFixed(2));
   set('slGlowLayers',   cfg.glowLayers,                                                                   'vGlowLayers');
   set('slGlowStep',     cfg.glowLayerRadiusStep     !== undefined ? Math.round(cfg.glowLayerRadiusStep     * 1000) : undefined, 'vGlowStep',    v => (v / 1000).toFixed(3));
   set('slGlowFalloff',  cfg.glowLayerOpacityFalloff !== undefined ? Math.round(cfg.glowLayerOpacityFalloff * 100)  : undefined, 'vGlowFalloff', v => (v / 100).toFixed(2));
@@ -852,6 +859,13 @@ document.getElementById('slFlickerSpeed').addEventListener('input', e => {
   anim._baseRings.material.uniforms.uFlickerSpeed.value = v;
   anim._glowLayers.forEach(l => { l.material.uniforms.uFlickerSpeed.value = v; });
   anim._options.flickerSpeed = v;
+});
+document.getElementById('slArcColorSpread').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vArcColorSpread').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uArcColorSpread.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uArcColorSpread.value = v; });
+  anim._options.arcColorSpread = v;
 });
 document.getElementById('slMorphDur').addEventListener('input', e => {
   anim._options.morphDurationMs = +e.target.value;

@@ -43,6 +43,7 @@ const DEFAULTS = {
   brightSpread:            0.0,
   flickerAmp:              0.0,
   flickerSpeed:            2.0,
+  arcColorSpread:          0.0,
 };
 
 export class RingRevealAnimator {
@@ -302,6 +303,7 @@ export class RingRevealAnimator {
         brightSpread:      baseMat.uniforms.uBrightSpread.value,
         flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+        arcColorSpread:    baseMat.uniforms.uArcColorSpread.value,
         resolution:        this._resolution,
       };
       const newBaseMat = createLine2RingMaterial({ ...sharedArgs,
@@ -355,6 +357,7 @@ export class RingRevealAnimator {
         brightSpread:      baseMat.uniforms.uBrightSpread.value,
         flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+        arcColorSpread:    baseMat.uniforms.uArcColorSpread.value,
         radius:            fromRadius,
       },
       to: {
@@ -382,6 +385,7 @@ export class RingRevealAnimator {
         brightSpread:      targetConfig.brightSpread      ?? baseMat.uniforms.uBrightSpread.value,
         flickerAmp:        targetConfig.flickerAmp        ?? baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      targetConfig.flickerSpeed      ?? baseMat.uniforms.uFlickerSpeed.value,
+        arcColorSpread:    targetConfig.arcColorSpread    ?? baseMat.uniforms.uArcColorSpread.value,
         radius:            toRadius,
       },
     };
@@ -452,6 +456,7 @@ export class RingRevealAnimator {
       brightSpread:      opts.brightSpread,
       flickerAmp:        opts.flickerAmp,
       flickerSpeed:      opts.flickerSpeed,
+      arcColorSpread:    opts.arcColorSpread,
       resolution:        this._resolution,
     };
 
@@ -563,6 +568,7 @@ export class RingRevealAnimator {
     baseMat.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
     baseMat.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
     baseMat.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
+    baseMat.uniforms.uArcColorSpread.value    = lerp(from.arcColorSpread,    to.arcColorSpread);
 
     // Glow layers: colour and shared uniforms
     _tmpColor.lerpColors(from.glowColor, to.glowColor, t);
@@ -583,6 +589,7 @@ export class RingRevealAnimator {
       m.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
       m.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
       m.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
+      m.uniforms.uArcColorSpread.value    = lerp(from.arcColorSpread,    to.arcColorSpread);
     });
 
     // Radius via scale
@@ -622,6 +629,7 @@ export class RingRevealAnimator {
       opts.brightSpread      = to.brightSpread;
       opts.flickerAmp        = to.flickerAmp;
       opts.flickerSpeed      = to.flickerSpeed;
+      opts.arcColorSpread    = to.arcColorSpread;
       opts.lineColor         = to.lineColor.getHex();
       opts.lineColorB        = to.lineColorB.getHex();
       opts.glowColor         = to.glowColor.getHex();
