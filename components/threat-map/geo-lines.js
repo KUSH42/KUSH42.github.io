@@ -4,13 +4,16 @@
 
 import * as THREE from 'three';
 import { mesh as topoMesh } from 'topojson-client';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { _state, setTopoCache } from './state.js';
 import { latLngToVec3 } from './utils.js';
 
 // ── _ringsToSegments ──────────────────────────────────────────
 // Convert an array of polygon rings (each a [[lng,lat]...] array) into a
-// single merged LineSegments BufferGeometry. Each consecutive pair of ring
-// vertices becomes one segment. This collapses N*rings draw calls into one.
+// single merged LineSegmentsGeometry for use with LineSegments2.
+// Each consecutive pair of ring vertices becomes one segment.
 
 function _ringsToSegments(coordsList, radius) {
   const verts = [];
@@ -23,8 +26,8 @@ function _ringsToSegments(coordsList, radius) {
       verts.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
     }
   }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+  const geo = new LineSegmentsGeometry();
+  geo.setPositions(new Float32Array(verts));
   return geo;
 }
 
@@ -49,45 +52,59 @@ export async function _loadGeoLines(element) {
   const state = _state.get(element);
   if (!state) return; // destroyed during fetch
 
+  const w = element.clientWidth || 800;
+  const h = element.clientHeight || 600;
+
   const geoGroup = new THREE.Group();
   const lineColor = state.cyanColor;
 
   // ── Coastlines / land outline ─────────────────────────────
-  // Merged into 3 LineSegments draw calls (vs thousands of Line objects).
   const landBorders = topoMesh(topo, topo.objects.land);
 
-  const coastMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 1.0, depthWrite: true,
+  const coastMat = new LineMaterial({
+    color: lineColor, linewidth: 1,
+    transparent: true, opacity: 1.0, depthWrite: true,
   });
-  const coastGlowMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 1.0,
+  coastMat.resolution.set(w, h);
+
+  const coastGlowMat = new LineMaterial({
+    color: lineColor, linewidth: 1,
+    transparent: true, opacity: 1.0,
     blending: THREE.AdditiveBlending, depthWrite: true,
   });
-  const coastGlowWideMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.70,
+  coastGlowMat.resolution.set(w, h);
+
+  const coastGlowWideMat = new LineMaterial({
+    color: lineColor, linewidth: 1.5,
+    transparent: true, opacity: 0.70,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  coastGlowWideMat.resolution.set(w, h);
 
-  const coastLine     = new THREE.LineSegments(_ringsToSegments(landBorders.coordinates, 1.002), coastMat);
-  const coastGlow     = new THREE.LineSegments(_ringsToSegments(landBorders.coordinates, 1.006), coastGlowMat);
-  const coastWideGlow = new THREE.LineSegments(_ringsToSegments(landBorders.coordinates, 1.011), coastGlowWideMat);
+  const coastLine     = new LineSegments2(_ringsToSegments(landBorders.coordinates, 1.002), coastMat);
+  const coastGlow     = new LineSegments2(_ringsToSegments(landBorders.coordinates, 1.006), coastGlowMat);
+  const coastWideGlow = new LineSegments2(_ringsToSegments(landBorders.coordinates, 1.011), coastGlowWideMat);
   coastLine.userData.geoType = coastGlow.userData.geoType = coastWideGlow.userData.geoType = 'coast';
   geoGroup.add(coastWideGlow, coastGlow, coastLine);
 
   // ── Interior country borders (dimmer) ─────────────────────
-  // Merged into 2 LineSegments draw calls.
   const countryBorders = topoMesh(topo, topo.objects.countries, (a, b) => a !== b);
 
-  const borderMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.55, depthWrite: true,
+  const borderMat = new LineMaterial({
+    color: lineColor, linewidth: 1,
+    transparent: true, opacity: 0.55, depthWrite: true,
   });
-  const borderGlowMat = new THREE.LineBasicMaterial({
-    color: lineColor, transparent: true, opacity: 0.30,
+  borderMat.resolution.set(w, h);
+
+  const borderGlowMat = new LineMaterial({
+    color: lineColor, linewidth: 1,
+    transparent: true, opacity: 0.30,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  borderGlowMat.resolution.set(w, h);
 
-  const borderLine = new THREE.LineSegments(_ringsToSegments(countryBorders.coordinates, 1.012), borderMat);
-  const borderGlow = new THREE.LineSegments(_ringsToSegments(countryBorders.coordinates, 1.022), borderGlowMat);
+  const borderLine = new LineSegments2(_ringsToSegments(countryBorders.coordinates, 1.012), borderMat);
+  const borderGlow = new LineSegments2(_ringsToSegments(countryBorders.coordinates, 1.022), borderGlowMat);
   borderLine.userData.geoType = borderGlow.userData.geoType = 'border';
   geoGroup.add(borderGlow, borderLine);
 
@@ -95,4 +112,5 @@ export async function _loadGeoLines(element) {
   // If satellite mode was enabled before geo lines finished loading, keep them hidden
   if (state.satelliteMode) geoGroup.visible = false;
   state.geoGroup = geoGroup;
+  state.geoLineMats = [coastMat, coastGlowMat, coastGlowWideMat, borderMat, borderGlowMat];
 }

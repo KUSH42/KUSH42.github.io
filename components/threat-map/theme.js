@@ -26,12 +26,9 @@ export function refreshThemeColors(element) {
   if (state.globeFront) state.globeFront.material.color.set(globeColor);
 
   // Geo lines (coast + border)
-  if (state.geoGroup) {
-    state.geoGroup.traverse((obj) => {
-      if (obj.isLine) {
-        obj.material.color.set(colors.neonCyan || '#008410D0');
-      }
-    });
+  if (state.geoLineMats) {
+    const geoColor = colors.neonCyan || '#008410D0';
+    for (const mat of state.geoLineMats) mat.color.set(geoColor);
   }
 
   // Node meshes
