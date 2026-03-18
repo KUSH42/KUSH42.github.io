@@ -8,7 +8,7 @@
  *     from './components/threat-map/index.js';
  */
 
-export { initThreatMap, destroyThreatMap, getCamera, getRevealAnim } from './init.js';
+export { initThreatMap, destroyThreatMap, getCamera, getRevealAnim, getScene } from './init.js';
 export { addNode, removeNode, pulseNode } from './nodes.js';
 export { addEdge, removeEdge } from './edges.js';
 export { setActiveNode, setThreatLevel, updateNodeLevel, focusNode } from './selection.js';

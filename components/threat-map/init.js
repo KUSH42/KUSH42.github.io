@@ -676,3 +676,7 @@ export function getCamera(element) {
 export function getRevealAnim(element) {
   return _state.get(element)?.revealAnim ?? null;
 }
+
+export function getScene(element) {
+  return _state.get(element)?.scene ?? null;
+}
