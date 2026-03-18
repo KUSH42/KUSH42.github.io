@@ -351,6 +351,11 @@
     <input type="range" id="slBloom" min="0" max="400" value="120">
     <span class="val" id="vBloom">1.20</span>
   </label>
+  <label>
+    <span class="lname">Bloom radius</span>
+    <input type="range" id="slBloomRadius" min="0" max="100" value="15">
+    <span class="val" id="vBloomRadius">0.15</span>
+  </label>
 
 </div>
 
@@ -888,6 +893,10 @@ document.getElementById('selSphere').addEventListener('change', e => {
 document.getElementById('slBloom').addEventListener('input', e => {
   bloomPass.strength = e.target.value / 100;
   document.getElementById('vBloom').textContent = (e.target.value / 100).toFixed(2);
+});
+document.getElementById('slBloomRadius').addEventListener('input', e => {
+  bloomPass.radius = e.target.value / 100;
+  document.getElementById('vBloomRadius').textContent = (e.target.value / 100).toFixed(2);
 });
 
 // ── Randomize helpers ──────────────────────────────────────────────────────
