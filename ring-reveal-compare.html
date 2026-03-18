@@ -107,7 +107,7 @@
 <header>
   <h1>Ring Reveal — Comparison</h1>
   <p>
-    Left: v0 — plain renderer · flat colour · single glow ring · 1px lines<br>
+    Left: v0 — UnrealBloomPass · flat colour · single glow ring · 1px lines<br>
     Right: current — postprocessing bloom · colour gradients · arc spread · multi-layer glow · Line2 true linewidth
   </p>
   <a href="ring-reveal-demo.html" target="_blank">Open full demo →</a>
@@ -117,9 +117,9 @@
 
   <div class="panel">
     <iframe src="ring-reveal-legacy.html"></iframe>
-    <div class="panel-label legacy">v0 — THREE.LineSegments, no bloom</div>
+    <div class="panel-label legacy">v0 — THREE.LineSegments + UnrealBloomPass</div>
     <div class="features legacy">
-      <span class="bad">✗</span> no bloom / post-processing<br>
+      <span class="bad">✗</span> UnrealBloomPass (halo artefacts)<br>
       <span class="bad">✗</span> flat single colour (no gradient)<br>
       <span class="bad">✗</span> linewidth always 1px<br>
       <span class="bad">✗</span> single glow ring

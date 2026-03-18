@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Ring Reveal — v0 (no bloom, no gradients)</title>
+  <title>Ring Reveal — v0 (UnrealBloomPass, no gradients)</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
@@ -26,12 +26,16 @@
 </head>
 <body>
 <div id="badge">
-  v0 — THREE.LineSegments · no bloom · no colour gradients · 1px lines
+  v0 — THREE.LineSegments · UnrealBloomPass · flat colour · 1px lines
 </div>
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildRingGeometry } from './components/ring-reveal/RingGeometry.js';
 import { createRingMaterial } from './components/ring-reveal/RingMaterial.js';
 
@@ -44,16 +48,29 @@ scene.background = new THREE.Color(0x020808);
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
 camera.position.set(0, 0, 3.5);
 
-// Plain renderer — no post-processing, no bloom
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ReinhardToneMapping;
+renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
+
+// ── Bloom ──────────────────────────────────────────────────────────────────
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(innerWidth, innerHeight),
+  1.6,   // strength
+  0.4,   // radius
+  0.0    // threshold
+);
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
 
 // ── Same geometry/timing as right side — only rendering differs ────────────
 const DURATION = 1800; // ms — must match line2 page
@@ -136,13 +153,15 @@ renderer.setAnimationLoop(() => {
   setProgress(easeInOutCubic(rawT));
 
   controls.update();
-  renderer.render(scene, camera);
+  composer.render();
 });
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  bloomPass.resolution.set(innerWidth, innerHeight);
 });
 </script>
 </body>
