@@ -26,7 +26,7 @@
 </head>
 <body>
 <div id="badge">
-  LineSegments2 + LineMaterial &nbsp;·&nbsp; lineWidth=3px actual &nbsp;·&nbsp; arc colour gradient enabled
+  LineSegments2 + LineMaterial &nbsp;·&nbsp; true pixel linewidth &nbsp;·&nbsp; arc colour gradient
 </div>
 
 <script type="module">
@@ -47,7 +47,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ReinhardToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.07;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -56,47 +56,45 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
 // ── Bloom ──────────────────────────────────────────────────────────────────
-const bloomEffect = new BloomEffect({ intensity: 1.2, radius: 0.15, luminanceThreshold: 0.28, luminanceSmoothing: 0.1 });
+const bloomEffect = new BloomEffect({ intensity: 2.44, radius: 0.72, luminanceThreshold: 0.00, luminanceSmoothing: 0.1 });
 const composer = new EffectComposer(renderer, { multisampling: 4 });
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new EffectPass(camera, bloomEffect));
 
-// ── Reference globe ────────────────────────────────────────────────────────
-scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(1.0, 48, 48),
-  new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05 })
-));
-
-// ── Animator — same Cosmic preset as legacy page ───────────────────────────
+// ── Animator ───────────────────────────────────────────────────────────────
 const anim = new RingRevealAnimator(scene, {
-  radius: 1.0, numRings: 64, samplesPerRing: 256,
-  lineColor: 0x8844ff, lineColorB: 0x00ffee,
-  glowColor: 0x4422cc, glowColorB: 0x0088bb,
-  lineWidth: 3,           // ← actual 3px on screen (Line2 honours this)
-  opacity: 0.70,
-  glowOpacity: 0.35,
-  glowRadius: 1.008,
-  glowLayers: 3,
-  glowLayerRadiusStep: 0.004,
-  glowLayerOpacityFalloff: 0.5,
-  emissiveIntensity: 2.2,
-  stagger: 0.50,
-  ringDuration: 0.35,
-  warpAmount: 0.20,
-  durationMs: 2500,
-  direction: 'equator-out',
-  colorSpread: 0.25,
-  brightSpread: 0.20,
-  flickerAmp: 0.05,
-  flickerSpeed: 1.5,
-  arcColorSpread: 0.5,
-  easingFn: easeInOutCubic,
+  radius:                  1.030,
+  numRings:                48,
+  samplesPerRing:          256,
+  lineColor:               0xff6600,
+  lineColorB:              0x00ffff,
+  glowColor:               0xff3300,
+  glowColorB:              0x00aaff,
+  lineWidth:               2,
+  opacity:                 0.90,
+  glowOpacity:             0.45,
+  glowRadius:              1.108,
+  glowLayers:              4,
+  glowLayerRadiusStep:     0.013,
+  glowLayerOpacityFalloff: 0.10,
+  emissiveIntensity:       3.00,
+  warpAmount:              0.37,
+  stagger:                 0.55,
+  ringDuration:            0.35,
+  durationMs:              1800,
+  direction:               'south-to-north',
+  colorSpread:             0.52,
+  brightSpread:            0.28,
+  flickerAmp:              0.15,
+  flickerSpeed:            4.0,
+  arcColorSpread:          1.00,
+  easingFn:                easeInOutCubic,
 });
 anim.setResolution(innerWidth, innerHeight);
 anim.baseRings.renderOrder = 4;
 anim.glowRings.renderOrder = 4;
 
-// ── Loop: play → reverse → repeat ─────────────────────────────────────────
+// ── Loop ───────────────────────────────────────────────────────────────────
 function loop() { anim.play(() => anim.reverse(loop)); }
 loop();
 

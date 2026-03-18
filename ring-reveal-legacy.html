@@ -44,7 +44,7 @@ scene.background = new THREE.Color(0x020808);
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
 camera.position.set(0, 0, 3.5);
 
-// Plain renderer — no post-processing, no tone mapping, no bloom
+// Plain renderer — no post-processing, no bloom
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -55,33 +55,27 @@ controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
-// ── Reference globe ────────────────────────────────────────────────────────
-scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(1.0, 48, 48),
-  new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05 })
-));
-
-// ── v0 preset: single flat colour, no gradients ────────────────────────────
-const COLOR      = 0x00ffcc;  // single line colour — no B endpoint
-const GLOW_COLOR = 0x00ffcc;  // same for glow
+// ── Same geometry as right side, same base colour — differences are the point ─
+const COLOR = 0xff6600;   // single flat orange — no B gradient endpoint
 
 const geomArgs = {
-  radius: 1.0, numRings: 48, samplesPerRing: 256,
+  radius: 1.030, numRings: 48, samplesPerRing: 256,
   latitudeMin: -Math.PI / 2, latitudeMax: Math.PI / 2, upAxis: 'y',
 };
 const sharedMatArgs = {
   lineWidth: 1, numRings: 48,
   stagger: 0.55, ringDuration: 0.35,
-  warpAmount: 0.12, emissiveIntensity: 1.5,
+  warpAmount: 0.37, emissiveIntensity: 3.00,
   direction: 'south-to-north',
-  colorSpread: 0, brightSpread: 0, flickerAmp: 0, flickerSpeed: 2,
-  arcColorSpread: 0,
+  colorSpread: 0.52, brightSpread: 0.28,
+  flickerAmp: 0.15, flickerSpeed: 4.0,
+  arcColorSpread: 0,   // no arc gradient — arcPosition wasn't wired up
 };
 
 const baseMat = createRingMaterial({
   ...sharedMatArgs,
   lineColor: COLOR, lineColorB: COLOR,   // B == A → no gradient
-  opacity: 0.70, blending: THREE.NormalBlending,
+  opacity: 0.90, blending: THREE.NormalBlending,
 });
 const baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), baseMat);
 baseRings.renderOrder = 4;
@@ -90,11 +84,11 @@ scene.add(baseRings);
 // Single glow ring (pre-multi-layer era)
 const glowMat = createRingMaterial({
   ...sharedMatArgs,
-  lineColor: GLOW_COLOR, lineColorB: GLOW_COLOR,
+  lineColor: COLOR, lineColorB: COLOR,
   opacity: 0.25, blending: THREE.AdditiveBlending,
 });
 const glowRings = new THREE.LineSegments(
-  buildRingGeometry({ ...geomArgs, radius: 1.008 }), glowMat
+  buildRingGeometry({ ...geomArgs, radius: 1.030 * 1.108 }), glowMat
 );
 glowRings.renderOrder = 4;
 scene.add(glowRings);
