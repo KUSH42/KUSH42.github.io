@@ -89,10 +89,18 @@ export class RingRevealAnimator {
    */
   reverse(onComplete) {
     this._reversed  = true;
-    const currentRawT = Math.min(this._elapsed / this._options.durationMs, 1.0);
-    this._elapsed   = (1.0 - currentRawT) * this._options.durationMs;
     this._playing   = true;
     this._onComplete = onComplete ?? null;
+    // Find the rawT where easingFn(rawT) === 1 - currentProgress so the visual
+    // position is continuous when direction flips.  Simple rawT mirroring is only
+    // correct for symmetric easing functions; binary search works for all.
+    const target = 1.0 - this._progress;
+    let lo = 0.0, hi = 1.0;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (this._options.easingFn(mid) < target) lo = mid; else hi = mid;
+    }
+    this._elapsed = lo * this._options.durationMs;
   }
 
   /** Pause at current progress. */
@@ -250,7 +258,7 @@ export class RingRevealAnimator {
 
     this._morph = {
       elapsed:    0,
-      durationMs: dur,
+      durationMs: Math.max(dur, 0),
       crossFade,
       from: {
         lineColor:         baseMat.uniforms.uColor.value.clone(),
@@ -281,6 +289,13 @@ export class RingRevealAnimator {
         radius:            toRadius,
       },
     };
+
+    // Apply instantly when duration is zero — avoids a one-frame flash and ensures
+    // uniforms are in their final state synchronously (important before syncUI runs).
+    if (dur <= 0) {
+      this._applyMorphT(1.0);
+      this._morph = null;
+    }
   }
 
   // ── Cleanup ─────────────────────────────────────────────────

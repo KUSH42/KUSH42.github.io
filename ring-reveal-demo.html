@@ -456,11 +456,8 @@ function syncUI(cfg) {
   if (cfg.ringDuration !== undefined) {
     const v = Math.max(0.001, cfg.ringDuration);
     set('slRingDur', Math.round(v * 100), 'vRingDur', x => (x / 100).toFixed(2));
-    if (anim) {
-      anim._baseRings.material.uniforms.uRingDuration.value = v;
-      anim._glowRings.material.uniforms.uRingDuration.value = v;
-      anim._options.ringDuration = v;
-    }
+    // Uniforms not written here — morphTo owns uRingDuration and applies it via
+    // _applyMorphT. Writing here causes a jump-back glitch on the first morph tick.
   }
   set('slDuration',    cfg.durationMs,                                                               'vDuration');
   if (cfg.direction) {
