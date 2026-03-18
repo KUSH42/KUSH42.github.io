@@ -56,7 +56,7 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
 // ── Bloom ──────────────────────────────────────────────────────────────────
-const bloomEffect = new BloomEffect({ intensity: 2.44, radius: 0.72, luminanceThreshold: 0.00, luminanceSmoothing: 0.1 });
+const bloomEffect = new BloomEffect({ intensity: 1.6, radius: 0.72, luminanceThreshold: 0.00, luminanceSmoothing: 0.1 });
 const composer = new EffectComposer(renderer, { multisampling: 4 });
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new EffectPass(camera, bloomEffect));
@@ -93,6 +93,25 @@ const anim = new RingRevealAnimator(scene, {
 anim.setResolution(innerWidth, innerHeight);
 anim.baseRings.renderOrder = 4;
 anim.glowRings.renderOrder = 4;
+
+// ── Camera sync ────────────────────────────────────────────────────────────
+let syncingCamera = false;
+controls.addEventListener('change', () => {
+  if (syncingCamera) return;
+  window.parent.postMessage({
+    type: 'camera',
+    position: camera.position.toArray(),
+    target: controls.target.toArray(),
+  }, '*');
+});
+window.addEventListener('message', e => {
+  if (e.data?.type !== 'camera-sync') return;
+  syncingCamera = true;
+  camera.position.fromArray(e.data.position);
+  controls.target.fromArray(e.data.target);
+  controls.update();
+  syncingCamera = false;
+});
 
 // ── Loop ───────────────────────────────────────────────────────────────────
 function loop() { anim.play(() => anim.reverse(loop)); }
