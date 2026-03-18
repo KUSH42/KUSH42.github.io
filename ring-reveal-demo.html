@@ -370,10 +370,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
 import { RingRevealAnimator } from './components/ring-reveal/index.js';
 import { easeInOutCubic, easeOutExpo, backInOut, linear } from './components/ring-reveal/easings.js';
 
@@ -395,14 +392,11 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
 // ── Post-processing ────────────────────────────────────────────────────────
-// MSAA render target restores anti-aliasing lost when using EffectComposer.
-// Bloom radius kept tight (0.15) so per-ring blooms don't merge into disc halos.
-const renderTarget = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { samples: 4 });
-const composer = new EffectComposer(renderer, renderTarget);
+// postprocessing library: higher-quality bloom with built-in MSAA multisampling.
+const bloomEffect = new BloomEffect({ intensity: 1.2, radius: 0.15, luminanceThreshold: 0.28, luminanceSmoothing: 0.1 });
+const composer = new EffectComposer(renderer, { multisampling: 4 });
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.15, 0.28);
-composer.addPass(bloomPass);
-composer.addPass(new OutputPass());
+composer.addPass(new EffectPass(camera, bloomEffect));
 
 // ── Reference globe ────────────────────────────────────────────────────────
 const globeGeo  = new THREE.SphereGeometry(1.0, 48, 48);
@@ -891,11 +885,11 @@ document.getElementById('selSphere').addEventListener('change', e => {
   globeMesh.material = { wire: wireMat, solid: solidMat, none: hiddenMat }[e.target.value] ?? wireMat;
 });
 document.getElementById('slBloom').addEventListener('input', e => {
-  bloomPass.strength = e.target.value / 100;
+  bloomEffect.intensity = e.target.value / 100;
   document.getElementById('vBloom').textContent = (e.target.value / 100).toFixed(2);
 });
 document.getElementById('slBloomRadius').addEventListener('input', e => {
-  bloomPass.radius = e.target.value / 100;
+  bloomEffect.mipmapBlurPass.radius = e.target.value / 100;
   document.getElementById('vBloomRadius').textContent = (e.target.value / 100).toFixed(2);
 });
 
@@ -1097,9 +1091,7 @@ window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  renderTarget.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
-  bloomPass.resolution.set(innerWidth, innerHeight);
   anim.setResolution(innerWidth, innerHeight);
 });
 
