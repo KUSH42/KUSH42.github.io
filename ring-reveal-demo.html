@@ -195,7 +195,7 @@
   </label>
   <label>
     <span class="lname">Duration</span>
-    <input type="range" id="slDuration" min="200" max="6000" step="100" value="1800">
+    <input type="range" id="slDuration" min="200" max="15000" step="100" value="1800">
     <span class="val" id="vDuration">1800</span> ms
   </label>
   <label>
@@ -204,21 +204,30 @@
     <span class="val" id="vStagger">0.40</span>
   </label>
   <label>
-    <span class="lname">Ring duration</span>
-    <input type="range" id="slRingDur" min="1" max="99" value="35">
-    <span class="val" id="vRingDur">0.35</span>
+    <span class="lname">Spawn jitter</span>
+    <input type="range" id="slJitter" min="0" max="500" value="0">
+    <span class="val" id="vJitter">0.00</span>
+  </label>
+  <label>
+    <span class="lname">Ring fade</span>
+    <input type="range" id="slRingFade" min="1" max="99" value="35">
+    <span class="val" id="vRingFade">0.35</span>
+  </label>
+  <label>
+    <span class="lname">Invert fade</span>
+    <input type="checkbox" id="chkInvert">
   </label>
 
   <!-- Geometry -->
   <div class="section-label">Geometry</div>
   <label>
     <span class="lname">Num rings</span>
-    <input type="range" id="slNumRings" min="2" max="120" value="48">
+    <input type="range" id="slNumRings" min="2" max="300" value="48">
     <span class="val" id="vNumRings">48</span>
   </label>
   <label>
     <span class="lname">Samples/ring</span>
-    <input type="range" id="slSamples" min="8" max="512" step="8" value="256">
+    <input type="range" id="slSamples" min="8" max="1024" step="8" value="256">
     <span class="val" id="vSamples">256</span>
   </label>
   <label>
@@ -231,27 +240,27 @@
   <div class="section-label">Ring Variation</div>
   <label>
     <span class="lname">Color spread</span>
-    <input type="range" id="slColorSpread" min="0" max="100" value="0">
+    <input type="range" id="slColorSpread" min="0" max="200" value="0">
     <span class="val" id="vColorSpread">0.00</span>
   </label>
   <label>
     <span class="lname">Bright spread</span>
-    <input type="range" id="slBrightSpread" min="0" max="100" value="0">
+    <input type="range" id="slBrightSpread" min="0" max="200" value="0">
     <span class="val" id="vBrightSpread">0.00</span>
   </label>
   <label>
     <span class="lname">Flicker amp</span>
-    <input type="range" id="slFlickerAmp" min="0" max="100" value="0">
+    <input type="range" id="slFlickerAmp" min="-100" max="200" value="0">
     <span class="val" id="vFlickerAmp">0.00</span>
   </label>
   <label>
     <span class="lname">Flicker speed</span>
-    <input type="range" id="slFlickerSpeed" min="1" max="300" value="20">
+    <input type="range" id="slFlickerSpeed" min="1" max="2000" value="20">
     <span class="val" id="vFlickerSpeed">2.0</span> Hz
   </label>
   <label>
     <span class="lname">Arc color spread</span>
-    <input type="range" id="slArcColorSpread" min="0" max="100" value="0">
+    <input type="range" id="slArcColorSpread" min="-100" max="200" value="0">
     <span class="val" id="vArcColorSpread">0.00</span>
   </label>
 
@@ -268,6 +277,16 @@
     <input type="color" id="colGlowB" value="#00ffcc">
   </label>
   <label>
+    <span class="lname">Gradient mode</span>
+    <select id="selGradientMode">
+      <option value="0">RGB</option>
+      <option value="1">HSL short</option>
+      <option value="2">HSL long</option>
+      <option value="3">HSL CW</option>
+      <option value="4">HSL CCW</option>
+    </select>
+  </label>
+  <label>
     <span class="lname">Opacity</span>
     <input type="range" id="slOpacity" min="0" max="100" value="70">
     <span class="val" id="vOpacity">0.70</span>
@@ -279,22 +298,22 @@
   </label>
   <label>
     <span class="lname">Emissive</span>
-    <input type="range" id="slEmissive" min="10" max="600" value="150">
+    <input type="range" id="slEmissive" min="10" max="2000" value="150">
     <span class="val" id="vEmissive">1.50</span>
   </label>
   <label>
     <span class="lname">Glow radius</span>
-    <input type="range" id="slGlowRad" min="100" max="120" value="108">
+    <input type="range" id="slGlowRad" min="100" max="200" value="108">
     <span class="val" id="vGlowRad">1.008</span>
   </label>
   <label>
     <span class="lname">Glow layers</span>
-    <input type="range" id="slGlowLayers" min="1" max="6" step="1" value="3">
+    <input type="range" id="slGlowLayers" min="1" max="12" step="1" value="3">
     <span class="val" id="vGlowLayers">3</span>
   </label>
   <label>
     <span class="lname">Layer step</span>
-    <input type="range" id="slGlowStep" min="0" max="20" value="4">
+    <input type="range" id="slGlowStep" min="0" max="200" value="4">
     <span class="val" id="vGlowStep">0.004</span>
   </label>
   <label>
@@ -304,7 +323,7 @@
   </label>
   <label>
     <span class="lname">Warp amount</span>
-    <input type="range" id="slWarp" min="0" max="80" value="12">
+    <input type="range" id="slWarp" min="-200" max="200" value="12">
     <span class="val" id="vWarp">0.12</span>
   </label>
 
@@ -336,35 +355,50 @@
     <span class="val" id="vMutateStr">15%</span>
   </label>
 
+  <!-- Rings -->
+  <div class="section-label">Rings</div>
+  <label>
+    <span class="lname">Mode</span>
+    <select id="selMode">
+      <option value="latitude" selected>Horizontal (latitude)</option>
+      <option value="longitude">Vertical (longitude)</option>
+    </select>
+  </label>
+  <label>
+    <span class="lname">Scroll speed</span>
+    <input type="range" id="slScrollSpeed" min="-100" max="100" value="0">
+    <span class="val" id="vScrollSpeed">0.00</span>
+  </label>
+
   <!-- Scene -->
   <div class="section-label">Scene</div>
   <label>
     <span class="lname">Sphere</span>
     <select id="selSphere">
-      <option value="wire" selected>Wireframe</option>
-      <option value="solid">Solid</option>
+      <option value="latlon" selected>Lat/lon grid</option>
+      <option value="wire">Wireframe</option>
       <option value="none">Hidden</option>
     </select>
   </label>
   <label>
     <span class="lname">Exposure</span>
-    <input type="range" id="slExposure" min="0" max="300" value="100">
-    <span class="val" id="vExposure">1.00</span>
+    <input type="range" id="slExposure" min="0" max="600" value="183">
+    <span class="val" id="vExposure">1.83</span>
   </label>
   <label>
     <span class="lname">Bloom strength</span>
-    <input type="range" id="slBloom" min="0" max="400" value="120">
-    <span class="val" id="vBloom">1.20</span>
+    <input type="range" id="slBloom" min="0" max="1000" value="133">
+    <span class="val" id="vBloom">1.33</span>
   </label>
   <label>
     <span class="lname">Bloom radius</span>
-    <input type="range" id="slBloomRadius" min="0" max="100" value="15">
-    <span class="val" id="vBloomRadius">0.15</span>
+    <input type="range" id="slBloomRadius" min="0" max="200" value="67">
+    <span class="val" id="vBloomRadius">0.67</span>
   </label>
   <label>
     <span class="lname">Bloom threshold</span>
-    <input type="range" id="slBloomThreshold" min="0" max="100" value="28">
-    <span class="val" id="vBloomThreshold">0.28</span>
+    <input type="range" id="slBloomThreshold" min="0" max="100" value="13">
+    <span class="val" id="vBloomThreshold">0.13</span>
   </label>
 
 </div>
@@ -380,10 +414,10 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect, ToneMappingEffect, ToneMappingMode } from 'postprocessing';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
-import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { RingRevealAnimator } from './components/ring-reveal/index.js';
 import { easeInOutCubic, easeOutExpo, backInOut, linear } from './components/ring-reveal/easings.js';
 
@@ -398,7 +432,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ReinhardToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.83;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -408,23 +442,108 @@ controls.autoRotateSpeed = 0.6;
 
 // ── Post-processing ────────────────────────────────────────────────────────
 // postprocessing library: higher-quality bloom with built-in MSAA multisampling.
-const bloomEffect = new BloomEffect({ intensity: 1.2, radius: 0.15, luminanceThreshold: 0.28, luminanceSmoothing: 0.1 });
+const bloomEffect = new BloomEffect({ intensity: 1.33, radius: 0.67, luminanceThreshold: 0.13, luminanceSmoothing: 0.1 });
+const toneMappingEffect = new ToneMappingEffect({ mode: ToneMappingMode.REINHARD });
 const composer = new EffectComposer(renderer, { multisampling: 4 });
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new EffectPass(camera, bloomEffect));
+composer.addPass(new EffectPass(camera, bloomEffect, toneMappingEffect));
 
 // ── Reference globe ────────────────────────────────────────────────────────
-const globeGeo  = new THREE.SphereGeometry(1.0, 48, 48);
-const solidMat  = new THREE.MeshStandardMaterial({ color: 0x001a14, roughness: 0.8, metalness: 0.1, transparent: true, opacity: 0.85 });
-const wfLineGeo = new LineSegmentsGeometry();
-wfLineGeo.setPositions(new THREE.WireframeGeometry(globeGeo).getAttribute('position').array);
-const wireMat = new LineMaterial({ color: 0x00ffcc, linewidth: 1, transparent: true, opacity: 0.05, depthTest: true, depthWrite: false });
-wireMat.resolution.set(innerWidth, innerHeight);
-const globeWire  = new LineSegments2(wfLineGeo, wireMat);
-const globeSolid = new THREE.Mesh(globeGeo, solidMat);
-globeSolid.visible = false;
-scene.add(globeWire);
-scene.add(globeSolid);
+const WR = 1.002; // slightly > 1.0 to avoid z-fighting with rings
+
+// Shared depth layers (used by both sphere modes)
+// Layer A — BackSide occluder at 0.98r so back-face lines fail depth test.
+const backOccluder = new THREE.Mesh(
+  new THREE.SphereGeometry(0.98, 48, 48),
+  new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, depthTest: true, depthFunc: THREE.AlwaysDepth, side: THREE.BackSide }),
+);
+backOccluder.renderOrder = 0;
+scene.add(backOccluder);
+
+// Layer B — dark fill so back-hemisphere lines are hidden.
+const globeSurface = new THREE.Mesh(
+  new THREE.SphereGeometry(1.0, 48, 48),
+  new THREE.MeshBasicMaterial({ color: 0x001510, transparent: true, opacity: 0.88, depthWrite: true, side: THREE.DoubleSide }),
+);
+globeSurface.renderOrder = 0;
+scene.add(globeSurface);
+
+// ── Lat/lon grid (LineBasicMaterial — no caps, no cross-artifacts) ──────────
+// NOTE: renderOrder must be set on individual Line objects, not on the Group —
+// Group.renderOrder is ignored by the renderer when collecting renderables.
+const latlonMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthTest: true, depthWrite: false });
+const globeLatLon = new THREE.Group();
+const LAT = 10, LON = 20, SEGS = 64;
+// Latitude rings (horizontal circles)
+for (let i = 1; i < LAT; i++) {
+  const phi = (i / LAT) * Math.PI;
+  const y  = WR * Math.cos(phi);
+  const sr = WR * Math.sin(phi);
+  const pts = [];
+  for (let j = 0; j <= SEGS; j++) {
+    const t = (j / SEGS) * Math.PI * 2;
+    pts.push(new THREE.Vector3(sr * Math.cos(t), y, sr * Math.sin(t)));
+  }
+  const ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), latlonMat);
+  ring.renderOrder = 1;
+  globeLatLon.add(ring);
+}
+// Longitude meridians (vertical half-circles)
+for (let j = 0; j < LON; j++) {
+  const t = (j / LON) * Math.PI * 2;
+  const pts = [];
+  for (let i = 0; i <= SEGS; i++) {
+    const phi = (i / SEGS) * Math.PI;
+    pts.push(new THREE.Vector3(
+      WR * Math.sin(phi) * Math.cos(t),
+      WR * Math.cos(phi),
+      WR * Math.sin(phi) * Math.sin(t),
+    ));
+  }
+  const meridian = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), latlonMat);
+  meridian.renderOrder = 1;
+  globeLatLon.add(meridian);
+}
+scene.add(globeLatLon);
+
+// ── Geodesic wireframe (Line2) — arcs projected to sphere surface ────────────
+// WireframeGeometry chords dip inside the sphere at their midpoints and get clipped.
+// Instead, extract unique edges and subdivide each into short arcs along the surface.
+function buildGeodesicArcPositions(radius, detail, edgeSegs) {
+  const geo = new THREE.IcosahedronGeometry(1, detail);
+  const pos = geo.attributes.position;
+  // IcosahedronGeometry with detail>0 is non-indexed — every 3 vertices = one triangle.
+  const triCount = pos.count / 3;
+  const va = new THREE.Vector3(), vb = new THREE.Vector3();
+  const edgeSet = new Map();
+  for (let t = 0; t < triCount; t++) {
+    const base = t * 3;
+    for (let e = 0; e < 3; e++) {
+      const ai = base + e, bi = base + (e + 1) % 3;
+      va.fromBufferAttribute(pos, ai);
+      vb.fromBufferAttribute(pos, bi);
+      // Key by rounded coords so shared edges (same world position, different indices) are deduplicated
+      const key = [va, vb].map(v => `${v.x.toFixed(5)},${v.y.toFixed(5)},${v.z.toFixed(5)}`).sort().join('|');
+      if (!edgeSet.has(key)) edgeSet.set(key, [va.clone(), vb.clone()]);
+    }
+  }
+  const out = [];
+  for (const [pa, pb] of edgeSet.values()) {
+    for (let s = 0; s < edgeSegs; s++) {
+      const p0 = new THREE.Vector3().lerpVectors(pa, pb, s / edgeSegs).normalize().multiplyScalar(radius);
+      const p1 = new THREE.Vector3().lerpVectors(pa, pb, (s + 1) / edgeSegs).normalize().multiplyScalar(radius);
+      out.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z);
+    }
+  }
+  return new Float32Array(out);
+}
+const icoEdgeGeo = new LineSegmentsGeometry();
+icoEdgeGeo.setPositions(buildGeodesicArcPositions(WR, 3, 4));
+const icoMat = new LineMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthTest: true, depthWrite: false, linewidth: 1.0, resolution: new THREE.Vector2(innerWidth, innerHeight) });
+const globeWireframe = new LineSegments2(icoEdgeGeo, icoMat);
+globeWireframe.renderOrder = 1;
+globeWireframe.visible = false;
+scene.add(globeWireframe);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 const dirLight = new THREE.DirectionalLight(0x00ffcc, 1.2);
@@ -436,21 +555,36 @@ const EASINGS = { easeInOutCubic, easeOutExpo, backInOut, linear };
 
 // ── Preset definitions ─────────────────────────────────────────────────────
 const PRESETS = {
-  default:   { label: 'Default',   lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.70, glowOpacity: 0.25, emissiveIntensity: 1.5,  stagger: 0.55, warpAmount: 0.12, numRings: 48, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 1800, ringDuration: 0.35 },
-  alert:     { label: 'Alert',     lineColor: 0xff6600, glowColor: 0xff2200, opacity: 0.90, glowOpacity: 0.45, emissiveIntensity: 3.0,  stagger: 0.80, warpAmount: 0.18, numRings: 48, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 1400, ringDuration: 0.30, colorSpread: 0.08, brightSpread: 0.20, flickerAmp: 0.15, flickerSpeed: 4.0 },
-  dense:     { label: 'Dense',     lineColor: 0x00ffcc, glowColor: 0x00ff88, opacity: 0.45, glowOpacity: 0.12, emissiveIntensity: 1.2,  stagger: 0.30, warpAmount: 0.06, numRings: 96, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 2400, ringDuration: 0.40, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  ghost:     { label: 'Ghost',     lineColor: 0x88ccff, glowColor: 0x4499ff, opacity: 0.35, glowOpacity: 0.08, emissiveIntensity: 0.8,  stagger: 0.70, warpAmount: 0.35, numRings: 16, direction: 'north-to-south', easingKey: 'easeOutExpo',    durationMs: 3200, ringDuration: 0.50, colorSpread: 0.12, brightSpread: 0.30, flickerAmp: 0.08, flickerSpeed: 0.8 },
-  scanner:   { label: 'Scanner',   lineColor: 0x00ff44, glowColor: 0x00cc33, opacity: 0.85, glowOpacity: 0.30, emissiveIntensity: 2.5,  stagger: 0.95, warpAmount: 0.04, numRings: 32, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs:  900, ringDuration: 0.20, colorSpread: 0.10, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  cosmic:    { label: 'Cosmic',    lineColor: 0x8844ff, lineColorB: 0x00ffee, glowColor: 0x4422cc, glowColorB: 0x0088bb, opacity: 0.70, glowOpacity: 0.35, emissiveIntensity: 2.2,  stagger: 0.50, warpAmount: 0.20, numRings: 64, direction: 'equator-out',    easingKey: 'easeInOutCubic', durationMs: 2500, ringDuration: 0.35, colorSpread: 0.25, brightSpread: 0.20, flickerAmp: 0.05, flickerSpeed: 1.5 },
-  ignition:  { label: 'Ignition',  lineColor: 0xffee00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28, colorSpread: 0.15, brightSpread: 0.35, flickerAmp: 0.20, flickerSpeed: 6.0, glowLayers: 4, glowLayerRadiusStep: 0.006, glowLayerOpacityFalloff: 0.40 },
-  neon:      { label: 'Neon',      lineColor: 0xff00ff, lineColorB: 0x00ffff, glowColor: 0xff00cc, glowColorB: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32, colorSpread: 0.30, brightSpread: 0.15, flickerAmp: 0.10, flickerSpeed: 3.0, glowLayers: 5, glowLayerRadiusStep: 0.005, glowLayerOpacityFalloff: 0.45 },
-  stealth:   { label: 'Stealth',   lineColor: 0x003322, glowColor: 0x004433, opacity: 0.30, glowOpacity: 0.06, emissiveIntensity: 0.6,  stagger: 0.20, warpAmount: 0.03, numRings: 24, direction: 'north-to-south', easingKey: 'linear',         durationMs: 4000, ringDuration: 0.45, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  solar:     { label: 'Solar',     lineColor: 0xffffff, lineColorB: 0xff4400, glowColor: 0xffcc00, glowColorB: 0xff2200, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25, colorSpread: 0.20, brightSpread: 0.40, flickerAmp: 0.25, flickerSpeed: 2.5, glowLayers: 4, glowLayerRadiusStep: 0.007, glowLayerOpacityFalloff: 0.38 },
-  wisp:      { label: 'Wisp',      lineColor: 0xffffff, lineColorB: 0x88aaff, glowColor: 0xccddff, glowColorB: 0x4466cc, opacity: 0.20, glowOpacity: 0.05, emissiveIntensity: 0.5,  stagger: 0.85, warpAmount: 0.55, numRings:  8, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 5000, ringDuration: 0.60, colorSpread: 0.15, brightSpread: 0.50, flickerAmp: 0.12, flickerSpeed: 0.5 },
-  pulse:     { label: 'Pulse',     lineColor: 0xff0066, glowColor: 0xff0033, opacity: 0.95, glowOpacity: 0.60, emissiveIntensity: 6.0,  stagger: 1.00, warpAmount: 0.25, numRings: 48, direction: 'equator-out',    easingKey: 'backInOut',      durationMs:  700, ringDuration: 0.15, colorSpread: 0.05, brightSpread: 0.10, flickerAmp: 0.30, flickerSpeed: 8.0, glowLayers: 6, glowLayerRadiusStep: 0.004, glowLayerOpacityFalloff: 0.42 },
-  arctic:    { label: 'Arctic',    lineColor: 0x00eeff, lineColorB: 0xffffff, glowColor: 0x88ffff, glowColorB: 0xaaffee, opacity: 0.55, glowOpacity: 0.20, emissiveIntensity: 1.8,  stagger: 0.45, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 2200, ringDuration: 0.38, colorSpread: 0.08, brightSpread: 0.25, flickerAmp: 0.06, flickerSpeed: 1.2 },
-  grid:      { label: 'Grid',      lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.60, glowOpacity: 0.15, emissiveIntensity: 1.0,  stagger: 0.00, warpAmount: 0.00, numRings: 48, direction: 'south-to-north', easingKey: 'linear',         durationMs: 2000, ringDuration: 0.08, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  ember:     { label: 'Ember',     lineColor: 0xffcc00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.65, glowOpacity: 0.30, emissiveIntensity: 2.8,  stagger: 0.65, warpAmount: 0.30, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 2800, ringDuration: 0.55, colorSpread: 0.12, brightSpread: 0.35, flickerAmp: 0.08, flickerSpeed: 1.8 },
+  // Clean teal south-to-north sweep — baseline reference
+  default:  { label: 'Default',  lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.72, glowOpacity: 0.28, emissiveIntensity: 1.8, stagger: 0.55, ringFade: 0.35, warpAmount: 0.12, numRings: 48, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 2200 },
+  // Thin hot-pink pulse ring racing from equator outward
+  pulse:    { label: 'Pulse',    lineColor: 0xff0066, lineColorB: 0xff6600, glowColor: 0xff0044, glowColorB: 0xff4400, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 6.0, stagger: 1.00, ringFade: 0.10, warpAmount: 0.20, numRings: 48, direction: 'equator-out', easingKey: 'easeOutExpo', durationMs: 1400, brightSpread: 0.15, flickerAmp: 0.25, flickerSpeed: 8.0, glowLayers: 5, glowLayerRadiusStep: 0.005, glowLayerOpacityFalloff: 0.40 },
+  // Tight scan line sweeping south-to-north, green, near-instant
+  scanner:  { label: 'Scanner',  lineColor: 0x00ff66, glowColor: 0x00bb44, opacity: 0.90, glowOpacity: 0.35, emissiveIntensity: 3.0, stagger: 0.96, ringFade: 0.07, warpAmount: 0.03, numRings: 32, direction: 'south-to-north', easingKey: 'linear', durationMs: 2200, colorSpread: 0.06 },
+  // Purple-to-teal gradient equatorial burst
+  cosmic:   { label: 'Cosmic',   lineColor: 0x9944ff, lineColorB: 0x00eeff, glowColor: 0x5522cc, glowColorB: 0x0099bb, opacity: 0.75, glowOpacity: 0.38, emissiveIntensity: 2.8, stagger: 0.48, ringFade: 0.38, warpAmount: 0.24, numRings: 64, direction: 'equator-out', easingKey: 'easeInOutCubic', durationMs: 3200, colorSpread: 0.32, brightSpread: 0.18, flickerAmp: 0.06, flickerSpeed: 1.5, glowLayers: 3 },
+  // Fire blast — yellow-to-red gradient, warp snap, south-to-north
+  ignition: { label: 'Ignition', lineColor: 0xffee00, lineColorB: 0xff2200, glowColor: 0xff9900, glowColorB: 0xff1100, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 5.5, stagger: 0.88, ringFade: 0.20, warpAmount: 0.50, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut', durationMs: 1600, colorSpread: 0.18, brightSpread: 0.42, flickerAmp: 0.28, flickerSpeed: 7.0, glowLayers: 4, glowLayerRadiusStep: 0.006, glowLayerOpacityFalloff: 0.38 },
+  // Translucent blue dissolve, few sparse rings, slow north-to-south
+  ghost:    { label: 'Ghost',    lineColor: 0x88aaff, lineColorB: 0x4488ff, glowColor: 0x4499ff, glowColorB: 0x2244cc, opacity: 0.28, glowOpacity: 0.07, emissiveIntensity: 0.8, stagger: 0.68, ringFade: 0.58, warpAmount: 0.42, numRings: 14, direction: 'north-to-south', easingKey: 'easeOutExpo', durationMs: 4500, colorSpread: 0.14, brightSpread: 0.38, flickerAmp: 0.10, flickerSpeed: 0.7 },
+  // Hot magenta-to-cyan gradient, stacked glow, south-to-north
+  neon:     { label: 'Neon',     lineColor: 0xff00ff, lineColorB: 0x00ffff, glowColor: 0xcc00ff, glowColorB: 0x00ffcc, opacity: 0.85, glowOpacity: 0.45, emissiveIntensity: 4.5, stagger: 0.62, ringFade: 0.28, warpAmount: 0.16, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo', durationMs: 2000, colorSpread: 0.38, brightSpread: 0.22, flickerAmp: 0.12, flickerSpeed: 3.0, glowLayers: 5, glowLayerRadiusStep: 0.005, glowLayerOpacityFalloff: 0.45 },
+  // White corona burst — max stagger equatorial, orange tinge
+  solar:    { label: 'Solar',    lineColor: 0xffffff, lineColorB: 0xff7700, glowColor: 0xffdd00, glowColorB: 0xff3300, opacity: 0.80, glowOpacity: 0.50, emissiveIntensity: 6.0, stagger: 1.00, ringFade: 0.18, warpAmount: 0.10, numRings: 48, direction: 'equator-out', easingKey: 'easeOutExpo', durationMs: 1600, colorSpread: 0.22, brightSpread: 0.50, flickerAmp: 0.22, flickerSpeed: 2.5, glowLayers: 4, glowLayerRadiusStep: 0.007, glowLayerOpacityFalloff: 0.36 },
+  // Icy cyan-to-white gradient, gentle north-to-south
+  arctic:   { label: 'Arctic',   lineColor: 0x00eeff, lineColorB: 0xeeffff, glowColor: 0x88ffff, glowColorB: 0xccffff, opacity: 0.62, glowOpacity: 0.22, emissiveIntensity: 2.0, stagger: 0.42, ringFade: 0.42, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 3000, colorSpread: 0.10, brightSpread: 0.30, flickerAmp: 0.05, flickerSpeed: 1.0 },
+  // Near-invisible dark-green shadow sweep
+  stealth:  { label: 'Stealth',  lineColor: 0x004422, lineColorB: 0x001a0d, glowColor: 0x003318, opacity: 0.32, glowOpacity: 0.06, emissiveIntensity: 0.7, stagger: 0.22, ringFade: 0.52, warpAmount: 0.03, numRings: 24, direction: 'north-to-south', easingKey: 'linear', durationMs: 5500 },
+  // All rings pop simultaneously — instant full reveal
+  grid:     { label: 'Grid',     lineColor: 0x00ffcc, glowColor: 0x00ddaa, opacity: 0.65, glowOpacity: 0.18, emissiveIntensity: 1.4, stagger: 0.00, ringFade: 0.06, warpAmount: 0.00, numRings: 48, direction: 'south-to-north', easingKey: 'linear', durationMs: 1200 },
+  // Dense fine rings with cyan-blue gradient
+  dense:    { label: 'Dense',    lineColor: 0x00ffee, lineColorB: 0x0066ff, glowColor: 0x00ddcc, glowColorB: 0x0044dd, opacity: 0.40, glowOpacity: 0.12, emissiveIntensity: 1.6, stagger: 0.32, ringFade: 0.38, warpAmount: 0.07, numRings: 120, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 3500, colorSpread: 0.18, brightSpread: 0.10 },
+  // Orange-red warning strobe, equator-out
+  alert:    { label: 'Alert',    lineColor: 0xff8800, lineColorB: 0xff0000, glowColor: 0xff5500, glowColorB: 0xcc0000, opacity: 0.92, glowOpacity: 0.48, emissiveIntensity: 4.5, stagger: 0.78, ringFade: 0.22, warpAmount: 0.22, numRings: 48, direction: 'equator-out', easingKey: 'backInOut', durationMs: 1600, colorSpread: 0.12, brightSpread: 0.28, flickerAmp: 0.22, flickerSpeed: 5.0, glowLayers: 3 },
+  // Barely-there gossamer wisps, extreme warp
+  wisp:     { label: 'Wisp',     lineColor: 0xffffff, lineColorB: 0x8899ff, glowColor: 0xccddff, glowColorB: 0x4466cc, opacity: 0.18, glowOpacity: 0.04, emissiveIntensity: 0.6, stagger: 0.82, ringFade: 0.68, warpAmount: 0.65, numRings: 8, direction: 'equator-out', easingKey: 'easeOutExpo', durationMs: 5000, colorSpread: 0.12, brightSpread: 0.55, flickerAmp: 0.14, flickerSpeed: 0.5 },
+  // Smoldering gold-to-red burn, south-to-north, long fade
+  ember:    { label: 'Ember',    lineColor: 0xffcc00, lineColorB: 0xff3300, glowColor: 0xff9900, glowColorB: 0xff1100, opacity: 0.68, glowOpacity: 0.32, emissiveIntensity: 3.5, stagger: 0.62, ringFade: 0.52, warpAmount: 0.38, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut', durationMs: 3800, colorSpread: 0.14, brightSpread: 0.42, flickerAmp: 0.12, flickerSpeed: 1.8, glowLayers: 3 },
 };
 
 const PRESET_KEYS = Object.keys(PRESETS);
@@ -479,12 +613,15 @@ function getOptions() {
     durationMs:        +document.getElementById('slDuration').value,
     direction:         document.getElementById('selDirection').value,
     stagger:           +document.getElementById('slStagger').value / 100,
-    ringDuration:      +document.getElementById('slRingDur').value / 100,
+    jitter:            +document.getElementById('slJitter').value,
+    ringFade:      +document.getElementById('slRingFade').value / 100,
+    invert:        document.getElementById('chkInvert').checked,
     easingFn:          EASINGS[document.getElementById('selEasing').value],
     lineColor:         parseInt(document.getElementById('colLine').value.slice(1), 16),
     lineColorB:        parseInt(document.getElementById('colLineB').value.slice(1), 16),
     glowColor:         parseInt(document.getElementById('colGlow').value.slice(1), 16),
     glowColorB:        parseInt(document.getElementById('colGlowB').value.slice(1), 16),
+    gradientMode:      +document.getElementById('selGradientMode').value,
     opacity:           +document.getElementById('slOpacity').value / 100,
     glowOpacity:       +document.getElementById('slGlowOpacity').value / 100,
     emissiveIntensity: +document.getElementById('slEmissive').value / 100,
@@ -499,12 +636,15 @@ function getOptions() {
     flickerSpeed:      +document.getElementById('slFlickerSpeed').value / 10,
     arcColorSpread:    +document.getElementById('slArcColorSpread').value / 100,
     morphDurationMs:   +document.getElementById('slMorphDur').value,
+    mode:              document.getElementById('selMode').value,
+    scrollSpeed:       +document.getElementById('slScrollSpeed').value / 100,
   };
 }
 
 function buildAnim() {
   if (anim) { anim.dispose(); anim = null; }
   anim = new RingRevealAnimator(scene, getOptions());
+  window.__anim = anim;
   anim.setResolution(innerWidth, innerHeight);
   anim.baseRings.renderOrder = 4;
   anim.glowRings.renderOrder = 4;
@@ -535,6 +675,8 @@ function syncUI(cfg) {
   set('slGlowOpacity', cfg.glowOpacity !== undefined ? Math.round(cfg.glowOpacity * 100) : undefined, 'vGlowOpacity', v => (v / 100).toFixed(2));
   set('slEmissive',    cfg.emissiveIntensity !== undefined ? Math.round(cfg.emissiveIntensity * 100) : undefined, 'vEmissive', v => (v / 100).toFixed(2));
   set('slStagger',     cfg.stagger    !== undefined ? Math.round(cfg.stagger    * 100) : undefined, 'vStagger',     v => (v / 100).toFixed(2));
+  set('slJitter',      cfg.jitter     !== undefined ? Math.round(cfg.jitter)           : undefined, 'vJitter',      v => Math.round(v));
+  if (cfg.jitter !== undefined && anim) anim.setJitter(cfg.jitter);
   set('slWarp',        cfg.warpAmount !== undefined ? Math.round(cfg.warpAmount * 100) : undefined, 'vWarp',        v => (v / 100).toFixed(2));
   set('slNumRings',    cfg.numRings,                                                                 'vNumRings');
   set('slColorSpread',  cfg.colorSpread  !== undefined ? Math.round(cfg.colorSpread  * 100) : undefined, 'vColorSpread',  v => (v / 100).toFixed(2));
@@ -542,14 +684,22 @@ function syncUI(cfg) {
   set('slFlickerAmp',   cfg.flickerAmp   !== undefined ? Math.round(cfg.flickerAmp   * 100) : undefined, 'vFlickerAmp',   v => (v / 100).toFixed(2));
   set('slFlickerSpeed',    cfg.flickerSpeed    !== undefined ? Math.round(cfg.flickerSpeed    * 10)  : undefined, 'vFlickerSpeed',    v => (v / 10).toFixed(1));
   set('slArcColorSpread', cfg.arcColorSpread  !== undefined ? Math.round(cfg.arcColorSpread  * 100) : undefined, 'vArcColorSpread',  v => (v / 100).toFixed(2));
+  if (cfg.gradientMode !== undefined) {
+    document.getElementById('selGradientMode').value = cfg.gradientMode;
+    if (anim) anim.setGradientMode(cfg.gradientMode);
+  }
   set('slGlowLayers',   cfg.glowLayers,                                                                   'vGlowLayers');
   set('slGlowStep',     cfg.glowLayerRadiusStep     !== undefined ? Math.round(cfg.glowLayerRadiusStep     * 1000) : undefined, 'vGlowStep',    v => (v / 1000).toFixed(3));
   set('slGlowFalloff',  cfg.glowLayerOpacityFalloff !== undefined ? Math.round(cfg.glowLayerOpacityFalloff * 100)  : undefined, 'vGlowFalloff', v => (v / 100).toFixed(2));
-  if (cfg.ringDuration !== undefined) {
-    const v = Math.max(0.001, cfg.ringDuration);
-    set('slRingDur', Math.round(v * 100), 'vRingDur', x => (x / 100).toFixed(2));
-    // Uniforms not written here — morphTo owns uRingDuration and applies it via
+  if (cfg.ringFade !== undefined) {
+    const v = Math.max(0.001, cfg.ringFade);
+    set('slRingFade', Math.round(v * 100), 'vRingFade', x => (x / 100).toFixed(2));
+    // Uniforms not written here — morphTo owns uRingFade and applies it via
     // _applyMorphT. Writing here causes a jump-back glitch on the first morph tick.
+  }
+  if (cfg.invert !== undefined) {
+    document.getElementById('chkInvert').checked = !!cfg.invert;
+    if (anim) anim.setInvert(!!cfg.invert);
   }
   set('slDuration',    cfg.durationMs,                                                               'vDuration');
   if (cfg.direction) {
@@ -564,6 +714,14 @@ function syncUI(cfg) {
   if (cfg.easingKey) {
     document.getElementById('selEasing').value = cfg.easingKey;
     if (anim) anim._options.easingFn = EASINGS[cfg.easingKey];
+  }
+  if (cfg.mode !== undefined) {
+    document.getElementById('selMode').value = cfg.mode;
+  }
+  if (cfg.scrollSpeed !== undefined) {
+    const sv = Math.round(cfg.scrollSpeed * 100);
+    document.getElementById('slScrollSpeed').value = sv;
+    document.getElementById('vScrollSpeed').textContent = cfg.scrollSpeed.toFixed(2);
   }
 }
 
@@ -594,7 +752,7 @@ function applyPreset(key, withMorph = true) {
     stagger:                 p.stagger,
     warpAmount:              p.warpAmount,
     numRings:                p.numRings,
-    ringDuration:            p.ringDuration,
+    ringFade:            p.ringFade,
     colorSpread:             p.colorSpread             ?? 0,
     brightSpread:            p.brightSpread            ?? 0,
     flickerAmp:              p.flickerAmp              ?? 0,
@@ -661,12 +819,17 @@ function runLoopCycle(done) {
     const idx = PRESET_KEYS.indexOf(activePresetKey);
     const nextKey = PRESET_KEYS[(idx + 1) % PRESET_KEYS.length];
     applyPreset(nextKey, true);
-    // Wait for morph then play
     const morphDur = +document.getElementById('slMorphDur').value;
     pauseThen(morphDur + 50, () => {
       if (!looping) return;
       anim.reset();
-      anim.play(() => pauseThen(pause, done));
+      anim.play(() => {
+        if (!looping) return;
+        pauseThen(pause, () => {
+          if (!looping) return;
+          anim.reverse(() => pauseThen(pause, done));
+        });
+      });
     });
 
   } else if (mode === 'mutate-loop') {
@@ -755,12 +918,22 @@ document.getElementById('slStagger').addEventListener('input', e => {
   anim._options.stagger = v;
 });
 
-document.getElementById('slRingDur').addEventListener('input', e => {
+document.getElementById('slJitter').addEventListener('input', e => {
+  const v = +e.target.value;
+  document.getElementById('vJitter').textContent = v;
+  anim.setJitter(v);
+});
+
+document.getElementById('slRingFade').addEventListener('input', e => {
   const v = Math.max(0.001, e.target.value / 100);
-  document.getElementById('vRingDur').textContent = v.toFixed(2);
-  anim._baseRings.material.uniforms.uRingDuration.value = v;
-  anim._glowLayers.forEach(l => { l.material.uniforms.uRingDuration.value = v; });
-  anim._options.ringDuration = v;
+  document.getElementById('vRingFade').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uRingFade.value = v;
+  anim._glowLayers.forEach(l => { l.material.uniforms.uRingFade.value = v; });
+  anim._options.ringFade = v;
+});
+
+document.getElementById('chkInvert').addEventListener('change', e => {
+  anim.setInvert(e.target.checked);
 });
 
 // ── Geometry params (rebuild on commit) ───────────────────────────────────
@@ -803,6 +976,9 @@ document.getElementById('colGlowB').addEventListener('input', e => {
   const hex = parseInt(e.target.value.slice(1), 16);
   anim._glowLayers.forEach(l => l.material.uniforms.uColorB.value.set(hex));
   anim._options.glowColorB = hex;
+});
+document.getElementById('selGradientMode').addEventListener('change', e => {
+  anim.setGradientMode(+e.target.value);
 });
 document.getElementById('slOpacity').addEventListener('input', e => {
   const v = e.target.value / 100;
@@ -900,11 +1076,24 @@ document.getElementById('slMutateStr').addEventListener('input', e => {
   document.getElementById('vMutateStr').textContent = e.target.value + '%';
 });
 
+// ── Rings mode + scroll speed ──────────────────────────────────────────────
+document.getElementById('selMode').addEventListener('change', e => {
+  anim.setMode(e.target.value);
+});
+
+document.getElementById('slScrollSpeed').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vScrollSpeed').textContent = v.toFixed(2);
+  anim.setScrollSpeed(v);
+});
+
 // ── Scene ──────────────────────────────────────────────────────────────────
 document.getElementById('selSphere').addEventListener('change', e => {
   const v = e.target.value;
-  globeWire.visible  = v === 'wire';
-  globeSolid.visible = v === 'solid';
+  globeLatLon.visible   = v === 'latlon';
+  globeWireframe.visible = v === 'wire';
+  globeSurface.visible  = v === 'latlon' || v === 'wire';
+  backOccluder.visible  = v === 'latlon' || v === 'wire';
 });
 document.getElementById('slExposure').addEventListener('input', e => {
   renderer.toneMappingExposure = e.target.value / 100;
@@ -981,9 +1170,10 @@ function randomizeAll() {
     glowOpacity:       rand(0.05, 0.55),
     emissiveIntensity: rand(0.5, 5.0),
     stagger:           rand(0, 1),
+    jitter:            rand(0, 60),
     warpAmount:        rand(0, 0.5),
     numRings:          randInt(6, 100),
-    ringDuration:      rand(0.08, 0.70),
+    ringFade:      rand(0.08, 0.70),
     direction:         randChoice(['south-to-north', 'north-to-south', 'equator-out']),
     easingKey:         randChoice(Object.keys(EASINGS)),
     durationMs:        randInt(600, 5000),
@@ -1014,13 +1204,14 @@ function randomizeTiming() {
   const cfg = {
     durationMs:   randInt(400, 5000),
     stagger:      rand(0, 1),
-    ringDuration: rand(0.05, 0.75),
+    jitter:       rand(0, 60),
+    ringFade: rand(0.05, 0.75),
     direction:    randChoice(['south-to-north', 'north-to-south', 'equator-out']),
     easingKey:    randChoice(Object.keys(EASINGS)),
   };
   anim._options.durationMs = cfg.durationMs;
   anim._options.easingFn   = EASINGS[cfg.easingKey];
-  anim.morphTo({ stagger: cfg.stagger, ringDuration: cfg.ringDuration }, +document.getElementById('slMorphDur').value);
+  anim.morphTo({ stagger: cfg.stagger, jitter: cfg.jitter, ringFade: cfg.ringFade }, +document.getElementById('slMorphDur').value);
   syncUI(cfg);
   setStatus('Randomized timing');
 }
@@ -1029,10 +1220,10 @@ function randomizeShape() {
   const cfg = {
     numRings:     randInt(4, 110),
     warpAmount:   rand(0, 0.6),
-    ringDuration: rand(0.05, 0.75),
+    ringFade: rand(0.05, 0.75),
     stagger:      rand(0, 1),
   };
-  anim.morphTo({ warpAmount: cfg.warpAmount, stagger: cfg.stagger, ringDuration: cfg.ringDuration, numRings: cfg.numRings }, +document.getElementById('slMorphDur').value);
+  anim.morphTo({ warpAmount: cfg.warpAmount, stagger: cfg.stagger, ringFade: cfg.ringFade, numRings: cfg.numRings }, +document.getElementById('slMorphDur').value);
   syncUI(cfg);
   if (cfg.numRings) { document.getElementById('slNumRings').value = cfg.numRings; document.getElementById('vNumRings').textContent = cfg.numRings; }
   setStatus('Randomized shape');
@@ -1053,10 +1244,11 @@ function mutateAll(pct) {
     glowColorB:        gcB,
     opacity:           nudge(opts.opacity,           0.1, 1.0,  str),
     glowOpacity:       nudge(opts.glowOpacity,       0.0, 0.6,  str),
-    emissiveIntensity: nudge(opts.emissiveIntensity, 0.4, 6.0,  str),
+    emissiveIntensity: nudge(opts.emissiveIntensity, 0.4, 15.0,  str),
     stagger:           nudge(opts.stagger,           0.0, 1.0,   str),
-    warpAmount:        nudge(opts.warpAmount,        0.0, 0.55,  str),
-    ringDuration:      nudge(opts.ringDuration,      0.05, 0.75, str),
+    jitter:            nudge(opts.jitter,            0,   200,   str),
+    warpAmount:        nudge(opts.warpAmount,        -2.0, 2.0,  str),
+    ringFade:      nudge(opts.ringFade,      0.05, 0.75, str),
     colorSpread:       nudge(opts.colorSpread,       0.0, 0.5,   str),
     brightSpread:      nudge(opts.brightSpread,      0.0, 0.5,   str),
     flickerAmp:        nudge(opts.flickerAmp,        0.0, 0.4,   str),
@@ -1091,12 +1283,13 @@ function mutateTiming(pct) {
   const str = pct / 100;
   const opts = anim._options;
   const stagger      = nudge(opts.stagger,      0,    1,    str);
-  const ringDuration = nudge(opts.ringDuration, 0.05, 0.75, str);
-  const warpAmount   = nudge(opts.warpAmount,   0,    0.55, str);
+  const jitter       = nudge(opts.jitter,       0,    200,  str);
+  const ringFade = nudge(opts.ringFade, 0.05, 0.75, str);
+  const warpAmount   = nudge(opts.warpAmount,   -2.0, 2.0,  str);
   const flickerAmp   = nudge(opts.flickerAmp,   0,    0.4,  str);
   const flickerSpeed = nudge(opts.flickerSpeed, 0.2,  12,   str);
-  anim.morphTo({ stagger, ringDuration, warpAmount, flickerAmp, flickerSpeed }, +document.getElementById('slMorphDur').value);
-  syncUI({ stagger, ringDuration, warpAmount, flickerAmp, flickerSpeed });
+  anim.morphTo({ stagger, jitter, ringFade, warpAmount, flickerAmp, flickerSpeed }, +document.getElementById('slMorphDur').value);
+  syncUI({ stagger, jitter, ringFade, warpAmount, flickerAmp, flickerSpeed });
   setStatus('Mutated timing');
 }
 
@@ -1123,7 +1316,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   anim.setResolution(innerWidth, innerHeight);
-  wireMat.resolution.set(innerWidth, innerHeight);
+  icoMat.resolution.set(innerWidth, innerHeight);
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1133,8 +1326,9 @@ function syncProgress(p) {
 }
 
 // ── RAF ────────────────────────────────────────────────────────────────────
-const clock = new THREE.Clock();
+const clock = new THREE.Timer();
 renderer.setAnimationLoop(() => {
+  clock.update();
   const dt = Math.min(clock.getDelta() * 1000, 100); // cap at 100ms to prevent huge jumps
   anim.tick(dt);
   if (!scrubbing) syncProgress(anim.progress);

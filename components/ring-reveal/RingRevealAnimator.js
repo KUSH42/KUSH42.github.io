@@ -13,6 +13,9 @@ import { createLine2RingMaterial } from './RingMaterial.js';
 const _tmpColor  = new THREE.Color();
 const _tmpColor2 = new THREE.Color();
 
+/** Returns scroll axis index: 1 = X-axis (latitude, up/down), 0 = Y-axis (longitude, left/right). */
+function _scrollAxisForMode(mode) { return mode === 'latitude' ? 1 : 0; }
+
 const DEFAULTS = {
   radius:                  1.0,
   numRings:                48,
@@ -23,7 +26,7 @@ const DEFAULTS = {
   easingFn:                easeInOutCubic,
   direction:               'south-to-north',
   stagger:                 0.4,
-  ringDuration:            0.35,
+  ringFade:            0.35,
   lineColor:               0x00ffcc,
   lineColorB:              0x00ffcc,
   lineWidth:               1.0,
@@ -39,11 +42,16 @@ const DEFAULTS = {
   warpAmount:              0.12,
   morphDurationMs:         800,
   upAxis:                  'y',
+  mode:                    'latitude',
+  scrollSpeed:             0.0,
   colorSpread:             0.0,
   brightSpread:            0.0,
   flickerAmp:              0.0,
   flickerSpeed:            2.0,
   arcColorSpread:          0.0,
+  gradientMode:            0,
+  jitter:                  0,
+  invert:                  false,
 };
 
 export class RingRevealAnimator {
@@ -56,7 +64,7 @@ export class RingRevealAnimator {
     this._options = { ...DEFAULTS, ...options };
 
     // Clamp/validate
-    this._options.ringDuration   = Math.max(0.001, this._options.ringDuration);
+    this._options.ringFade   = Math.max(0.001, this._options.ringFade);
     this._options.numRings       = Math.max(2,     this._options.numRings);
     this._options.samplesPerRing = Math.max(3,     this._options.samplesPerRing);
     this._options.stagger        = Math.max(0, Math.min(1, this._options.stagger));
@@ -215,6 +223,54 @@ export class RingRevealAnimator {
   }
 
   /**
+   * Set ring scroll speed (rotations/second around the Y axis).
+   * @param {number} speed
+   */
+  setScrollSpeed(speed) {
+    this._options.scrollSpeed = speed;
+    this._allMaterials().forEach(m => { m.uniforms.uScrollSpeed.value = speed; });
+  }
+
+  /**
+   * Set gradient interpolation mode between colorA and colorB.
+   * @param {0|1|2|3|4} mode  0=RGB, 1=HSL short, 2=HSL long, 3=HSL CW, 4=HSL CCW
+   */
+  setGradientMode(mode) {
+    this._options.gradientMode = mode;
+    this._allMaterials().forEach(m => { m.uniforms.uGradientMode.value = mode; });
+  }
+
+  /**
+   * Set per-ring spawn jitter (0 = fully ordered, 1 = fully random onset).
+   * @param {number} jitter
+   */
+  setJitter(jitter) {
+    this._options.jitter = jitter;
+    this._allMaterials().forEach(m => { m.uniforms.uJitter.value = jitter; });
+  }
+
+  /**
+   * Toggle fade inversion — rings start opaque and fade out as the sweep passes.
+   * @param {boolean} invert
+   */
+  setInvert(invert) {
+    this._options.invert = invert;
+    this._allMaterials().forEach(m => { m.uniforms.uInvert.value = invert ? 1.0 : 0.0; });
+  }
+
+  /**
+   * Switch ring orientation mode. Triggers a geometry rebuild.
+   * @param {'latitude'|'longitude'} mode
+   */
+  setMode(mode) {
+    if (mode === this._options.mode) return;
+    this._options.mode = mode;
+    const axis = _scrollAxisForMode(mode);
+    this._allMaterials().forEach(m => { m.uniforms.uScrollAxis.value = axis; });
+    this._rebuildGeometry();
+  }
+
+  /**
    * Update the LineMaterial resolution uniform (must be called on canvas resize).
    * @param {number} width
    * @param {number} height
@@ -245,6 +301,10 @@ export class RingRevealAnimator {
     if (targetConfig.upAxis          !== undefined) opts.upAxis          = targetConfig.upAxis;
     if (targetConfig.latitudeMin     !== undefined) opts.latitudeMin     = targetConfig.latitudeMin;
     if (targetConfig.latitudeMax     !== undefined) opts.latitudeMax     = targetConfig.latitudeMax;
+    if (targetConfig.scrollSpeed     !== undefined) this.setScrollSpeed(targetConfig.scrollSpeed);
+    if (targetConfig.mode            !== undefined && targetConfig.mode !== opts.mode) {
+      opts.mode = targetConfig.mode;
+    }
     if (targetConfig.lineWidth       !== undefined) {
       opts.lineWidth = targetConfig.lineWidth;
       this._allMaterials().forEach(m => { m.linewidth = targetConfig.lineWidth; });
@@ -272,14 +332,16 @@ export class RingRevealAnimator {
     const fromRadius = opts.radius;
     const toRadius   = targetConfig.radius ?? opts.radius;
 
-    // Cross-fade when ring count changes: build new geometry immediately, fade old rings out.
+    // Cross-fade when ring count or mode changes: build new geometry immediately, fade old rings out.
     const numRingsChanged = targetConfig.numRings       !== undefined
                          && targetConfig.numRings       !== opts.numRings;
     const samplesChanged  = targetConfig.samplesPerRing !== undefined
                          && targetConfig.samplesPerRing !== opts.samplesPerRing;
+    const modeChanged     = targetConfig.mode           !== undefined
+                         && targetConfig.mode           !== opts.mode;
     let crossFade = null;
 
-    if (numRingsChanged || samplesChanged) {
+    if (numRingsChanged || samplesChanged || modeChanged) {
       const oldBase             = this._baseRings;
       const oldGlowLayers       = this._glowLayers.slice();
       const oldBaseOpacity      = baseMat.uniforms.uOpacity.value;
@@ -287,15 +349,17 @@ export class RingRevealAnimator {
 
       if (numRingsChanged) opts.numRings       = targetConfig.numRings;
       if (samplesChanged)  opts.samplesPerRing = targetConfig.samplesPerRing;
+      if (modeChanged)     opts.mode           = targetConfig.mode;
 
       const geomArgs = {
         radius: opts.radius, numRings: opts.numRings, samplesPerRing: opts.samplesPerRing,
         latitudeMin: opts.latitudeMin, latitudeMax: opts.latitudeMax, upAxis: opts.upAxis,
+        mode: opts.mode,
       };
       const sharedArgs = {
         lineWidth: opts.lineWidth, numRings: opts.numRings,
         stagger:           baseMat.uniforms.uStagger.value,
-        ringDuration:      baseMat.uniforms.uRingDuration.value,
+        ringFade:      baseMat.uniforms.uRingFade.value,
         warpAmount:        baseMat.uniforms.uWarpAmount.value,
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
         direction:         opts.direction,
@@ -304,6 +368,11 @@ export class RingRevealAnimator {
         flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
         arcColorSpread:    baseMat.uniforms.uArcColorSpread.value,
+        scrollSpeed:       opts.scrollSpeed,
+        scrollAxis:        _scrollAxisForMode(opts.mode),
+        gradientMode:      opts.gradientMode,
+        jitter:            opts.jitter,
+        invert:            opts.invert ? 1.0 : 0.0,
         resolution:        this._resolution,
       };
       const newBaseMat = createLine2RingMaterial({ ...sharedArgs,
@@ -352,12 +421,13 @@ export class RingRevealAnimator {
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
         stagger:           baseMat.uniforms.uStagger.value,
         warpAmount:        baseMat.uniforms.uWarpAmount.value,
-        ringDuration:      baseMat.uniforms.uRingDuration.value,
+        ringFade:      baseMat.uniforms.uRingFade.value,
         colorSpread:       baseMat.uniforms.uColorSpread.value,
         brightSpread:      baseMat.uniforms.uBrightSpread.value,
         flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
         arcColorSpread:    baseMat.uniforms.uArcColorSpread.value,
+        jitter:            baseMat.uniforms.uJitter.value,
         radius:            fromRadius,
       },
       to: {
@@ -380,12 +450,13 @@ export class RingRevealAnimator {
         emissiveIntensity: targetConfig.emissiveIntensity ?? baseMat.uniforms.uEmissiveIntensity.value,
         stagger:           targetConfig.stagger           ?? baseMat.uniforms.uStagger.value,
         warpAmount:        targetConfig.warpAmount        ?? baseMat.uniforms.uWarpAmount.value,
-        ringDuration:      targetConfig.ringDuration      ?? baseMat.uniforms.uRingDuration.value,
+        ringFade:      targetConfig.ringFade      ?? baseMat.uniforms.uRingFade.value,
         colorSpread:       targetConfig.colorSpread       ?? baseMat.uniforms.uColorSpread.value,
         brightSpread:      targetConfig.brightSpread      ?? baseMat.uniforms.uBrightSpread.value,
         flickerAmp:        targetConfig.flickerAmp        ?? baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      targetConfig.flickerSpeed      ?? baseMat.uniforms.uFlickerSpeed.value,
         arcColorSpread:    targetConfig.arcColorSpread    ?? baseMat.uniforms.uArcColorSpread.value,
+        jitter:            targetConfig.jitter            ?? baseMat.uniforms.uJitter.value,
         radius:            toRadius,
       },
     };
@@ -442,6 +513,7 @@ export class RingRevealAnimator {
       latitudeMin:    opts.latitudeMin,
       latitudeMax:    opts.latitudeMax,
       upAxis:         opts.upAxis,
+      mode:           opts.mode,
     };
 
     const sharedMatArgs = {
@@ -449,7 +521,7 @@ export class RingRevealAnimator {
       emissiveIntensity: opts.emissiveIntensity,
       numRings:          opts.numRings,
       stagger:           opts.stagger,
-      ringDuration:      opts.ringDuration,
+      ringFade:      opts.ringFade,
       warpAmount:        opts.warpAmount,
       direction:         opts.direction,
       colorSpread:       opts.colorSpread,
@@ -457,6 +529,11 @@ export class RingRevealAnimator {
       flickerAmp:        opts.flickerAmp,
       flickerSpeed:      opts.flickerSpeed,
       arcColorSpread:    opts.arcColorSpread,
+      scrollSpeed:       opts.scrollSpeed,
+      scrollAxis:        _scrollAxisForMode(opts.mode),
+      gradientMode:      opts.gradientMode,
+      jitter:            opts.jitter,
+      invert:            opts.invert ? 1.0 : 0.0,
       resolution:        this._resolution,
     };
 
@@ -506,11 +583,12 @@ export class RingRevealAnimator {
     const geomArgs = {
       radius: opts.radius, numRings: opts.numRings, samplesPerRing: opts.samplesPerRing,
       latitudeMin: opts.latitudeMin, latitudeMax: opts.latitudeMax, upAxis: opts.upAxis,
+      mode: opts.mode,
     };
     const sharedArgs = {
       lineWidth: opts.lineWidth, numRings: opts.numRings,
       stagger:           baseMat.uniforms.uStagger.value,
-      ringDuration:      baseMat.uniforms.uRingDuration.value,
+      ringFade:      baseMat.uniforms.uRingFade.value,
       warpAmount:        baseMat.uniforms.uWarpAmount.value,
       emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
       direction:         opts.direction,
@@ -518,6 +596,10 @@ export class RingRevealAnimator {
       brightSpread:      baseMat.uniforms.uBrightSpread.value,
       flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
       flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+      scrollSpeed:       opts.scrollSpeed,
+      scrollAxis:        _scrollAxisForMode(opts.mode),
+      gradientMode:      opts.gradientMode,
+      jitter:            opts.jitter,
       resolution:        this._resolution,
     };
 
@@ -538,6 +620,69 @@ export class RingRevealAnimator {
       this._scene.add(layer);
       this._glowLayers.push(layer);
     }
+  }
+
+  /** Full geometry + material rebuild for mode changes (cross-fades out old, fades in new). */
+  _rebuildGeometry() {
+    const opts = this._options;
+    const oldBase       = this._baseRings;
+    const oldGlowLayers = this._glowLayers.slice();
+    const baseMat       = oldBase.material;
+
+    const geomArgs = {
+      radius: opts.radius, numRings: opts.numRings, samplesPerRing: opts.samplesPerRing,
+      latitudeMin: opts.latitudeMin, latitudeMax: opts.latitudeMax, upAxis: opts.upAxis,
+      mode: opts.mode,
+    };
+    const sharedArgs = {
+      lineWidth: opts.lineWidth, numRings: opts.numRings,
+      stagger:           baseMat.uniforms.uStagger.value,
+      ringFade:      baseMat.uniforms.uRingFade.value,
+      warpAmount:        baseMat.uniforms.uWarpAmount.value,
+      emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
+      direction:         opts.direction,
+      colorSpread:       baseMat.uniforms.uColorSpread.value,
+      brightSpread:      baseMat.uniforms.uBrightSpread.value,
+      flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
+      flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+      arcColorSpread:    baseMat.uniforms.uArcColorSpread?.value ?? 0,
+      scrollSpeed:       opts.scrollSpeed,
+      scrollAxis:        _scrollAxisForMode(opts.mode),
+      gradientMode:      opts.gradientMode,
+      jitter:            opts.jitter,
+      resolution:        this._resolution,
+    };
+
+    const newBaseMat = createLine2RingMaterial({ ...sharedArgs,
+      lineColor:  baseMat.uniforms.uColor.value.getHex(),
+      lineColorB: baseMat.uniforms.uColorB.value.getHex(),
+      opacity: baseMat.uniforms.uOpacity.value, blending: THREE.NormalBlending });
+    this._baseRings = new LineSegments2(buildLine2RingGeometry(geomArgs), newBaseMat);
+    this._baseRings.renderOrder = oldBase.renderOrder;
+    this._baseRings.material.uniforms.uProgress.value = this._progress;
+    this._baseRings.material.uniforms.uTime.value = this._time;
+    this._scene.add(this._baseRings);
+
+    const glowMat0 = oldGlowLayers[0]?.material;
+    this._glowLayers = [];
+    for (let i = 0; i < opts.glowLayers; i++) {
+      const layerRadius  = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
+      const layerOpacity = opts.glowOpacity * Math.pow(opts.glowLayerOpacityFalloff, i);
+      const layerMat = createLine2RingMaterial({ ...sharedArgs,
+        lineColor:  glowMat0?.uniforms.uColor.value.getHex()  ?? opts.glowColor,
+        lineColorB: glowMat0?.uniforms.uColorB.value.getHex() ?? opts.glowColorB,
+        opacity: layerOpacity, blending: THREE.AdditiveBlending });
+      const layer = new LineSegments2(buildLine2RingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+      layer.renderOrder = oldGlowLayers[0]?.renderOrder ?? 0;
+      layer.material.uniforms.uProgress.value = this._progress;
+      layer.material.uniforms.uTime.value = this._time;
+      this._scene.add(layer);
+      this._glowLayers.push(layer);
+    }
+
+    this._scene.remove(oldBase);
+    oldBase.geometry.dispose(); oldBase.material.dispose();
+    oldGlowLayers.forEach(l => { this._scene.remove(l); l.geometry.dispose(); l.material.dispose(); });
   }
 
   /** Update uProgress uniform on base and all glow layers. */
@@ -563,12 +708,13 @@ export class RingRevealAnimator {
     baseMat.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
     baseMat.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
     baseMat.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
-    baseMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
+    baseMat.uniforms.uRingFade.value      = lerp(from.ringFade,      to.ringFade);
     baseMat.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
     baseMat.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
     baseMat.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
     baseMat.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
     baseMat.uniforms.uArcColorSpread.value    = lerp(from.arcColorSpread,    to.arcColorSpread);
+    baseMat.uniforms.uJitter.value            = lerp(from.jitter,            to.jitter);
 
     // Glow layers: colour and shared uniforms
     _tmpColor.lerpColors(from.glowColor, to.glowColor, t);
@@ -584,12 +730,13 @@ export class RingRevealAnimator {
       m.uniforms.uEmissiveIntensity.value = lerp(from.emissiveIntensity, to.emissiveIntensity);
       m.uniforms.uStagger.value           = lerp(from.stagger,           to.stagger);
       m.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
-      m.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
+      m.uniforms.uRingFade.value      = lerp(from.ringFade,      to.ringFade);
       m.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
       m.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
       m.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
       m.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
       m.uniforms.uArcColorSpread.value    = lerp(from.arcColorSpread,    to.arcColorSpread);
+      m.uniforms.uJitter.value            = lerp(from.jitter,            to.jitter);
     });
 
     // Radius via scale
@@ -624,12 +771,13 @@ export class RingRevealAnimator {
       opts.emissiveIntensity = to.emissiveIntensity;
       opts.stagger           = to.stagger;
       opts.warpAmount        = to.warpAmount;
-      opts.ringDuration      = to.ringDuration;
+      opts.ringFade      = to.ringFade;
       opts.colorSpread       = to.colorSpread;
       opts.brightSpread      = to.brightSpread;
       opts.flickerAmp        = to.flickerAmp;
       opts.flickerSpeed      = to.flickerSpeed;
       opts.arcColorSpread    = to.arcColorSpread;
+      opts.jitter            = to.jitter;
       opts.lineColor         = to.lineColor.getHex();
       opts.lineColorB        = to.lineColorB.getHex();
       opts.glowColor         = to.glowColor.getHex();

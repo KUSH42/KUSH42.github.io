@@ -28,10 +28,11 @@ export function buildRingGeometry({ radius, numRings, samplesPerRing, latitudeMi
   let pIdx = 0;
   let iIdx = 0;
 
+  const _sinMin = Math.sin(latitudeMin);
+  const _sinMax = Math.sin(latitudeMax);
   for (let r = 0; r < numRings; r++) {
-    const phi = latitudeMin + (r / (numRings - 1)) * (latitudeMax - latitudeMin);
-    const cosPhi = Math.cos(phi);
-    const sinPhi = Math.sin(phi);
+    const sinPhi = _sinMin + (r / numRings) * (_sinMax - _sinMin);
+    const cosPhi = Math.sqrt(Math.max(0, 1 - sinPhi * sinPhi));
 
     const baseVert = r * samplesPerRing;
 
@@ -73,9 +74,10 @@ export function buildRingGeometry({ radius, numRings, samplesPerRing, latitudeMi
  * @param {number} opts.latitudeMin  - radians
  * @param {number} opts.latitudeMax  - radians
  * @param {'y'|'z'} opts.upAxis
+ * @param {'latitude'|'longitude'} [opts.mode]  - ring orientation
  * @returns {LineSegmentsGeometry}
  */
-export function buildLine2RingGeometry({ radius, numRings, samplesPerRing, latitudeMin, latitudeMax, upAxis }) {
+export function buildLine2RingGeometry({ radius, numRings, samplesPerRing, latitudeMin, latitudeMax, upAxis, mode = 'latitude' }) {
   const totalSegments = numRings * samplesPerRing;
   // LineSegmentsGeometry.setPositions expects [startX,startY,startZ, endX,endY,endZ, ...]
   const positions    = new Float32Array(totalSegments * 6);
@@ -85,26 +87,58 @@ export function buildLine2RingGeometry({ radius, numRings, samplesPerRing, latit
   let pIdx = 0;
   let rIdx = 0;
 
-  for (let r = 0; r < numRings; r++) {
-    const phi    = latitudeMin + (r / (numRings - 1)) * (latitudeMax - latitudeMin);
-    const cosPhi = Math.cos(phi);
-    const sinPhi = Math.sin(phi);
+  if (mode === 'longitude') {
+    // Parallel vertical circles in planes X=const, evenly spaced across the sphere.
+    // Space rings linearly in X (i.e. sin(theta)) for equal on-screen separation.
+    const sinMin = Math.sin(latitudeMin);
+    const sinMax = Math.sin(latitudeMax);
+    for (let r = 0; r < numRings; r++) {
+      const sinT = sinMin + (r / numRings) * (sinMax - sinMin);
+      const cosT = Math.sqrt(Math.max(0, 1 - sinT * sinT));
 
-    for (let s = 0; s < samplesPerRing; s++) {
-      const lambdaA = (s / samplesPerRing) * 2 * Math.PI;
-      const lambdaB = ((s + 1) / samplesPerRing) * 2 * Math.PI; // closed loop wraps
+      for (let s = 0; s < samplesPerRing; s++) {
+        const psiA = (s / samplesPerRing) * 2 * Math.PI;
+        const psiB = ((s + 1) / samplesPerRing) * 2 * Math.PI;
 
-      positions[pIdx++] = radius * cosPhi * Math.cos(lambdaA);
-      positions[pIdx++] = radius * sinPhi;
-      positions[pIdx++] = radius * cosPhi * Math.sin(lambdaA);
+        // Circle in the YZ plane, offset to x = radius * sinT
+        positions[pIdx++] = radius * sinT;
+        positions[pIdx++] = radius * cosT * Math.cos(psiA);
+        positions[pIdx++] = radius * cosT * Math.sin(psiA);
 
-      positions[pIdx++] = radius * cosPhi * Math.cos(lambdaB);
-      positions[pIdx++] = radius * sinPhi;
-      positions[pIdx++] = radius * cosPhi * Math.sin(lambdaB);
+        positions[pIdx++] = radius * sinT;
+        positions[pIdx++] = radius * cosT * Math.cos(psiB);
+        positions[pIdx++] = radius * cosT * Math.sin(psiB);
 
-      ringIndices[rIdx]  = r;
-      arcPositions[rIdx] = s / samplesPerRing;
-      rIdx++;
+        ringIndices[rIdx]  = r;
+        arcPositions[rIdx] = s / samplesPerRing;
+        rIdx++;
+      }
+    }
+  } else {
+    // Default: latitude rings — horizontal circles, spaced linearly in Y (sin phi)
+    // for equal on-screen separation. Evenly-spaced angles bunch near the poles.
+    const sinMin = Math.sin(latitudeMin);
+    const sinMax = Math.sin(latitudeMax);
+    for (let r = 0; r < numRings; r++) {
+      const sinPhi = sinMin + (r / numRings) * (sinMax - sinMin);
+      const cosPhi = Math.sqrt(Math.max(0, 1 - sinPhi * sinPhi));
+
+      for (let s = 0; s < samplesPerRing; s++) {
+        const lambdaA = (s / samplesPerRing) * 2 * Math.PI;
+        const lambdaB = ((s + 1) / samplesPerRing) * 2 * Math.PI; // closed loop wraps
+
+        positions[pIdx++] = radius * cosPhi * Math.cos(lambdaA);
+        positions[pIdx++] = radius * sinPhi;
+        positions[pIdx++] = radius * cosPhi * Math.sin(lambdaA);
+
+        positions[pIdx++] = radius * cosPhi * Math.cos(lambdaB);
+        positions[pIdx++] = radius * sinPhi;
+        positions[pIdx++] = radius * cosPhi * Math.sin(lambdaB);
+
+        ringIndices[rIdx]  = r;
+        arcPositions[rIdx] = s / samplesPerRing;
+        rIdx++;
+      }
     }
   }
 

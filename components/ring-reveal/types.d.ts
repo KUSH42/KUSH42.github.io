@@ -22,8 +22,10 @@ export interface RingRevealOptions {
   direction?: 'south-to-north' | 'north-to-south' | 'equator-out';
   /** Ring onset overlap factor [0,1]. Default: 0.4 */
   stagger?: number;
-  /** Fraction of total sweep each ring's fade occupies. Default: 0.35 */
-  ringDuration?: number;
+  /** Fraction of the progress sweep each ring's fade window occupies [0..1]. Default: 0.35 */
+  ringFade?: number;
+  /** Invert the fade — rings start opaque and disappear as the sweep passes. Default: false */
+  invert?: boolean;
 
   /** Base ring colour (hex). Default: 0x00ffcc */
   lineColor?: number;
@@ -92,6 +94,7 @@ export declare class RingRevealAnimator {
 
   tick(deltaMs: number): void;
 
+  setInvert(invert: boolean): void;
   setColors(lineColor: number, glowColor: number): void;
   setOpacity(base: number, glow?: number): void;
   /** Update LineMaterial resolution for correct screen-space linewidth. Call on init and on window resize. */

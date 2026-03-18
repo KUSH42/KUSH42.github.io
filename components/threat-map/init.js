@@ -317,6 +317,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
       s.globeBackMat.resolution.set(w, h);
       s.globeFrontMat.resolution.set(w, h);
       s.globeGlowMat.resolution.set(w, h);
+      for (const mat of s.geoLineMats) mat.resolution.set(w, h);
     }
   });
   resizeObserver.observe(element);
@@ -384,6 +385,7 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
     rimGeo,
     rimMesh,
     geoGroup: null,
+    geoLineMats: [],
     cameraLerpTarget: null,
     lastOrbitInteraction: 0,
     arcs: [],
@@ -554,15 +556,12 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
     lineColor:         0x00ffcc,
     glowColor:         0x00ffcc,
     emissiveIntensity: 2.0,
+    opacity:           0,
+    glowOpacity:       0,
   });
   revealAnim.baseRings.renderOrder = 4;
   revealAnim.glowRings.renderOrder = 4;
   state.revealAnim = revealAnim;
-
-  revealAnim.play(() => {
-    // Fade out rings after reveal completes
-    revealAnim.morphTo({ opacity: 0, glowOpacity: 0 }, 600);
-  });
 
   state.animFrameId = requestAnimationFrame(animateLoop);
 
@@ -672,4 +671,8 @@ export function destroyThreatMap(element) {
 
 export function getCamera(element) {
   return _state.get(element)?.camera ?? null;
+}
+
+export function getRevealAnim(element) {
+  return _state.get(element)?.revealAnim ?? null;
 }

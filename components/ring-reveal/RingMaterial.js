@@ -12,7 +12,8 @@ const RING_UNIFORM_DECLARATIONS = /* glsl */`
 uniform float uProgress;
 uniform float uNumRings;
 uniform float uStagger;
-uniform float uRingDuration;
+uniform float uRingFade;
+uniform float uInvert;
 uniform int   uDirection;
 uniform float uWarpAmount;
 uniform vec3  uColor;
@@ -23,6 +24,10 @@ uniform float uFlickerAmp;
 uniform float uFlickerSpeed;
 uniform float uTime;
 uniform float uArcColorSpread;
+uniform float uScrollSpeed;
+uniform int   uScrollAxis;
+uniform int   uGradientMode;
+uniform float uJitter;
 `;
 
 /** HSL colour helpers shared between both factories. */
@@ -30,8 +35,7 @@ const RING_HELPER_FUNCTIONS = /* glsl */`
 float _hash(float n) { return fract(sin(n * 127.1) * 43758.5453); }
 
 vec3 _hue2rgb(float h) {
-  vec3 k = mod(vec3(0.0, 4.0, 2.0) + h * 6.0, 6.0);
-  return clamp(min(k, 4.0 - k), 0.0, 1.0);
+  return clamp(abs(fract(h + vec3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
 }
 
 vec3 _hsl2rgb(float h, float s, float l) {
@@ -56,26 +60,58 @@ vec3 _rgb2hsl(vec3 c) {
   }
   return vec3(h, s, l);
 }
+
+/**
+ * Interpolate two colours using the selected gradient mode.
+ * Modes: 0=RGB linear, 1=HSL short arc, 2=HSL long arc, 3=HSL CW, 4=HSL CCW
+ */
+vec3 _gradientColor(vec3 ca, vec3 cb, float t, int mode) {
+  if (mode == 0) {
+    return mix(ca, cb, t);
+  }
+  vec3 ha = _rgb2hsl(ca);
+  vec3 hb = _rgb2hsl(cb);
+  float dh = hb.x - ha.x;
+  if (mode == 1) {
+    if (dh >  0.5) dh -= 1.0;
+    if (dh < -0.5) dh += 1.0;
+  } else if (mode == 2) {
+    if (dh >= 0.0 && dh < 0.5) dh -= 1.0;
+    if (dh <  0.0 && dh > -0.5) dh += 1.0;
+  } else if (mode == 3) {
+    if (dh < 0.0) dh += 1.0;
+  } else {
+    if (dh > 0.0) dh -= 1.0;
+  }
+  return _hsl2rgb(fract(ha.x + dh * t), mix(ha.y, hb.y, t), mix(ha.z, hb.z, t));
+}
 `;
 
 /**
  * Ring reveal vertex prelude — computes normRing, localT, vAlpha, warpScale, vRingColor, vFlickerMult.
  * Injected into the vertex main() body before the position transform.
- * Requires: ringIndex (attribute), all uXxx uniforms, vAlpha/vRingColor/vFlickerMult (varyings).
+ * Requires: _normPos (float 0..1, ring's current visual position along the scroll axis),
+ *           ringIndex (attribute), all uXxx uniforms, vAlpha/vRingColor/vFlickerMult (varyings).
  */
 const RING_REVEAL_VERTEX_PRELUDE = /* glsl */`
-  // ── reveal ────────────────────────────────────────────────────────────────
+  // ── reveal — onset uses stable per-ring index so scroll can't flip a ring
+  //    back to hidden mid-reveal. Direction applied to normalised index order.
+  float stableNorm = ringIndex / uNumRings;
   float normRing;
   if (uDirection == 0) {
-    normRing = ringIndex / (uNumRings - 1.0);
+    normRing = stableNorm;
   } else if (uDirection == 1) {
-    normRing = 1.0 - ringIndex / (uNumRings - 1.0);
+    normRing = 1.0 - stableNorm;
   } else {
-    normRing = abs(ringIndex / (uNumRings - 1.0) - 0.5) * 2.0;
+    normRing = abs(stableNorm - 0.5) * 2.0;
   }
-  float onset  = normRing * (1.0 - uRingDuration) * (1.0 - uStagger);
-  float localT = clamp((uProgress - onset) / uRingDuration, 0.0, 1.0);
-  vAlpha = smoothstep(0.0, 1.0, localT);
+  float maxOnset     = (1.0 - uRingFade) * (1.0 - uStagger);
+  float baseOnset    = normRing * maxOnset;
+  float jitterOffset = (_hash(ringIndex + 53.7) - 0.5) * uJitter * ((1.0 - uRingFade) / uNumRings);
+  float onset  = clamp(baseOnset + jitterOffset, 0.0, 1.0 - uRingFade);
+  float localT  = clamp((uProgress - onset) / uRingFade, 0.0, 1.0);
+  float fadeIn  = smoothstep(0.0, 1.0, localT);
+  vAlpha = mix(fadeIn, 1.0 - fadeIn, uInvert);
 
   // ── warp ──────────────────────────────────────────────────────────────────
   float c1 = 1.70158;
@@ -83,11 +119,11 @@ const RING_REVEAL_VERTEX_PRELUDE = /* glsl */`
   float easeOutBack = 1.0 + c3 * pow(localT - 1.0, 3.0) + c1 * pow(localT - 1.0, 2.0);
   float warpScale = 1.0 - uWarpAmount * (1.0 - easeOutBack);
 
-  // ── per-ring colour variation ──────────────────────────────────────────────
+  // ── per-ring colour variation — uses index for stable per-ring identity ────
   float rng1 = _hash(ringIndex);
   float rng2 = _hash(ringIndex + 71.3);
   float rng3 = _hash(ringIndex + 37.9);
-  vec3 gradientBase = mix(uColor, uColorB, normRing);
+  vec3 gradientBase = _gradientColor(uColor, uColorB, ringIndex / uNumRings, uGradientMode);
   vec3 hsl = _rgb2hsl(gradientBase);
   hsl.x = fract(hsl.x + (rng1 - 0.5) * uColorSpread);
   hsl.z = clamp(hsl.z + (rng2 - 0.5) * uBrightSpread, 0.02, 0.98);
@@ -111,8 +147,32 @@ ${RING_UNIFORM_DECLARATIONS}
 ${RING_HELPER_FUNCTIONS}
 
 void main() {
+  float _scrollOff = uTime * uScrollSpeed;
+  float _R = length(position);
+  float _normPos;
+  if (uScrollAxis == 1) {
+    _normPos = mod(position.y / _R + _scrollOff + 1.0, 2.0) / 2.0;
+  } else {
+    _normPos = mod(position.x / _R + _scrollOff + 1.0, 2.0) / 2.0;
+  }
 ${RING_REVEAL_VERTEX_PRELUDE}
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position * warpScale, 1.0);
+  vec3 _rPos;
+  if (uScrollAxis == 1) {
+    // Latitude: translate rings up/down on sphere surface
+    float _sy = position.y / _R;
+    float _sc = sqrt(max(1e-6, 1.0 - _sy*_sy));
+    float _ny = mod(_sy + _scrollOff + 1.0, 2.0) - 1.0;
+    float _nc = sqrt(max(1e-6, 1.0 - _ny*_ny));
+    _rPos = vec3(position.x * (_nc/_sc), _ny * _R, position.z * (_nc/_sc));
+  } else {
+    // Longitude: translate parallel vertical rings left/right on sphere surface
+    float _sx = position.x / _R;
+    float _sc = sqrt(max(1e-6, 1.0 - _sx*_sx));
+    float _nx = mod(_sx + _scrollOff + 1.0, 2.0) - 1.0;
+    float _nc = sqrt(max(1e-6, 1.0 - _nx*_nx));
+    _rPos = vec3(_nx * _R, position.y * (_nc/_sc), position.z * (_nc/_sc));
+  }
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(_rPos * warpScale, 1.0);
 }
 `;
 
@@ -141,13 +201,15 @@ function _directionIndex(direction) {
 }
 
 function _buildUniforms({ lineColor, lineColorB, opacity, emissiveIntensity, numRings, stagger,
-                          ringDuration, warpAmount, direction, colorSpread, brightSpread,
-                          flickerAmp, flickerSpeed, arcColorSpread }) {
+                          ringFade, invert, warpAmount, direction, colorSpread, brightSpread,
+                          flickerAmp, flickerSpeed, arcColorSpread, scrollSpeed, scrollAxis,
+                          gradientMode, jitter }) {
   return {
     uProgress:          { value: 0.0 },
     uNumRings:          { value: numRings },
     uStagger:           { value: stagger },
-    uRingDuration:      { value: ringDuration },
+    uRingFade:          { value: ringFade },
+    uInvert:            { value: invert ?? 0.0 },
     uOpacity:           { value: opacity },
     uEmissiveIntensity: { value: emissiveIntensity },
     uColor:             { value: new THREE.Color(lineColor) },
@@ -160,6 +222,10 @@ function _buildUniforms({ lineColor, lineColorB, opacity, emissiveIntensity, num
     uFlickerSpeed:      { value: flickerSpeed },
     uTime:              { value: 0.0 },
     uArcColorSpread:    { value: arcColorSpread ?? 0.0 },
+    uScrollSpeed:       { value: scrollSpeed ?? 0.0 },
+    uScrollAxis:        { value: scrollAxis ?? 0 },
+    uGradientMode:      { value: gradientMode ?? 0 },
+    uJitter:            { value: jitter ?? 0.0 },
   };
 }
 
@@ -174,7 +240,7 @@ function _buildUniforms({ lineColor, lineColorB, opacity, emissiveIntensity, num
  * @param {number}  opts.emissiveIntensity
  * @param {number}  opts.numRings
  * @param {number}  opts.stagger
- * @param {number}  opts.ringDuration
+ * @param {number}  opts.ringFade
  * @param {number}  opts.warpAmount
  * @param {string}  opts.direction
  * @param {number}  opts.colorSpread
@@ -224,15 +290,41 @@ ${RING_UNIFORM_DECLARATIONS}
 ${RING_HELPER_FUNCTIONS}`
   );
 
-  // 2. Inject ring reveal prelude + apply warp to instanceStart/instanceEnd
+  // 2. Inject ring reveal prelude + scroll rotation + warp into instanceStart/instanceEnd
   shader.vertexShader = shader.vertexShader.replace(
     'vec4 start = modelViewMatrix * vec4( instanceStart, 1.0 );',
-    `${RING_REVEAL_VERTEX_PRELUDE}
-    vec4 start = modelViewMatrix * vec4( instanceStart * warpScale, 1.0 );`
+    `float _scrollOff = uTime * uScrollSpeed;
+    float _R = length(instanceStart);
+    float _normPos;
+    if (uScrollAxis == 1) {
+      _normPos = mod(instanceStart.y / _R + _scrollOff + 1.0, 2.0) / 2.0;
+    } else {
+      _normPos = mod(instanceStart.x / _R + _scrollOff + 1.0, 2.0) / 2.0;
+    }
+    ${RING_REVEAL_VERTEX_PRELUDE}
+    vec3 _rStart, _rEnd;
+    if (uScrollAxis == 1) {
+      // Latitude: translate rings up/down — all verts on a ring share the same Y
+      float _sy = instanceStart.y / _R;
+      float _sc = sqrt(max(1e-6, 1.0 - _sy*_sy));
+      float _ny = mod(_sy + _scrollOff + 1.0, 2.0) - 1.0;
+      float _ys = sqrt(max(1e-6, 1.0 - _ny*_ny)) / _sc;
+      _rStart = vec3(instanceStart.x * _ys, _ny * _R, instanceStart.z * _ys);
+      _rEnd   = vec3(instanceEnd.x   * _ys, _ny * _R, instanceEnd.z   * _ys);
+    } else {
+      // Longitude: translate parallel vertical rings left/right — all verts share the same X
+      float _sx = instanceStart.x / _R;
+      float _sc = sqrt(max(1e-6, 1.0 - _sx*_sx));
+      float _nx = mod(_sx + _scrollOff + 1.0, 2.0) - 1.0;
+      float _xs = sqrt(max(1e-6, 1.0 - _nx*_nx)) / _sc;
+      _rStart = vec3(_nx * _R, instanceStart.y * _xs, instanceStart.z * _xs);
+      _rEnd   = vec3(_nx * _R, instanceEnd.y   * _xs, instanceEnd.z   * _xs);
+    }
+    vec4 start = modelViewMatrix * vec4( _rStart * warpScale, 1.0 );`
   );
   shader.vertexShader = shader.vertexShader.replace(
     'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );',
-    'vec4 end = modelViewMatrix * vec4( instanceEnd * warpScale, 1.0 );'
+    `vec4 end = modelViewMatrix * vec4( _rEnd * warpScale, 1.0 );`
   );
 
   // 3. Fragment: declare varyings and custom uniforms in global scope
@@ -263,7 +355,7 @@ uniform float uEmissiveIntensity;`
  * @param {number}  opts.emissiveIntensity
  * @param {number}  opts.numRings
  * @param {number}  opts.stagger
- * @param {number}  opts.ringDuration
+ * @param {number}  opts.ringFade
  * @param {number}  opts.warpAmount
  * @param {string}  opts.direction
  * @param {number}  opts.colorSpread
