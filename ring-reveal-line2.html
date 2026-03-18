@@ -130,7 +130,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect, Effect } from 'postprocessing';
 import { RingRevealAnimator } from './components/ring-reveal/index.js';
 import { easeInOutCubic } from './components/ring-reveal/easings.js';
 
@@ -144,8 +144,6 @@ camera.position.set(0, 0, 3.5);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.toneMapping = THREE.ReinhardToneMapping;
-renderer.toneMappingExposure = 1.07;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -153,11 +151,18 @@ controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
-// ── Bloom ──────────────────────────────────────────────────────────────────
+// ── Bloom + Exposure ────────────────────────────────────────────────────────
 const bloomEffect = new BloomEffect({ intensity: 1.6, radius: 0.72, luminanceThreshold: 0.00, luminanceSmoothing: 0.1 });
+const exposureEffect = new Effect('ExposureEffect', `
+  uniform float uExposure;
+  void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+    outputColor = vec4(inputColor.rgb * uExposure, inputColor.a);
+  }
+`, { uniforms: new Map([['uExposure', new THREE.Uniform(1.07)]]) });
+
 const composer = new EffectComposer(renderer, { multisampling: 4 });
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new EffectPass(camera, bloomEffect));
+composer.addPass(new EffectPass(camera, bloomEffect, exposureEffect));
 
 // ── Animator ───────────────────────────────────────────────────────────────
 const DURATION = 1800;
@@ -233,7 +238,7 @@ sl('slGR',  'vGR',  100, 3, v => { anim.morphTo({ glowRadius: v }, 0); });
 sl('slGL',  'vGL',    1, 0, v => { anim.morphTo({ glowLayers: Math.round(v) }, 0); });
 sl('slGS',  'vGS', 1000, 3, v => { anim.morphTo({ glowLayerRadiusStep: v }, 0); });
 sl('slGF',  'vGF',  100, 2, v => { anim.morphTo({ glowLayerOpacityFalloff: v }, 0); });
-sl('slExp', 'vExp', 100, 2, v => { renderer.toneMappingExposure = v; });
+sl('slExp', 'vExp', 100, 2, v => { exposureEffect.uniforms.get('uExposure').value = v; });
 sl('slBl',  'vBl',  100, 2, v => { bloomEffect.intensity = v; });
 sl('slBR',  'vBR',  100, 2, v => { bloomEffect.mipmapBlurPass.radius = v; });
 sl('slBT',  'vBT',  100, 2, v => { bloomEffect.luminanceMaterial.threshold = v; });
