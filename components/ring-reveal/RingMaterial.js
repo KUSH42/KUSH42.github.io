@@ -17,6 +17,7 @@ uniform float uRingDuration;
 uniform int   uDirection;
 uniform float uWarpAmount;
 uniform vec3  uColor;
+uniform vec3  uColorB;
 uniform float uColorSpread;
 uniform float uBrightSpread;
 uniform float uFlickerAmp;
@@ -84,7 +85,9 @@ void main() {
   float rng2 = _hash(ringIndex + 71.3);    // brightness offset seed
   float rng3 = _hash(ringIndex + 37.9);    // flicker phase seed
 
-  vec3 hsl = _rgb2hsl(uColor);
+  // Gradient: blend uColor → uColorB along the ring sequence
+  vec3 gradientBase = mix(uColor, uColorB, normRing);
+  vec3 hsl = _rgb2hsl(gradientBase);
   hsl.x = fract(hsl.x + (rng1 - 0.5) * uColorSpread);
   hsl.z = clamp(hsl.z + (rng2 - 0.5) * uBrightSpread, 0.02, 0.98);
   vRingColor = _hsl2rgb(hsl.x, hsl.y, hsl.z);
@@ -113,6 +116,7 @@ void main() {
 /**
  * @param {object} opts
  * @param {number}  opts.lineColor
+ * @param {number}  opts.lineColorB
  * @param {number}  opts.lineWidth
  * @param {number}  opts.opacity
  * @param {number}  opts.emissiveIntensity
@@ -130,6 +134,7 @@ void main() {
  */
 export function createRingMaterial({
   lineColor,
+  lineColorB,
   lineWidth,
   opacity,
   emissiveIntensity,
@@ -165,6 +170,7 @@ export function createRingMaterial({
       uOpacity:           { value: opacity },
       uEmissiveIntensity: { value: emissiveIntensity },
       uColor:             { value: new THREE.Color(lineColor) },
+      uColorB:            { value: new THREE.Color(lineColorB ?? lineColor) },
       uDirection:         { value: directionIndex },
       uWarpAmount:        { value: warpAmount },
       uColorSpread:       { value: colorSpread },

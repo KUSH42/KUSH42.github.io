@@ -8,8 +8,9 @@ import { easeInOutCubic } from './easings.js';
 import { buildRingGeometry } from './RingGeometry.js';
 import { createRingMaterial } from './RingMaterial.js';
 
-/** Scratch Color for lerp operations (avoids per-frame allocation). */
-const _tmpColor = new THREE.Color();
+/** Scratch Colors for lerp operations (avoids per-frame allocation). */
+const _tmpColor  = new THREE.Color();
+const _tmpColor2 = new THREE.Color();
 
 const DEFAULTS = {
   radius:            1.0,
@@ -23,9 +24,11 @@ const DEFAULTS = {
   stagger:           0.4,
   ringDuration:      0.35,
   lineColor:         0x00ffcc,
+  lineColorB:        0x00ffcc,
   lineWidth:         1.0,
   opacity:           0.7,
   glowColor:         0x00ffcc,
+  glowColorB:        0x00ffcc,
   glowOpacity:       0.25,
   glowRadius:        1.008,
   emissiveIntensity: 1.5,
@@ -136,6 +139,11 @@ export class RingRevealAnimator {
     this._time += deltaMs / 1000;
     this._baseRings.material.uniforms.uTime.value = this._time;
     this._glowRings.material.uniforms.uTime.value = this._time;
+    const cf = this._morph?.crossFade;
+    if (cf) {
+      cf.oldBase.material.uniforms.uTime.value = this._time;
+      cf.oldGlow.material.uniforms.uTime.value = this._time;
+    }
 
     // 1. Advance reveal animation
     if (this._playing) {
@@ -252,10 +260,14 @@ export class RingRevealAnimator {
         flickerSpeed: baseMat.uniforms.uFlickerSpeed.value,
       };
       const newBaseMat = createRingMaterial({ ...sharedArgs,
-        lineColor: baseMat.uniforms.uColor.value.getHex(), opacity: 0,
+        lineColor:  baseMat.uniforms.uColor.value.getHex(),
+        lineColorB: baseMat.uniforms.uColorB.value.getHex(),
+        opacity: 0,
         blending: THREE.NormalBlending });
       const newGlowMat = createRingMaterial({ ...sharedArgs,
-        lineColor: glowMat.uniforms.uColor.value.getHex(), opacity: 0,
+        lineColor:  glowMat.uniforms.uColor.value.getHex(),
+        lineColorB: glowMat.uniforms.uColorB.value.getHex(),
+        opacity: 0,
         blending: THREE.AdditiveBlending });
 
       this._baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), newBaseMat);
@@ -278,7 +290,9 @@ export class RingRevealAnimator {
       crossFade,
       from: {
         lineColor:         baseMat.uniforms.uColor.value.clone(),
+        lineColorB:        baseMat.uniforms.uColorB.value.clone(),
         glowColor:         glowMat.uniforms.uColor.value.clone(),
+        glowColorB:        glowMat.uniforms.uColorB.value.clone(),
         opacity:           crossFade ? 0 : baseMat.uniforms.uOpacity.value,
         glowOpacity:       crossFade ? 0 : glowMat.uniforms.uOpacity.value,
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
@@ -297,9 +311,15 @@ export class RingRevealAnimator {
         lineColor:         targetConfig.lineColor         !== undefined
                              ? new THREE.Color(targetConfig.lineColor)
                              : baseMat.uniforms.uColor.value.clone(),
+        lineColorB:        targetConfig.lineColorB        !== undefined
+                             ? new THREE.Color(targetConfig.lineColorB)
+                             : baseMat.uniforms.uColorB.value.clone(),
         glowColor:         targetConfig.glowColor         !== undefined
                              ? new THREE.Color(targetConfig.glowColor)
                              : glowMat.uniforms.uColor.value.clone(),
+        glowColorB:        targetConfig.glowColorB        !== undefined
+                             ? new THREE.Color(targetConfig.glowColorB)
+                             : glowMat.uniforms.uColorB.value.clone(),
         opacity:           targetConfig.opacity           ?? baseMat.uniforms.uOpacity.value,
         glowOpacity:       targetConfig.glowOpacity       ?? glowMat.uniforms.uOpacity.value,
         emissiveIntensity: targetConfig.emissiveIntensity ?? baseMat.uniforms.uEmissiveIntensity.value,
@@ -378,16 +398,18 @@ export class RingRevealAnimator {
 
     const baseMat = createRingMaterial({
       ...sharedMatArgs,
-      lineColor: opts.lineColor,
-      opacity:   opts.opacity,
-      blending:  THREE.NormalBlending,
+      lineColor:  opts.lineColor,
+      lineColorB: opts.lineColorB,
+      opacity:    opts.opacity,
+      blending:   THREE.NormalBlending,
     });
 
     const glowMat = createRingMaterial({
       ...sharedMatArgs,
-      lineColor: opts.glowColor,
-      opacity:   opts.glowOpacity,
-      blending:  THREE.AdditiveBlending,
+      lineColor:  opts.glowColor,
+      lineColorB: opts.glowColorB,
+      opacity:    opts.glowOpacity,
+      blending:   THREE.AdditiveBlending,
     });
 
     this._baseRings = new THREE.LineSegments(baseGeo, baseMat);
@@ -409,11 +431,15 @@ export class RingRevealAnimator {
     const baseMat = this._baseRings.material;
     const glowMat = this._glowRings.material;
 
-    // Colour lerp
+    // Colour lerp (primary and gradient endpoint)
     _tmpColor.lerpColors(from.lineColor, to.lineColor, t);
     baseMat.uniforms.uColor.value.copy(_tmpColor);
+    _tmpColor2.lerpColors(from.lineColorB, to.lineColorB, t);
+    baseMat.uniforms.uColorB.value.copy(_tmpColor2);
     _tmpColor.lerpColors(from.glowColor, to.glowColor, t);
     glowMat.uniforms.uColor.value.copy(_tmpColor);
+    _tmpColor2.lerpColors(from.glowColorB, to.glowColorB, t);
+    glowMat.uniforms.uColorB.value.copy(_tmpColor2);
 
     // Scalar lerp
     const lerp = (a, b) => a + (b - a) * t;
@@ -470,7 +496,9 @@ export class RingRevealAnimator {
       opts.flickerAmp        = to.flickerAmp;
       opts.flickerSpeed      = to.flickerSpeed;
       opts.lineColor         = to.lineColor.getHex();
+      opts.lineColorB        = to.lineColorB.getHex();
       opts.glowColor         = to.glowColor.getHex();
+      opts.glowColorB        = to.glowColorB.getHex();
       opts.radius            = to.radius;
     }
   }

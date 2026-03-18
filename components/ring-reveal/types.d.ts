@@ -27,12 +27,16 @@ export interface RingRevealOptions {
 
   /** Base ring colour (hex). Default: 0x00ffcc */
   lineColor?: number;
+  /** Base ring gradient endpoint colour (hex). Default: 0x00ffcc (= no gradient) */
+  lineColorB?: number;
   /** material.linewidth. Default: 1.0 */
   lineWidth?: number;
   /** Base ring opacity. Default: 0.7 */
   opacity?: number;
   /** Glow ring colour (hex). Default: 0x00ffcc */
   glowColor?: number;
+  /** Glow ring gradient endpoint colour (hex). Default: 0x00ffcc (= no gradient) */
+  glowColorB?: number;
   /** Glow ring opacity. Default: 0.25 */
   glowOpacity?: number;
   /** Glow ring radius multiplier. Default: 1.008 */

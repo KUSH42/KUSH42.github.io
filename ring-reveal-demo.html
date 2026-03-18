@@ -253,12 +253,14 @@
   <!-- Appearance -->
   <div class="section-label">Appearance</div>
   <label>
-    <span class="lname">Line color</span>
+    <span class="lname">Line color A→B</span>
     <input type="color" id="colLine" value="#00ffcc">
+    <input type="color" id="colLineB" value="#00ffcc">
   </label>
   <label>
-    <span class="lname">Glow color</span>
+    <span class="lname">Glow color A→B</span>
     <input type="color" id="colGlow" value="#00ffcc">
+    <input type="color" id="colGlowB" value="#00ffcc">
   </label>
   <label>
     <span class="lname">Opacity</span>
@@ -397,16 +399,16 @@ const PRESETS = {
   dense:     { label: 'Dense',     lineColor: 0x00ffcc, glowColor: 0x00ff88, opacity: 0.45, glowOpacity: 0.12, emissiveIntensity: 1.2,  stagger: 0.30, warpAmount: 0.06, numRings: 96, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 2400, ringDuration: 0.40, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
   ghost:     { label: 'Ghost',     lineColor: 0x88ccff, glowColor: 0x4499ff, opacity: 0.35, glowOpacity: 0.08, emissiveIntensity: 0.8,  stagger: 0.70, warpAmount: 0.35, numRings: 16, direction: 'north-to-south', easingKey: 'easeOutExpo',    durationMs: 3200, ringDuration: 0.50, colorSpread: 0.12, brightSpread: 0.30, flickerAmp: 0.08, flickerSpeed: 0.8 },
   scanner:   { label: 'Scanner',   lineColor: 0x00ff44, glowColor: 0x00cc33, opacity: 0.85, glowOpacity: 0.30, emissiveIntensity: 2.5,  stagger: 0.95, warpAmount: 0.04, numRings: 32, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs:  900, ringDuration: 0.20, colorSpread: 0.10, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  cosmic:    { label: 'Cosmic',    lineColor: 0x8844ff, glowColor: 0x4422cc, opacity: 0.70, glowOpacity: 0.35, emissiveIntensity: 2.2,  stagger: 0.50, warpAmount: 0.20, numRings: 64, direction: 'equator-out',    easingKey: 'easeInOutCubic', durationMs: 2500, ringDuration: 0.35, colorSpread: 0.25, brightSpread: 0.20, flickerAmp: 0.05, flickerSpeed: 1.5 },
-  ignition:  { label: 'Ignition',  lineColor: 0xffaa00, glowColor: 0xff4400, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28, colorSpread: 0.15, brightSpread: 0.35, flickerAmp: 0.20, flickerSpeed: 6.0 },
-  neon:      { label: 'Neon',      lineColor: 0xff00ff, glowColor: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32, colorSpread: 0.30, brightSpread: 0.15, flickerAmp: 0.10, flickerSpeed: 3.0 },
+  cosmic:    { label: 'Cosmic',    lineColor: 0x8844ff, lineColorB: 0x00ffee, glowColor: 0x4422cc, glowColorB: 0x0088bb, opacity: 0.70, glowOpacity: 0.35, emissiveIntensity: 2.2,  stagger: 0.50, warpAmount: 0.20, numRings: 64, direction: 'equator-out',    easingKey: 'easeInOutCubic', durationMs: 2500, ringDuration: 0.35, colorSpread: 0.25, brightSpread: 0.20, flickerAmp: 0.05, flickerSpeed: 1.5 },
+  ignition:  { label: 'Ignition',  lineColor: 0xffee00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28, colorSpread: 0.15, brightSpread: 0.35, flickerAmp: 0.20, flickerSpeed: 6.0 },
+  neon:      { label: 'Neon',      lineColor: 0xff00ff, lineColorB: 0x00ffff, glowColor: 0xff00cc, glowColorB: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32, colorSpread: 0.30, brightSpread: 0.15, flickerAmp: 0.10, flickerSpeed: 3.0 },
   stealth:   { label: 'Stealth',   lineColor: 0x003322, glowColor: 0x004433, opacity: 0.30, glowOpacity: 0.06, emissiveIntensity: 0.6,  stagger: 0.20, warpAmount: 0.03, numRings: 24, direction: 'north-to-south', easingKey: 'linear',         durationMs: 4000, ringDuration: 0.45, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  solar:     { label: 'Solar',     lineColor: 0xffff00, glowColor: 0xff8800, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25, colorSpread: 0.20, brightSpread: 0.40, flickerAmp: 0.25, flickerSpeed: 2.5 },
-  wisp:      { label: 'Wisp',      lineColor: 0xffffff, glowColor: 0xaaccff, opacity: 0.20, glowOpacity: 0.05, emissiveIntensity: 0.5,  stagger: 0.85, warpAmount: 0.55, numRings:  8, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 5000, ringDuration: 0.60, colorSpread: 0.15, brightSpread: 0.50, flickerAmp: 0.12, flickerSpeed: 0.5 },
+  solar:     { label: 'Solar',     lineColor: 0xffffff, lineColorB: 0xff4400, glowColor: 0xffcc00, glowColorB: 0xff2200, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25, colorSpread: 0.20, brightSpread: 0.40, flickerAmp: 0.25, flickerSpeed: 2.5 },
+  wisp:      { label: 'Wisp',      lineColor: 0xffffff, lineColorB: 0x88aaff, glowColor: 0xccddff, glowColorB: 0x4466cc, opacity: 0.20, glowOpacity: 0.05, emissiveIntensity: 0.5,  stagger: 0.85, warpAmount: 0.55, numRings:  8, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 5000, ringDuration: 0.60, colorSpread: 0.15, brightSpread: 0.50, flickerAmp: 0.12, flickerSpeed: 0.5 },
   pulse:     { label: 'Pulse',     lineColor: 0xff0066, glowColor: 0xff0033, opacity: 0.95, glowOpacity: 0.60, emissiveIntensity: 6.0,  stagger: 1.00, warpAmount: 0.25, numRings: 48, direction: 'equator-out',    easingKey: 'backInOut',      durationMs:  700, ringDuration: 0.15, colorSpread: 0.05, brightSpread: 0.10, flickerAmp: 0.30, flickerSpeed: 8.0 },
-  arctic:    { label: 'Arctic',    lineColor: 0x00eeff, glowColor: 0x88ffff, opacity: 0.55, glowOpacity: 0.20, emissiveIntensity: 1.8,  stagger: 0.45, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 2200, ringDuration: 0.38, colorSpread: 0.08, brightSpread: 0.25, flickerAmp: 0.06, flickerSpeed: 1.2 },
+  arctic:    { label: 'Arctic',    lineColor: 0x00eeff, lineColorB: 0xffffff, glowColor: 0x88ffff, glowColorB: 0xaaffee, opacity: 0.55, glowOpacity: 0.20, emissiveIntensity: 1.8,  stagger: 0.45, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 2200, ringDuration: 0.38, colorSpread: 0.08, brightSpread: 0.25, flickerAmp: 0.06, flickerSpeed: 1.2 },
   grid:      { label: 'Grid',      lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.60, glowOpacity: 0.15, emissiveIntensity: 1.0,  stagger: 0.00, warpAmount: 0.00, numRings: 48, direction: 'south-to-north', easingKey: 'linear',         durationMs: 2000, ringDuration: 0.08, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
-  ember:     { label: 'Ember',     lineColor: 0xff3300, glowColor: 0xff9900, opacity: 0.65, glowOpacity: 0.30, emissiveIntensity: 2.8,  stagger: 0.65, warpAmount: 0.30, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 2800, ringDuration: 0.55, colorSpread: 0.12, brightSpread: 0.35, flickerAmp: 0.08, flickerSpeed: 1.8 },
+  ember:     { label: 'Ember',     lineColor: 0xffcc00, lineColorB: 0xff2200, glowColor: 0xff8800, glowColorB: 0xff0000, opacity: 0.65, glowOpacity: 0.30, emissiveIntensity: 2.8,  stagger: 0.65, warpAmount: 0.30, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 2800, ringDuration: 0.55, colorSpread: 0.12, brightSpread: 0.35, flickerAmp: 0.08, flickerSpeed: 1.8 },
 };
 
 const PRESET_KEYS = Object.keys(PRESETS);
@@ -438,7 +440,9 @@ function getOptions() {
     ringDuration:      +document.getElementById('slRingDur').value / 100,
     easingFn:          EASINGS[document.getElementById('selEasing').value],
     lineColor:         parseInt(document.getElementById('colLine').value.slice(1), 16),
+    lineColorB:        parseInt(document.getElementById('colLineB').value.slice(1), 16),
     glowColor:         parseInt(document.getElementById('colGlow').value.slice(1), 16),
+    glowColorB:        parseInt(document.getElementById('colGlowB').value.slice(1), 16),
     opacity:           +document.getElementById('slOpacity').value / 100,
     glowOpacity:       +document.getElementById('slGlowOpacity').value / 100,
     emissiveIntensity: +document.getElementById('slEmissive').value / 100,
@@ -463,11 +467,17 @@ buildAnim();
 
 // ── Sync all UI sliders/inputs from a flat config object ───────────────────
 function syncUI(cfg) {
-  if (cfg.lineColor !== undefined) {
-    document.getElementById('colLine').value = '#' + cfg.lineColor.toString(16).padStart(6, '0');
+  if (cfg.lineColor  !== undefined) {
+    document.getElementById('colLine').value  = '#' + cfg.lineColor.toString(16).padStart(6, '0');
   }
-  if (cfg.glowColor !== undefined) {
-    document.getElementById('colGlow').value = '#' + cfg.glowColor.toString(16).padStart(6, '0');
+  if (cfg.lineColorB !== undefined) {
+    document.getElementById('colLineB').value = '#' + cfg.lineColorB.toString(16).padStart(6, '0');
+  }
+  if (cfg.glowColor  !== undefined) {
+    document.getElementById('colGlow').value  = '#' + cfg.glowColor.toString(16).padStart(6, '0');
+  }
+  if (cfg.glowColorB !== undefined) {
+    document.getElementById('colGlowB').value = '#' + cfg.glowColorB.toString(16).padStart(6, '0');
   }
   const set = (id, v, display, toDisp) => {
     if (v === undefined) return;
@@ -524,7 +534,9 @@ function applyPreset(key, withMorph = true) {
 
   anim.morphTo({
     lineColor:         p.lineColor,
+    lineColorB:        p.lineColorB  ?? p.lineColor,
     glowColor:         p.glowColor,
+    glowColorB:        p.glowColorB  ?? p.glowColor,
     opacity:           p.opacity,
     glowOpacity:       p.glowOpacity,
     emissiveIntensity: p.emissiveIntensity,
@@ -723,10 +735,20 @@ document.getElementById('colLine').addEventListener('input', e => {
   anim._baseRings.material.uniforms.uColor.value.set(hex);
   anim._options.lineColor = hex;
 });
+document.getElementById('colLineB').addEventListener('input', e => {
+  const hex = parseInt(e.target.value.slice(1), 16);
+  anim._baseRings.material.uniforms.uColorB.value.set(hex);
+  anim._options.lineColorB = hex;
+});
 document.getElementById('colGlow').addEventListener('input', e => {
   const hex = parseInt(e.target.value.slice(1), 16);
   anim._glowRings.material.uniforms.uColor.value.set(hex);
   anim._options.glowColor = hex;
+});
+document.getElementById('colGlowB').addEventListener('input', e => {
+  const hex = parseInt(e.target.value.slice(1), 16);
+  anim._glowRings.material.uniforms.uColorB.value.set(hex);
+  anim._options.glowColorB = hex;
 });
 document.getElementById('slOpacity').addEventListener('input', e => {
   const v = e.target.value / 100;
@@ -854,11 +876,15 @@ function applyImmediate(cfg) {
 
 // ── Randomize All ──────────────────────────────────────────────────────────
 function randomizeAll() {
-  const lc = randomNeonColor();
-  const gc = mutateColor(lc, 0.3);
+  const lc  = randomNeonColor();
+  const lcB = randomNeonColor();
+  const gc  = mutateColor(lc, 0.3);
+  const gcB = mutateColor(lcB, 0.3);
   applyImmediate({
     lineColor:         lc,
+    lineColorB:        lcB,
     glowColor:         gc,
+    glowColorB:        gcB,
     opacity:           rand(0.3, 0.95),
     glowOpacity:       rand(0.05, 0.55),
     emissiveIntensity: rand(0.5, 5.0),
@@ -879,11 +905,16 @@ function randomizeAll() {
 }
 
 function randomizeColors() {
-  const lc = randomNeonColor();
-  const gc = mutateColor(lc, 0.25);
-  anim.morphTo({ lineColor: lc, glowColor: gc }, +document.getElementById('slMorphDur').value);
-  document.getElementById('colLine').value = '#' + lc.toString(16).padStart(6, '0');
-  document.getElementById('colGlow').value = '#' + gc.toString(16).padStart(6, '0');
+  const lc  = randomNeonColor();
+  const lcB = randomNeonColor();
+  const gc  = mutateColor(lc, 0.25);
+  const gcB = mutateColor(lcB, 0.25);
+  const dur = +document.getElementById('slMorphDur').value;
+  anim.morphTo({ lineColor: lc, lineColorB: lcB, glowColor: gc, glowColorB: gcB }, dur);
+  document.getElementById('colLine').value  = '#' + lc.toString(16).padStart(6, '0');
+  document.getElementById('colLineB').value = '#' + lcB.toString(16).padStart(6, '0');
+  document.getElementById('colGlow').value  = '#' + gc.toString(16).padStart(6, '0');
+  document.getElementById('colGlowB').value = '#' + gcB.toString(16).padStart(6, '0');
   setStatus('Randomized colors');
 }
 
@@ -919,11 +950,15 @@ function randomizeShape() {
 function mutateAll(pct) {
   const str = pct / 100;
   const opts = anim._options;
-  const lc = mutateColor(opts.lineColor, str);
-  const gc = mutateColor(opts.glowColor, str);
+  const lc  = mutateColor(opts.lineColor,  str);
+  const lcB = mutateColor(opts.lineColorB ?? opts.lineColor, str);
+  const gc  = mutateColor(opts.glowColor,  str);
+  const gcB = mutateColor(opts.glowColorB ?? opts.glowColor, str);
   const cfg = {
     lineColor:         lc,
+    lineColorB:        lcB,
     glowColor:         gc,
+    glowColorB:        gcB,
     opacity:           nudge(opts.opacity,           0.1, 1.0,  str),
     glowOpacity:       nudge(opts.glowOpacity,       0.0, 0.6,  str),
     emissiveIntensity: nudge(opts.emissiveIntensity, 0.4, 6.0,  str),
@@ -937,18 +972,26 @@ function mutateAll(pct) {
   };
   anim.morphTo(cfg, 400);
   syncUI(cfg);
-  document.getElementById('colLine').value = '#' + lc.toString(16).padStart(6, '0');
-  document.getElementById('colGlow').value = '#' + gc.toString(16).padStart(6, '0');
+  document.getElementById('colLine').value  = '#' + lc.toString(16).padStart(6, '0');
+  document.getElementById('colLineB').value = '#' + lcB.toString(16).padStart(6, '0');
+  document.getElementById('colGlow').value  = '#' + gc.toString(16).padStart(6, '0');
+  document.getElementById('colGlowB').value = '#' + gcB.toString(16).padStart(6, '0');
   setStatus('Mutated');
 }
 
 function mutateColors(pct) {
-  const str = pct / 100;
-  const lc = mutateColor(anim._options.lineColor, str);
-  const gc = mutateColor(anim._options.glowColor, str);
-  anim.morphTo({ lineColor: lc, glowColor: gc }, +document.getElementById('slMorphDur').value);
-  document.getElementById('colLine').value = '#' + lc.toString(16).padStart(6, '0');
-  document.getElementById('colGlow').value = '#' + gc.toString(16).padStart(6, '0');
+  const str  = pct / 100;
+  const opts = anim._options;
+  const lc   = mutateColor(opts.lineColor,  str);
+  const lcB  = mutateColor(opts.lineColorB ?? opts.lineColor, str);
+  const gc   = mutateColor(opts.glowColor,  str);
+  const gcB  = mutateColor(opts.glowColorB ?? opts.glowColor, str);
+  const dur  = +document.getElementById('slMorphDur').value;
+  anim.morphTo({ lineColor: lc, lineColorB: lcB, glowColor: gc, glowColorB: gcB }, dur);
+  document.getElementById('colLine').value  = '#' + lc.toString(16).padStart(6, '0');
+  document.getElementById('colLineB').value = '#' + lcB.toString(16).padStart(6, '0');
+  document.getElementById('colGlow').value  = '#' + gc.toString(16).padStart(6, '0');
+  document.getElementById('colGlowB').value = '#' + gcB.toString(16).padStart(6, '0');
   setStatus('Mutated colors');
 }
 
