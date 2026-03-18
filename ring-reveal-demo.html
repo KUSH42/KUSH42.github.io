@@ -390,7 +390,8 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
 // ── Post-processing ────────────────────────────────────────────────────────
-const composer = new EffectComposer(renderer);
+const renderTarget = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { samples: 4 });
+const composer = new EffectComposer(renderer, renderTarget);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.4, 0.28);
 composer.addPass(bloomPass);
@@ -1085,6 +1086,7 @@ window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  renderTarget.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   bloomPass.resolution.set(innerWidth, innerHeight);
   anim.setResolution(innerWidth, innerHeight);
