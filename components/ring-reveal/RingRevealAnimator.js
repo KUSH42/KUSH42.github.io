@@ -4,9 +4,10 @@
  */
 
 import * as THREE from 'three';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { easeInOutCubic } from './easings.js';
-import { buildRingGeometry } from './RingGeometry.js';
-import { createRingMaterial } from './RingMaterial.js';
+import { buildLine2RingGeometry } from './RingGeometry.js';
+import { createLine2RingMaterial } from './RingMaterial.js';
 
 /** Scratch Colors for lerp operations (avoids per-frame allocation). */
 const _tmpColor  = new THREE.Color();
@@ -69,6 +70,10 @@ export class RingRevealAnimator {
     this._onComplete = null;
     this._morph      = null;
     this._time       = 0;
+    this._resolution = new THREE.Vector2(
+      typeof window !== 'undefined' ? window.innerWidth  : 1920,
+      typeof window !== 'undefined' ? window.innerHeight : 1080,
+    );
 
     this._build();
   }
@@ -78,11 +83,11 @@ export class RingRevealAnimator {
   get isPlaying() { return this._playing; }
   get progress()  { return this._progress; }
 
-  /** Direct reference to base LineSegments (for renderOrder etc.) */
+  /** Direct reference to base LineSegments2 (for renderOrder etc.) */
   get baseRings() { return this._baseRings; }
-  /** Direct reference to innermost glow layer (layer 0) — backward-compatible alias. */
+  /** Innermost glow layer (layer 0) — backward-compatible alias for glowLayers[0]. */
   get glowRings() { return this._glowLayers[0]; }
-  /** All glow layer LineSegments, ordered from innermost to outermost. */
+  /** All glow layer LineSegments2 objects, ordered from innermost to outermost. */
   get glowLayers() { return this._glowLayers; }
 
   // ── Lifecycle ───────────────────────────────────────────────
@@ -208,6 +213,16 @@ export class RingRevealAnimator {
     }
   }
 
+  /**
+   * Update the LineMaterial resolution uniform (must be called on canvas resize).
+   * @param {number} width
+   * @param {number} height
+   */
+  setResolution(width, height) {
+    this._resolution.set(width, height);
+    this._allMaterials().forEach(m => m.resolution?.set(width, height));
+  }
+
   // ── Morph ───────────────────────────────────────────────────
 
   /**
@@ -231,8 +246,7 @@ export class RingRevealAnimator {
     if (targetConfig.latitudeMax     !== undefined) opts.latitudeMax     = targetConfig.latitudeMax;
     if (targetConfig.lineWidth       !== undefined) {
       opts.lineWidth = targetConfig.lineWidth;
-      baseMat.linewidth = targetConfig.lineWidth;
-      this._glowLayers.forEach(l => { l.material.linewidth = targetConfig.lineWidth; });
+      this._allMaterials().forEach(m => { m.linewidth = targetConfig.lineWidth; });
     }
 
     // Apply glow layer falloff immediately (no rebuild needed)
@@ -288,25 +302,26 @@ export class RingRevealAnimator {
         brightSpread:      baseMat.uniforms.uBrightSpread.value,
         flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
         flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+        resolution:        this._resolution,
       };
-      const newBaseMat = createRingMaterial({ ...sharedArgs,
+      const newBaseMat = createLine2RingMaterial({ ...sharedArgs,
         lineColor:  baseMat.uniforms.uColor.value.getHex(),
         lineColorB: baseMat.uniforms.uColorB.value.getHex(),
         opacity: 0, blending: THREE.NormalBlending });
 
-      this._baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), newBaseMat);
+      this._baseRings = new LineSegments2(buildLine2RingGeometry(geomArgs), newBaseMat);
       this._baseRings.renderOrder = oldBase.renderOrder;
       this._scene.add(this._baseRings);
 
       this._glowLayers = [];
       for (let i = 0; i < opts.glowLayers; i++) {
         const layerRadius = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
-        const layerMat = createRingMaterial({ ...sharedArgs,
+        const layerMat = createLine2RingMaterial({ ...sharedArgs,
           lineColor:  glowMat0.uniforms.uColor.value.getHex(),
           lineColorB: glowMat0.uniforms.uColorB.value.getHex(),
           opacity: 0, blending: THREE.AdditiveBlending });
-        const layer = new THREE.LineSegments(
-          buildRingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+        const layer = new LineSegments2(
+          buildLine2RingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
         layer.renderOrder = oldGlowLayers[0]?.renderOrder ?? 0;
         this._scene.add(layer);
         this._glowLayers.push(layer);
@@ -396,6 +411,11 @@ export class RingRevealAnimator {
 
   // ── Private ─────────────────────────────────────────────────
 
+  /** All currently active materials (base + all glow layers). */
+  _allMaterials() {
+    return [this._baseRings.material, ...this._glowLayers.map(l => l.material)];
+  }
+
   /** Dispose old rings from an in-progress cross-fade (if any). */
   _disposeCrossFade() {
     const cf = this._morph?.crossFade;
@@ -432,9 +452,10 @@ export class RingRevealAnimator {
       brightSpread:      opts.brightSpread,
       flickerAmp:        opts.flickerAmp,
       flickerSpeed:      opts.flickerSpeed,
+      resolution:        this._resolution,
     };
 
-    const baseMat = createRingMaterial({
+    const baseMat = createLine2RingMaterial({
       ...sharedMatArgs,
       lineColor:  opts.lineColor,
       lineColorB: opts.lineColorB,
@@ -442,22 +463,22 @@ export class RingRevealAnimator {
       blending:   THREE.NormalBlending,
     });
 
-    this._baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), baseMat);
+    this._baseRings = new LineSegments2(buildLine2RingGeometry(geomArgs), baseMat);
     this._scene.add(this._baseRings);
 
     this._glowLayers = [];
     for (let i = 0; i < opts.glowLayers; i++) {
       const layerRadius  = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
       const layerOpacity = opts.glowOpacity * Math.pow(opts.glowLayerOpacityFalloff, i);
-      const layerMat = createRingMaterial({
+      const layerMat = createLine2RingMaterial({
         ...sharedMatArgs,
         lineColor:  opts.glowColor,
         lineColorB: opts.glowColorB,
         opacity:    layerOpacity,
         blending:   THREE.AdditiveBlending,
       });
-      const layer = new THREE.LineSegments(
-        buildRingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+      const layer = new LineSegments2(
+        buildLine2RingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
       this._scene.add(layer);
       this._glowLayers.push(layer);
     }
@@ -492,19 +513,20 @@ export class RingRevealAnimator {
       brightSpread:      baseMat.uniforms.uBrightSpread.value,
       flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
       flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
+      resolution:        this._resolution,
     };
 
     this._glowLayers = [];
     for (let i = 0; i < opts.glowLayers; i++) {
       const layerRadius  = opts.radius * opts.glowRadius * (1 + i * opts.glowLayerRadiusStep);
       const layerOpacity = opts.glowOpacity * Math.pow(opts.glowLayerOpacityFalloff, i);
-      const layerMat = createRingMaterial({
+      const layerMat = createLine2RingMaterial({
         ...sharedArgs,
         lineColor: currentColor, lineColorB: currentColorB,
         opacity: layerOpacity, blending: THREE.AdditiveBlending,
       });
-      const layer = new THREE.LineSegments(
-        buildRingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
+      const layer = new LineSegments2(
+        buildLine2RingGeometry({ ...geomArgs, radius: layerRadius }), layerMat);
       layer.renderOrder = renderOrder;
       layer.material.uniforms.uProgress.value = this._progress;
       layer.material.uniforms.uTime.value = this._time;

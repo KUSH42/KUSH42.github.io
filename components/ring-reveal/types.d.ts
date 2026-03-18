@@ -92,6 +92,8 @@ export declare class RingRevealAnimator {
 
   setColors(lineColor: number, glowColor: number): void;
   setOpacity(base: number, glow?: number): void;
+  /** Update LineMaterial resolution for correct screen-space linewidth. Call on init and on window resize. */
+  setResolution(width: number, height: number): void;
 
   dispose(): void;
 }

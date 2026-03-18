@@ -477,6 +477,7 @@ function getOptions() {
 function buildAnim() {
   if (anim) { anim.dispose(); anim = null; }
   anim = new RingRevealAnimator(scene, getOptions());
+  anim.setResolution(innerWidth, innerHeight);
   anim.baseRings.renderOrder = 4;
   anim.glowRings.renderOrder = 4;
 }
@@ -1072,6 +1073,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   bloomPass.resolution.set(innerWidth, innerHeight);
+  anim.setResolution(innerWidth, innerHeight);
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
