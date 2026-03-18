@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ring Reveal — Legacy (LineSegments)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #badge {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #100800ee;
+      border: 1px solid #ff6622aa;
+      color: #ff9966;
+      font: 11px/1.6 monospace;
+      padding: 6px 14px;
+      border-radius: 3px;
+      text-align: center;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="badge">
+  THREE.LineSegments + ShaderMaterial &nbsp;·&nbsp; lineWidth=3 set &nbsp;·&nbsp; WebGL caps all lines at 1px
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { buildRingGeometry } from './components/ring-reveal/RingGeometry.js';
+import { createRingMaterial } from './components/ring-reveal/RingMaterial.js';
+
+function easeInOutCubic(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+// ── Scene ──────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020808);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 3.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ReinhardToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.6;
+
+// ── Bloom ──────────────────────────────────────────────────────────────────
+const bloomEffect = new BloomEffect({ intensity: 1.2, radius: 0.15, luminanceThreshold: 0.28, luminanceSmoothing: 0.1 });
+const composer = new EffectComposer(renderer, { multisampling: 4 });
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new EffectPass(camera, bloomEffect));
+
+// ── Reference globe ────────────────────────────────────────────────────────
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(1.0, 48, 48),
+  new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05 })
+));
+
+// ── Shared preset (Cosmic — same as the Line2 comparison side) ─────────────
+const PRESET = {
+  radius: 1.0, numRings: 64, samplesPerRing: 256,
+  latitudeMin: -Math.PI / 2, latitudeMax: Math.PI / 2, upAxis: 'y',
+  lineColor: 0x8844ff, lineColorB: 0x00ffee,
+  glowColor: 0x4422cc, glowColorB: 0x0088bb,
+  lineWidth: 3,           // ← intentionally set to 3 — WebGL will cap it at 1px
+  opacity: 0.70,
+  glowOpacity: 0.35,
+  glowRadius: 1.008,
+  glowLayerRadiusStep: 0.004,
+  glowLayerOpacityFalloff: 0.5,
+  emissiveIntensity: 2.2,
+  stagger: 0.50,
+  ringDuration: 0.35,
+  warpAmount: 0.20,
+  durationMs: 2500,
+  direction: 'equator-out',
+  colorSpread: 0.25,
+  brightSpread: 0.20,
+  flickerAmp: 0.05,
+  flickerSpeed: 1.5,
+  arcColorSpread: 0.5,
+};
+
+// ── Build legacy rings ─────────────────────────────────────────────────────
+const geomArgs = {
+  radius: PRESET.radius, numRings: PRESET.numRings, samplesPerRing: PRESET.samplesPerRing,
+  latitudeMin: PRESET.latitudeMin, latitudeMax: PRESET.latitudeMax, upAxis: PRESET.upAxis,
+};
+const sharedMatArgs = {
+  lineWidth: PRESET.lineWidth, numRings: PRESET.numRings,
+  stagger: PRESET.stagger, ringDuration: PRESET.ringDuration,
+  warpAmount: PRESET.warpAmount, emissiveIntensity: PRESET.emissiveIntensity,
+  direction: PRESET.direction, colorSpread: PRESET.colorSpread,
+  brightSpread: PRESET.brightSpread, flickerAmp: PRESET.flickerAmp,
+  flickerSpeed: PRESET.flickerSpeed, arcColorSpread: PRESET.arcColorSpread,
+};
+
+const baseMat = createRingMaterial({
+  ...sharedMatArgs,
+  lineColor: PRESET.lineColor, lineColorB: PRESET.lineColorB,
+  opacity: PRESET.opacity, blending: THREE.NormalBlending,
+});
+const baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), baseMat);
+baseRings.renderOrder = 4;
+scene.add(baseRings);
+
+// 3 glow layers with exponential falloff
+const glowLayers = Array.from({ length: 3 }, (_, i) => {
+  const layerRadius  = PRESET.radius * PRESET.glowRadius * (1 + i * PRESET.glowLayerRadiusStep);
+  const layerOpacity = PRESET.glowOpacity * Math.pow(PRESET.glowLayerOpacityFalloff, i);
+  const mat = createRingMaterial({
+    ...sharedMatArgs,
+    lineColor: PRESET.glowColor, lineColorB: PRESET.glowColorB,
+    opacity: layerOpacity, blending: THREE.AdditiveBlending,
+  });
+  const layer = new THREE.LineSegments(buildRingGeometry({ ...geomArgs, radius: layerRadius }), mat);
+  layer.renderOrder = 4;
+  scene.add(layer);
+  return layer;
+});
+
+function setProgress(p) {
+  baseMat.uniforms.uProgress.value = p;
+  glowLayers.forEach(l => { l.material.uniforms.uProgress.value = p; });
+}
+
+// ── RAF loop ───────────────────────────────────────────────────────────────
+let elapsed = 0, reversed = false, time = 0;
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta() * 1000, 100);
+  time += dt / 1000;
+  baseMat.uniforms.uTime.value = time;
+  glowLayers.forEach(l => { l.material.uniforms.uTime.value = time; });
+
+  elapsed += dt;
+  const rawT   = Math.min(elapsed / PRESET.durationMs, 1.0);
+  const easedT = easeInOutCubic(rawT);
+  setProgress(reversed ? 1.0 - easedT : easedT);
+  if (rawT >= 1.0) { elapsed = 0; reversed = !reversed; }
+
+  controls.update();
+  composer.render();
+});
+</script>
+</body>
+</html>

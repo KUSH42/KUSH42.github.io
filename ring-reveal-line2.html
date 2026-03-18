@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ring Reveal — Line2</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #badge {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #000d0dee;
+      border: 1px solid #00ffcc66;
+      color: #00ffcc;
+      font: 11px/1.6 monospace;
+      padding: 6px 14px;
+      border-radius: 3px;
+      text-align: center;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="badge">
+  LineSegments2 + LineMaterial &nbsp;·&nbsp; lineWidth=3px actual &nbsp;·&nbsp; arc colour gradient enabled
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { RingRevealAnimator } from './components/ring-reveal/index.js';
+import { easeInOutCubic } from './components/ring-reveal/easings.js';
+
+// ── Scene ──────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020808);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 0, 3.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ReinhardToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.6;
+
+// ── Bloom ──────────────────────────────────────────────────────────────────
+const bloomEffect = new BloomEffect({ intensity: 1.2, radius: 0.15, luminanceThreshold: 0.28, luminanceSmoothing: 0.1 });
+const composer = new EffectComposer(renderer, { multisampling: 4 });
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new EffectPass(camera, bloomEffect));
+
+// ── Reference globe ────────────────────────────────────────────────────────
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(1.0, 48, 48),
+  new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05 })
+));
+
+// ── Animator — same Cosmic preset as legacy page ───────────────────────────
+const anim = new RingRevealAnimator(scene, {
+  radius: 1.0, numRings: 64, samplesPerRing: 256,
+  lineColor: 0x8844ff, lineColorB: 0x00ffee,
+  glowColor: 0x4422cc, glowColorB: 0x0088bb,
+  lineWidth: 3,           // ← actual 3px on screen (Line2 honours this)
+  opacity: 0.70,
+  glowOpacity: 0.35,
+  glowRadius: 1.008,
+  glowLayers: 3,
+  glowLayerRadiusStep: 0.004,
+  glowLayerOpacityFalloff: 0.5,
+  emissiveIntensity: 2.2,
+  stagger: 0.50,
+  ringDuration: 0.35,
+  warpAmount: 0.20,
+  durationMs: 2500,
+  direction: 'equator-out',
+  colorSpread: 0.25,
+  brightSpread: 0.20,
+  flickerAmp: 0.05,
+  flickerSpeed: 1.5,
+  arcColorSpread: 0.5,
+  easingFn: easeInOutCubic,
+});
+anim.setResolution(innerWidth, innerHeight);
+anim.baseRings.renderOrder = 4;
+anim.glowRings.renderOrder = 4;
+
+// ── Loop: play → reverse → repeat ─────────────────────────────────────────
+function loop() { anim.play(() => anim.reverse(loop)); }
+loop();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  anim.setResolution(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  anim.tick(Math.min(clock.getDelta() * 1000, 100));
+  controls.update();
+  composer.render();
+});
+</script>
+</body>
+</html>

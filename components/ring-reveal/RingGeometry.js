@@ -18,8 +18,9 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 export function buildRingGeometry({ radius, numRings, samplesPerRing, latitudeMin, latitudeMax, upAxis }) {
   const totalVerts = numRings * samplesPerRing;
 
-  const positions  = new Float32Array(totalVerts * 3);
+  const positions   = new Float32Array(totalVerts * 3);
   const ringIndices = new Float32Array(totalVerts);
+  const arcPositions = new Float32Array(totalVerts);
   // Each ring: samplesPerRing segments, each segment = 2 indices → close the loop
   const indexCount = numRings * samplesPerRing * 2;
   const indices    = new Uint32Array(indexCount);
@@ -40,7 +41,8 @@ export function buildRingGeometry({ radius, numRings, samplesPerRing, latitudeMi
       positions[pIdx++] = radius * sinPhi;                     // y
       positions[pIdx++] = radius * cosPhi * Math.sin(lambda); // z
 
-      ringIndices[baseVert + s] = r;
+      ringIndices[baseVert + s]  = r;
+      arcPositions[baseVert + s] = s / samplesPerRing;
 
       // Segment: vertex s → vertex (s+1) % samplesPerRing (closed loop)
       indices[iIdx++] = baseVert + s;
@@ -49,8 +51,9 @@ export function buildRingGeometry({ radius, numRings, samplesPerRing, latitudeMi
   }
 
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position',  new THREE.BufferAttribute(positions,   3));
-  geo.setAttribute('ringIndex', new THREE.BufferAttribute(ringIndices, 1));
+  geo.setAttribute('position',    new THREE.BufferAttribute(positions,   3));
+  geo.setAttribute('ringIndex',   new THREE.BufferAttribute(ringIndices, 1));
+  geo.setAttribute('arcPosition', new THREE.BufferAttribute(arcPositions, 1));
   geo.setIndex(new THREE.BufferAttribute(indices, 1));
 
   if (upAxis === 'z') {
