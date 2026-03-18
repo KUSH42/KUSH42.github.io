@@ -416,13 +416,15 @@ composer.addPass(new EffectPass(camera, bloomEffect));
 // ── Reference globe ────────────────────────────────────────────────────────
 const globeGeo  = new THREE.SphereGeometry(1.0, 48, 48);
 const solidMat  = new THREE.MeshStandardMaterial({ color: 0x001a14, roughness: 0.8, metalness: 0.1, transparent: true, opacity: 0.85 });
-const hiddenMat = new THREE.MeshBasicMaterial({ visible: false });
 const wfLineGeo = new LineSegmentsGeometry();
 wfLineGeo.setPositions(new THREE.WireframeGeometry(globeGeo).getAttribute('position').array);
 const wireMat = new LineMaterial({ color: 0x00ffcc, linewidth: 1, transparent: true, opacity: 0.05, depthTest: true, depthWrite: false });
 wireMat.resolution.set(innerWidth, innerHeight);
-const globeMesh = new LineSegments2(wfLineGeo, wireMat);
-scene.add(globeMesh);
+const globeWire  = new LineSegments2(wfLineGeo, wireMat);
+const globeSolid = new THREE.Mesh(globeGeo, solidMat);
+globeSolid.visible = false;
+scene.add(globeWire);
+scene.add(globeSolid);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 const dirLight = new THREE.DirectionalLight(0x00ffcc, 1.2);
@@ -900,7 +902,9 @@ document.getElementById('slMutateStr').addEventListener('input', e => {
 
 // ── Scene ──────────────────────────────────────────────────────────────────
 document.getElementById('selSphere').addEventListener('change', e => {
-  globeMesh.material = { wire: wireMat, solid: solidMat, none: hiddenMat }[e.target.value] ?? wireMat;
+  const v = e.target.value;
+  globeWire.visible  = v === 'wire';
+  globeSolid.visible = v === 'solid';
 });
 document.getElementById('slExposure').addEventListener('input', e => {
   renderer.toneMappingExposure = e.target.value / 100;
