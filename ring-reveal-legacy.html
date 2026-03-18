@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Ring Reveal — Legacy (LineSegments)</title>
+  <title>Ring Reveal — v0 (no bloom, no gradients)</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
@@ -26,13 +26,12 @@
 </head>
 <body>
 <div id="badge">
-  THREE.LineSegments + ShaderMaterial &nbsp;·&nbsp; lineWidth=3 set &nbsp;·&nbsp; WebGL caps all lines at 1px
+  v0 — THREE.LineSegments · no bloom · no colour gradients · 1px lines
 </div>
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
 import { buildRingGeometry } from './components/ring-reveal/RingGeometry.js';
 import { createRingMaterial } from './components/ring-reveal/RingMaterial.js';
 
@@ -45,11 +44,10 @@ scene.background = new THREE.Color(0x020808);
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
 camera.position.set(0, 0, 3.5);
 
+// Plain renderer — no post-processing, no tone mapping, no bloom
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.toneMapping = THREE.ReinhardToneMapping;
-renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -57,94 +55,63 @@ controls.enableDamping = true;
 controls.autoRotate = true;
 controls.autoRotateSpeed = 0.6;
 
-// ── Bloom ──────────────────────────────────────────────────────────────────
-const bloomEffect = new BloomEffect({ intensity: 1.2, radius: 0.15, luminanceThreshold: 0.28, luminanceSmoothing: 0.1 });
-const composer = new EffectComposer(renderer, { multisampling: 4 });
-composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new EffectPass(camera, bloomEffect));
-
 // ── Reference globe ────────────────────────────────────────────────────────
 scene.add(new THREE.Mesh(
   new THREE.SphereGeometry(1.0, 48, 48),
   new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05 })
 ));
 
-// ── Shared preset (Cosmic — same as the Line2 comparison side) ─────────────
-const PRESET = {
-  radius: 1.0, numRings: 64, samplesPerRing: 256,
-  latitudeMin: -Math.PI / 2, latitudeMax: Math.PI / 2, upAxis: 'y',
-  lineColor: 0x8844ff, lineColorB: 0x00ffee,
-  glowColor: 0x4422cc, glowColorB: 0x0088bb,
-  lineWidth: 3,           // ← intentionally set to 3 — WebGL will cap it at 1px
-  opacity: 0.70,
-  glowOpacity: 0.35,
-  glowRadius: 1.008,
-  glowLayerRadiusStep: 0.004,
-  glowLayerOpacityFalloff: 0.5,
-  emissiveIntensity: 2.2,
-  stagger: 0.50,
-  ringDuration: 0.35,
-  warpAmount: 0.20,
-  durationMs: 2500,
-  direction: 'equator-out',
-  colorSpread: 0.25,
-  brightSpread: 0.20,
-  flickerAmp: 0.05,
-  flickerSpeed: 1.5,
-  arcColorSpread: 0.5,
-};
+// ── v0 preset: single flat colour, no gradients ────────────────────────────
+const COLOR      = 0x00ffcc;  // single line colour — no B endpoint
+const GLOW_COLOR = 0x00ffcc;  // same for glow
 
-// ── Build legacy rings ─────────────────────────────────────────────────────
 const geomArgs = {
-  radius: PRESET.radius, numRings: PRESET.numRings, samplesPerRing: PRESET.samplesPerRing,
-  latitudeMin: PRESET.latitudeMin, latitudeMax: PRESET.latitudeMax, upAxis: PRESET.upAxis,
+  radius: 1.0, numRings: 48, samplesPerRing: 256,
+  latitudeMin: -Math.PI / 2, latitudeMax: Math.PI / 2, upAxis: 'y',
 };
 const sharedMatArgs = {
-  lineWidth: PRESET.lineWidth, numRings: PRESET.numRings,
-  stagger: PRESET.stagger, ringDuration: PRESET.ringDuration,
-  warpAmount: PRESET.warpAmount, emissiveIntensity: PRESET.emissiveIntensity,
-  direction: PRESET.direction, colorSpread: PRESET.colorSpread,
-  brightSpread: PRESET.brightSpread, flickerAmp: PRESET.flickerAmp,
-  flickerSpeed: PRESET.flickerSpeed, arcColorSpread: PRESET.arcColorSpread,
+  lineWidth: 1, numRings: 48,
+  stagger: 0.55, ringDuration: 0.35,
+  warpAmount: 0.12, emissiveIntensity: 1.5,
+  direction: 'south-to-north',
+  colorSpread: 0, brightSpread: 0, flickerAmp: 0, flickerSpeed: 2,
+  arcColorSpread: 0,
 };
 
 const baseMat = createRingMaterial({
   ...sharedMatArgs,
-  lineColor: PRESET.lineColor, lineColorB: PRESET.lineColorB,
-  opacity: PRESET.opacity, blending: THREE.NormalBlending,
+  lineColor: COLOR, lineColorB: COLOR,   // B == A → no gradient
+  opacity: 0.70, blending: THREE.NormalBlending,
 });
 const baseRings = new THREE.LineSegments(buildRingGeometry(geomArgs), baseMat);
 baseRings.renderOrder = 4;
 scene.add(baseRings);
 
-// 3 glow layers with exponential falloff
-const glowLayers = Array.from({ length: 3 }, (_, i) => {
-  const layerRadius  = PRESET.radius * PRESET.glowRadius * (1 + i * PRESET.glowLayerRadiusStep);
-  const layerOpacity = PRESET.glowOpacity * Math.pow(PRESET.glowLayerOpacityFalloff, i);
-  const mat = createRingMaterial({
-    ...sharedMatArgs,
-    lineColor: PRESET.glowColor, lineColorB: PRESET.glowColorB,
-    opacity: layerOpacity, blending: THREE.AdditiveBlending,
-  });
-  const layer = new THREE.LineSegments(buildRingGeometry({ ...geomArgs, radius: layerRadius }), mat);
-  layer.renderOrder = 4;
-  scene.add(layer);
-  return layer;
+// Single glow ring (pre-multi-layer era)
+const glowMat = createRingMaterial({
+  ...sharedMatArgs,
+  lineColor: GLOW_COLOR, lineColorB: GLOW_COLOR,
+  opacity: 0.25, blending: THREE.AdditiveBlending,
 });
+const glowRings = new THREE.LineSegments(
+  buildRingGeometry({ ...geomArgs, radius: 1.008 }), glowMat
+);
+glowRings.renderOrder = 4;
+scene.add(glowRings);
 
 function setProgress(p) {
   baseMat.uniforms.uProgress.value = p;
-  glowLayers.forEach(l => { l.material.uniforms.uProgress.value = p; });
+  glowMat.uniforms.uProgress.value = p;
 }
 
 // ── RAF loop ───────────────────────────────────────────────────────────────
 let elapsed = 0, reversed = false, time = 0;
+const durationMs = 1800;
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  composer.setSize(innerWidth, innerHeight);
 });
 
 const clock = new THREE.Clock();
@@ -152,16 +119,16 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta() * 1000, 100);
   time += dt / 1000;
   baseMat.uniforms.uTime.value = time;
-  glowLayers.forEach(l => { l.material.uniforms.uTime.value = time; });
+  glowMat.uniforms.uTime.value = time;
 
   elapsed += dt;
-  const rawT   = Math.min(elapsed / PRESET.durationMs, 1.0);
+  const rawT   = Math.min(elapsed / durationMs, 1.0);
   const easedT = easeInOutCubic(rawT);
   setProgress(reversed ? 1.0 - easedT : easedT);
   if (rawT >= 1.0) { elapsed = 0; reversed = !reversed; }
 
   controls.update();
-  composer.render();
+  renderer.render(scene, camera);   // plain render — no composer
 });
 </script>
 </body>

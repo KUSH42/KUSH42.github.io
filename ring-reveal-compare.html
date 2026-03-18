@@ -117,8 +117,8 @@
 <header>
   <h1>Ring Reveal — Comparison</h1>
   <p>
-    Both scenes use identical settings: Cosmic preset · lineWidth=3 · arcColorSpread=0.5<br>
-    The only difference is the underlying renderer.
+    Left: v0 — plain renderer · flat colour · single glow ring · 1px lines<br>
+    Right: current — postprocessing bloom · colour gradients · arc spread · multi-layer glow · Line2 true linewidth
   </p>
   <a href="ring-reveal-demo.html" target="_blank">Open full demo →</a>
 </header>
@@ -127,23 +127,23 @@
 
   <div class="panel">
     <iframe src="ring-reveal-legacy.html"></iframe>
-    <div class="panel-label legacy">Legacy — THREE.LineSegments</div>
+    <div class="panel-label legacy">v0 — THREE.LineSegments, no bloom</div>
     <div class="features legacy">
-      <span class="bad">✗</span> linewidth capped at 1px (WebGL limitation)<br>
-      <span class="good">✓</span> ring-to-ring colour gradient (uColorB)<br>
-      <span class="good">✓</span> arc colour spread<br>
-      <span class="good">✓</span> warp · stagger · glow layers
+      <span class="bad">✗</span> no bloom / post-processing<br>
+      <span class="bad">✗</span> flat single colour (no gradient)<br>
+      <span class="bad">✗</span> linewidth always 1px<br>
+      <span class="bad">✗</span> single glow ring
     </div>
   </div>
 
   <div class="panel">
     <iframe src="ring-reveal-line2.html"></iframe>
-    <div class="panel-label line2">Line2 — LineSegments2 + LineMaterial</div>
+    <div class="panel-label line2">Current — Line2 + postprocessing bloom</div>
     <div class="features line2">
-      <span class="good">✓</span> true pixel linewidth (3px here)<br>
-      <span class="good">✓</span> ring-to-ring colour gradient (uColorB)<br>
-      <span class="good">✓</span> arc colour spread (per-segment hue shift)<br>
-      <span class="good">✓</span> warp · stagger · glow layers
+      <span class="good">✓</span> postprocessing BloomEffect<br>
+      <span class="good">✓</span> ring-to-ring colour gradient + arc colour spread<br>
+      <span class="good">✓</span> true pixel linewidth via LineSegments2<br>
+      <span class="good">✓</span> multi-layer glow stack
     </div>
   </div>
 
