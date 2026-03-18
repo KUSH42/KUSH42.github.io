@@ -100,10 +100,12 @@ function setProgress(p) {
   glowMat.uniforms.uProgress.value = p;
 }
 
-// ── Camera sync ────────────────────────────────────────────────────────────
-let syncingCamera = false;
+// ── Camera sync — only on user drag, not autoRotate ────────────────────────
+let syncingCamera = false, userDragging = false;
+controls.addEventListener('start', () => { userDragging = true; });
+controls.addEventListener('end',   () => { userDragging = false; });
 controls.addEventListener('change', () => {
-  if (syncingCamera) return;
+  if (syncingCamera || !userDragging) return;
   window.parent.postMessage({
     type: 'camera',
     position: camera.position.toArray(),

@@ -5,8 +5,9 @@
   <title>Ring Reveal — Line2</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; }
+    body { background: #000; overflow: hidden; font-family: monospace; }
     canvas { display: block; }
+
     #badge {
       position: fixed;
       bottom: 16px;
@@ -21,12 +22,109 @@
       text-align: center;
       pointer-events: none;
       white-space: nowrap;
+      transition: opacity .3s;
     }
+
+    #hint {
+      position: fixed;
+      top: 10px;
+      right: 12px;
+      color: #0ff4;
+      font-size: 10px;
+      pointer-events: none;
+    }
+
+    /* ── Settings panel ──────────────────────────────────────────────────── */
+    #ui {
+      position: fixed;
+      top: 0; right: 0;
+      width: 260px;
+      height: 100vh;
+      overflow-y: auto;
+      background: #020c0cee;
+      border-left: 1px solid #0ff2;
+      color: #0ff;
+      font-size: 11px;
+      padding: 10px 10px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: #0ff3 transparent;
+      /* hidden by default */
+      transform: translateX(100%);
+      transition: transform .2s ease;
+    }
+    #ui.open { transform: translateX(0); }
+
+    .section-label {
+      color: #0ff9;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-top: 8px;
+      border-bottom: 1px solid #0ff2;
+      padding-bottom: 2px;
+    }
+    #ui label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    #ui label span.n {
+      min-width: 100px;
+      color: #0ffc;
+      font-size: 10px;
+    }
+    #ui input[type=range] {
+      width: 90px;
+      accent-color: #0ff;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #ui input[type=color] {
+      width: 28px; height: 18px;
+      border: 1px solid #0ff4;
+      background: transparent;
+      cursor: pointer; padding: 1px;
+    }
+    .val { min-width: 30px; text-align: right; color: #0ff; font-size: 10px; }
   </style>
 </head>
 <body>
-<div id="badge">
-  LineSegments2 + LineMaterial &nbsp;·&nbsp; true pixel linewidth &nbsp;·&nbsp; arc colour gradient
+
+<div id="badge">LineSegments2 · true pixel linewidth · arc colour gradient</div>
+<div id="hint">H — settings</div>
+
+<div id="ui">
+  <div class="section-label">Appearance</div>
+  <label><span class="n">Line color A→B</span><input type="color" id="cLine" value="#ff6600"><input type="color" id="cLineB" value="#00ffff"></label>
+  <label><span class="n">Glow color A→B</span><input type="color" id="cGlow" value="#ff3300"><input type="color" id="cGlowB" value="#00aaff"></label>
+  <label><span class="n">Line width</span><input type="range" id="slLW" min="1" max="10" value="2" step="0.5"><span class="val" id="vLW">2.0</span> px</label>
+  <label><span class="n">Opacity</span><input type="range" id="slOp" min="0" max="100" value="90"><span class="val" id="vOp">0.90</span></label>
+  <label><span class="n">Glow opacity</span><input type="range" id="slGO" min="0" max="100" value="30"><span class="val" id="vGO">0.30</span></label>
+  <label><span class="n">Emissive</span><input type="range" id="slEm" min="10" max="600" value="300"><span class="val" id="vEm">3.00</span></label>
+  <label><span class="n">Warp</span><input type="range" id="slWarp" min="0" max="80" value="37"><span class="val" id="vWarp">0.37</span></label>
+
+  <div class="section-label">Ring Variation</div>
+  <label><span class="n">Color spread</span><input type="range" id="slCS" min="0" max="100" value="52"><span class="val" id="vCS">0.52</span></label>
+  <label><span class="n">Bright spread</span><input type="range" id="slBS" min="0" max="100" value="12"><span class="val" id="vBS">0.12</span></label>
+  <label><span class="n">Flicker amp</span><input type="range" id="slFA" min="0" max="100" value="15"><span class="val" id="vFA">0.15</span></label>
+  <label><span class="n">Flicker speed</span><input type="range" id="slFS" min="1" max="200" value="40"><span class="val" id="vFS">4.0</span> Hz</label>
+  <label><span class="n">Arc color spread</span><input type="range" id="slAC" min="0" max="100" value="100"><span class="val" id="vAC">1.00</span></label>
+
+  <div class="section-label">Glow</div>
+  <label><span class="n">Glow radius</span><input type="range" id="slGR" min="100" max="130" value="111"><span class="val" id="vGR">1.108</span></label>
+  <label><span class="n">Glow layers</span><input type="range" id="slGL" min="1" max="6" step="1" value="4"><span class="val" id="vGL">4</span></label>
+  <label><span class="n">Layer step</span><input type="range" id="slGS" min="0" max="30" value="13"><span class="val" id="vGS">0.013</span></label>
+  <label><span class="n">Layer falloff</span><input type="range" id="slGF" min="0" max="100" value="10"><span class="val" id="vGF">0.10</span></label>
+
+  <div class="section-label">Scene</div>
+  <label><span class="n">Exposure</span><input type="range" id="slExp" min="0" max="300" value="107"><span class="val" id="vExp">1.07</span></label>
+  <label><span class="n">Bloom strength</span><input type="range" id="slBl" min="0" max="400" value="160"><span class="val" id="vBl">1.60</span></label>
+  <label><span class="n">Bloom radius</span><input type="range" id="slBR" min="0" max="100" value="72"><span class="val" id="vBR">0.72</span></label>
+  <label><span class="n">Bloom threshold</span><input type="range" id="slBT" min="0" max="100" value="0"><span class="val" id="vBT">0.00</span></label>
 </div>
 
 <script type="module">
@@ -62,44 +160,90 @@ composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new EffectPass(camera, bloomEffect));
 
 // ── Animator ───────────────────────────────────────────────────────────────
-const DURATION = 1800; // ms — must match legacy page
+const DURATION = 1800;
 
 const anim = new RingRevealAnimator(scene, {
-  radius:                  1.030,
-  numRings:                48,
-  samplesPerRing:          256,
-  lineColor:               0xff6600,
-  lineColorB:              0x00ffff,
-  glowColor:               0xff3300,
-  glowColorB:              0x00aaff,
-  lineWidth:               2,
-  opacity:                 0.90,
-  glowOpacity:             0.30,
-  glowRadius:              1.108,
-  glowLayers:              4,
-  glowLayerRadiusStep:     0.013,
-  glowLayerOpacityFalloff: 0.10,
-  emissiveIntensity:       3.00,
-  warpAmount:              0.37,
-  stagger:                 0.55,
-  ringDuration:            0.35,
-  durationMs:              DURATION,
-  direction:               'south-to-north',
-  colorSpread:             0.52,
-  brightSpread:            0.12,
-  flickerAmp:              0.15,
-  flickerSpeed:            4.0,
-  arcColorSpread:          1.00,
-  easingFn:                easeInOutCubic,
+  radius: 1.030, numRings: 48, samplesPerRing: 256,
+  lineColor: 0xff6600, lineColorB: 0x00ffff,
+  glowColor: 0xff3300, glowColorB: 0x00aaff,
+  lineWidth: 2, opacity: 0.90, glowOpacity: 0.30,
+  glowRadius: 1.108, glowLayers: 4,
+  glowLayerRadiusStep: 0.013, glowLayerOpacityFalloff: 0.10,
+  emissiveIntensity: 3.00, warpAmount: 0.37,
+  stagger: 0.55, ringDuration: 0.35, durationMs: DURATION,
+  direction: 'south-to-north',
+  colorSpread: 0.52, brightSpread: 0.12,
+  flickerAmp: 0.15, flickerSpeed: 4.0, arcColorSpread: 1.00,
+  easingFn: easeInOutCubic,
 });
 anim.setResolution(innerWidth, innerHeight);
 anim.baseRings.renderOrder = 4;
 anim.glowRings.renderOrder = 4;
 
-// ── Camera sync ────────────────────────────────────────────────────────────
-let syncingCamera = false;
+// ── H key — toggle settings panel ─────────────────────────────────────────
+const ui = document.getElementById('ui');
+document.addEventListener('keydown', e => {
+  if (e.key === 'h' || e.key === 'H') ui.classList.toggle('open');
+});
+
+// ── Settings panel wiring ──────────────────────────────────────────────────
+function sl(id, valId, scale, decimals, cb) {
+  document.getElementById(id).addEventListener('input', e => {
+    const v = e.target.value / scale;
+    document.getElementById(valId).textContent = v.toFixed(decimals);
+    cb(v);
+  });
+}
+
+const bm = anim._baseRings.material;
+const allMats = () => [anim._baseRings.material, ...anim._glowLayers.map(l => l.material)];
+
+document.getElementById('cLine').addEventListener('input', e => {
+  const h = parseInt(e.target.value.slice(1), 16);
+  bm.uniforms.uColor.value.set(h); anim._options.lineColor = h;
+});
+document.getElementById('cLineB').addEventListener('input', e => {
+  const h = parseInt(e.target.value.slice(1), 16);
+  bm.uniforms.uColorB.value.set(h); anim._options.lineColorB = h;
+});
+document.getElementById('cGlow').addEventListener('input', e => {
+  const h = parseInt(e.target.value.slice(1), 16);
+  anim._glowLayers.forEach(l => l.material.uniforms.uColor.value.set(h));
+});
+document.getElementById('cGlowB').addEventListener('input', e => {
+  const h = parseInt(e.target.value.slice(1), 16);
+  anim._glowLayers.forEach(l => l.material.uniforms.uColorB.value.set(h));
+});
+
+sl('slLW',  'vLW',  1,   1, v => { allMats().forEach(m => { m.linewidth = v; }); });
+sl('slOp',  'vOp',  100, 2, v => { bm.uniforms.uOpacity.value = v; anim._options.opacity = v; });
+sl('slGO',  'vGO',  100, 2, v => {
+  anim._glowLayers.forEach((l, i) =>
+    { l.material.uniforms.uOpacity.value = v * Math.pow(anim._options.glowLayerOpacityFalloff, i); });
+  anim._options.glowOpacity = v;
+});
+sl('slEm',  'vEm',  100, 2, v => { allMats().forEach(m => { m.uniforms.uEmissiveIntensity.value = v; }); });
+sl('slWarp','vWarp',100, 2, v => { allMats().forEach(m => { m.uniforms.uWarpAmount.value = v; }); });
+sl('slCS',  'vCS',  100, 2, v => { allMats().forEach(m => { m.uniforms.uColorSpread.value = v; }); });
+sl('slBS',  'vBS',  100, 2, v => { allMats().forEach(m => { m.uniforms.uBrightSpread.value = v; }); });
+sl('slFA',  'vFA',  100, 2, v => { allMats().forEach(m => { m.uniforms.uFlickerAmp.value = v; }); });
+sl('slFS',  'vFS',   10, 1, v => { allMats().forEach(m => { m.uniforms.uFlickerSpeed.value = v; }); });
+sl('slAC',  'vAC',  100, 2, v => { allMats().forEach(m => { m.uniforms.uArcColorSpread.value = v; }); });
+sl('slGR',  'vGR',  100, 3, v => { anim.morphTo({ glowRadius: v }, 0); });
+sl('slGL',  'vGL',    1, 0, v => { anim.morphTo({ glowLayers: Math.round(v) }, 0); });
+sl('slGS',  'vGS', 1000, 3, v => { anim.morphTo({ glowLayerRadiusStep: v }, 0); });
+sl('slGF',  'vGF',  100, 2, v => { anim.morphTo({ glowLayerOpacityFalloff: v }, 0); });
+sl('slExp', 'vExp', 100, 2, v => { renderer.toneMappingExposure = v; });
+sl('slBl',  'vBl',  100, 2, v => { bloomEffect.intensity = v; });
+sl('slBR',  'vBR',  100, 2, v => { bloomEffect.mipmapBlurPass.radius = v; });
+sl('slBT',  'vBT',  100, 2, v => { bloomEffect.luminanceMaterial.threshold = v; });
+
+// ── Camera sync — only on user drag, not autoRotate ────────────────────────
+let syncingCamera = false, userDragging = false;
+controls.addEventListener('start', () => { userDragging = true; });
+controls.addEventListener('end',   () => { userDragging = false; });
 controls.addEventListener('change', () => {
-  if (syncingCamera) return;
+  if (syncingCamera || !userDragging) return;
   window.parent.postMessage({
     type: 'camera',
     position: camera.position.toArray(),
@@ -115,19 +259,13 @@ window.addEventListener('message', e => {
   syncingCamera = false;
 });
 
-// ── RAF — progress driven by performance.now() so both iframes stay in sync ─
+// ── RAF ────────────────────────────────────────────────────────────────────
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta() * 1000, 100);
-
-  // Drive time uniform for flicker (tick with _playing=false only advances _time)
-  anim.tick(dt);
-
-  // Derive progress from shared wall-clock: play → reverse → repeat
+  anim.tick(dt); // advances _time for flicker only (_playing=false)
   const phase = (performance.now() / DURATION) % 2;
-  const rawT  = phase < 1 ? phase : 2 - phase;
-  anim._setProgress(easeInOutCubic(rawT));
-
+  anim._setProgress(easeInOutCubic(phase < 1 ? phase : 2 - phase));
   controls.update();
   composer.render();
 });
