@@ -381,6 +381,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { RingRevealAnimator } from './components/ring-reveal/index.js';
 import { easeInOutCubic, easeOutExpo, backInOut, linear } from './components/ring-reveal/easings.js';
 
@@ -412,10 +415,13 @@ composer.addPass(new EffectPass(camera, bloomEffect));
 
 // ── Reference globe ────────────────────────────────────────────────────────
 const globeGeo  = new THREE.SphereGeometry(1.0, 48, 48);
-const wireMat   = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.05 });
 const solidMat  = new THREE.MeshStandardMaterial({ color: 0x001a14, roughness: 0.8, metalness: 0.1, transparent: true, opacity: 0.85 });
 const hiddenMat = new THREE.MeshBasicMaterial({ visible: false });
-const globeMesh = new THREE.Mesh(globeGeo, wireMat);
+const wfLineGeo = new LineSegmentsGeometry();
+wfLineGeo.setPositions(new THREE.WireframeGeometry(globeGeo).getAttribute('position').array);
+const wireMat = new LineMaterial({ color: 0x00ffcc, linewidth: 1, transparent: true, opacity: 0.05, depthTest: true, depthWrite: false });
+wireMat.resolution.set(innerWidth, innerHeight);
+const globeMesh = new LineSegments2(wfLineGeo, wireMat);
 scene.add(globeMesh);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
@@ -1113,6 +1119,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   anim.setResolution(innerWidth, innerHeight);
+  wireMat.resolution.set(innerWidth, innerHeight);
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────

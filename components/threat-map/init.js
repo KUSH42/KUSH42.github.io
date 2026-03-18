@@ -8,6 +8,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 
 import { _state, GLOBE_RADIUS } from './state.js';
 import { _readCSSColors } from './utils.js';
@@ -93,16 +96,24 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
   // Layer 0: ghost back wires — drawn before any depth data, always faint
   const cyanColor = new THREE.Color(colors.neonCyan || '#00d4b0');
 
-  const globeBackMat = new THREE.MeshBasicMaterial({
+  // Shared Line2 wireframe geometry (WireframeGeometry → LineSegmentsGeometry)
+  const wfPositions = new THREE.WireframeGeometry(globeGeo).getAttribute('position').array;
+  const wfLineGeo = new LineSegmentsGeometry();
+  wfLineGeo.setPositions(wfPositions);
+
+  const w = element.clientWidth || 800;
+  const h = element.clientHeight || 600;
+
+  const globeBackMat = new LineMaterial({
     color: cyanColor,
-    wireframe: true,
+    linewidth: 1,
     transparent: true,
     opacity: 0.014,
     depthTest: true,
-    depthWrite: false,  // occluder (AlwaysDepth, renderOrder=1) overwrites this anyway
-    side: THREE.BackSide,
+    depthWrite: false,
   });
-  const globeBack = new THREE.Mesh(globeGeo, globeBackMat);
+  globeBackMat.resolution.set(w, h);
+  const globeBack = new LineSegments2(wfLineGeo, globeBackMat);
   globeBack.renderOrder = 0;
   scene.add(globeBack);
 
@@ -153,30 +164,31 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
   scene.add(globeSurface);
 
   // Layer 2: visible front wires — depth-tested against occluder
-  const globeFrontMat = new THREE.MeshBasicMaterial({
+  const globeFrontMat = new LineMaterial({
     color: cyanColor,
-    wireframe: true,
+    linewidth: 1,
     transparent: true,
     opacity: 0.05,
     depthTest: true,
     depthWrite: false,
-    side: THREE.FrontSide,
   });
-  const globeFront = new THREE.Mesh(globeGeo, globeFrontMat);
+  globeFrontMat.resolution.set(w, h);
+  const globeFront = new LineSegments2(wfLineGeo, globeFrontMat);
   globeFront.renderOrder = 2;
   scene.add(globeFront);
 
   // Layer 3: glow wireframe — additive luminance on wireframe lines
-  const globeGlowMat = new THREE.MeshBasicMaterial({
+  const globeGlowMat = new LineMaterial({
     color: cyanColor,
-    wireframe:   true,
+    linewidth: 1,
     transparent: true,
-    opacity:     0.03,
-    blending:    THREE.AdditiveBlending,
-    depthTest:   true,
-    depthWrite:  false,
+    opacity: 0.03,
+    blending: THREE.AdditiveBlending,
+    depthTest: true,
+    depthWrite: false,
   });
-  const globeGlow = new THREE.Mesh(globeGeo, globeGlowMat);
+  globeGlowMat.resolution.set(w, h);
+  const globeGlow = new LineSegments2(wfLineGeo, globeGlowMat);
   globeGlow.renderOrder = 3;
   scene.add(globeGlow);
 
@@ -300,6 +312,12 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
     renderer.setSize(w, h);
     composer.setSize(w, h);
     bloomPass.resolution.set(w, h);
+    const s = _state.get(element);
+    if (s) {
+      s.globeBackMat.resolution.set(w, h);
+      s.globeFrontMat.resolution.set(w, h);
+      s.globeGlowMat.resolution.set(w, h);
+    }
   });
   resizeObserver.observe(element);
 
@@ -355,11 +373,14 @@ export function initThreatMap(element, { autoRotate = true, bloomStrength = 1.7,
     globeGeo,
     occluderGeo,
     globeBack,
+    globeBackMat,
     occluder,
     frontOccluder,
     globeSurface,
     globeFront,
+    globeFrontMat,
     globeGlow,
+    globeGlowMat,
     rimGeo,
     rimMesh,
     geoGroup: null,
