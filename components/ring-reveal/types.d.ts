@@ -42,6 +42,15 @@ export interface RingRevealOptions {
   /** Radial warp: rings snap from (1-warpAmount) scale to 1.0 with easeOutBack overshoot. Default: 0.12 */
   warpAmount?: number;
 
+  /** Per-ring hue rotation range [0..1]. 0 = uniform colour, 1 = full rainbow spread. Default: 0 */
+  colorSpread?: number;
+  /** Per-ring brightness variation range [0..1]. Default: 0 */
+  brightSpread?: number;
+  /** Flicker amplitude — per-ring sinusoidal emissive modulation [0..1]. Default: 0 */
+  flickerAmp?: number;
+  /** Flicker oscillation speed in Hz. Default: 2.0 */
+  flickerSpeed?: number;
+
   /** Default morph duration in ms. Default: 800 */
   morphDurationMs?: number;
 

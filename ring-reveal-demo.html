@@ -227,6 +227,29 @@
     <span class="val" id="vRadius">1.030</span>
   </label>
 
+  <!-- Ring Variation -->
+  <div class="section-label">Ring Variation</div>
+  <label>
+    <span class="lname">Color spread</span>
+    <input type="range" id="slColorSpread" min="0" max="100" value="0">
+    <span class="val" id="vColorSpread">0.00</span>
+  </label>
+  <label>
+    <span class="lname">Bright spread</span>
+    <input type="range" id="slBrightSpread" min="0" max="100" value="0">
+    <span class="val" id="vBrightSpread">0.00</span>
+  </label>
+  <label>
+    <span class="lname">Flicker amp</span>
+    <input type="range" id="slFlickerAmp" min="0" max="100" value="0">
+    <span class="val" id="vFlickerAmp">0.00</span>
+  </label>
+  <label>
+    <span class="lname">Flicker speed</span>
+    <input type="range" id="slFlickerSpeed" min="1" max="300" value="20">
+    <span class="val" id="vFlickerSpeed">2.0</span> Hz
+  </label>
+
   <!-- Appearance -->
   <div class="section-label">Appearance</div>
   <label>
@@ -370,20 +393,20 @@ const EASINGS = { easeInOutCubic, easeOutExpo, backInOut, linear };
 // ── Preset definitions ─────────────────────────────────────────────────────
 const PRESETS = {
   default:   { label: 'Default',   lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.70, glowOpacity: 0.25, emissiveIntensity: 1.5,  stagger: 0.55, warpAmount: 0.12, numRings: 48, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 1800, ringDuration: 0.35 },
-  alert:     { label: 'Alert',     lineColor: 0xff6600, glowColor: 0xff2200, opacity: 0.90, glowOpacity: 0.45, emissiveIntensity: 3.0,  stagger: 0.80, warpAmount: 0.18, numRings: 48, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 1400, ringDuration: 0.30 },
-  dense:     { label: 'Dense',     lineColor: 0x00ffcc, glowColor: 0x00ff88, opacity: 0.45, glowOpacity: 0.12, emissiveIntensity: 1.2,  stagger: 0.30, warpAmount: 0.06, numRings: 96, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 2400, ringDuration: 0.40 },
-  ghost:     { label: 'Ghost',     lineColor: 0x88ccff, glowColor: 0x4499ff, opacity: 0.35, glowOpacity: 0.08, emissiveIntensity: 0.8,  stagger: 0.70, warpAmount: 0.35, numRings: 16, direction: 'north-to-south', easingKey: 'easeOutExpo',    durationMs: 3200, ringDuration: 0.50 },
-  scanner:   { label: 'Scanner',   lineColor: 0x00ff44, glowColor: 0x00cc33, opacity: 0.85, glowOpacity: 0.30, emissiveIntensity: 2.5,  stagger: 0.95, warpAmount: 0.04, numRings: 32, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs:  900, ringDuration: 0.20 },
-  cosmic:    { label: 'Cosmic',    lineColor: 0x8844ff, glowColor: 0x4422cc, opacity: 0.70, glowOpacity: 0.35, emissiveIntensity: 2.2,  stagger: 0.50, warpAmount: 0.20, numRings: 64, direction: 'equator-out',    easingKey: 'easeInOutCubic', durationMs: 2500, ringDuration: 0.35 },
-  ignition:  { label: 'Ignition',  lineColor: 0xffaa00, glowColor: 0xff4400, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28 },
-  neon:      { label: 'Neon',      lineColor: 0xff00ff, glowColor: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32 },
-  stealth:   { label: 'Stealth',   lineColor: 0x003322, glowColor: 0x004433, opacity: 0.30, glowOpacity: 0.06, emissiveIntensity: 0.6,  stagger: 0.20, warpAmount: 0.03, numRings: 24, direction: 'north-to-south', easingKey: 'linear',         durationMs: 4000, ringDuration: 0.45 },
-  solar:     { label: 'Solar',     lineColor: 0xffff00, glowColor: 0xff8800, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25 },
-  wisp:      { label: 'Wisp',      lineColor: 0xffffff, glowColor: 0xaaccff, opacity: 0.20, glowOpacity: 0.05, emissiveIntensity: 0.5,  stagger: 0.85, warpAmount: 0.55, numRings:  8, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 5000, ringDuration: 0.60 },
-  pulse:     { label: 'Pulse',     lineColor: 0xff0066, glowColor: 0xff0033, opacity: 0.95, glowOpacity: 0.60, emissiveIntensity: 6.0,  stagger: 1.00, warpAmount: 0.25, numRings: 48, direction: 'equator-out',    easingKey: 'backInOut',      durationMs:  700, ringDuration: 0.15 },
-  arctic:    { label: 'Arctic',    lineColor: 0x00eeff, glowColor: 0x88ffff, opacity: 0.55, glowOpacity: 0.20, emissiveIntensity: 1.8,  stagger: 0.45, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 2200, ringDuration: 0.38 },
-  grid:      { label: 'Grid',      lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.60, glowOpacity: 0.15, emissiveIntensity: 1.0,  stagger: 0.00, warpAmount: 0.00, numRings: 48, direction: 'south-to-north', easingKey: 'linear',         durationMs: 2000, ringDuration: 0.08 },
-  ember:     { label: 'Ember',     lineColor: 0xff3300, glowColor: 0xff9900, opacity: 0.65, glowOpacity: 0.30, emissiveIntensity: 2.8,  stagger: 0.65, warpAmount: 0.30, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 2800, ringDuration: 0.55 },
+  alert:     { label: 'Alert',     lineColor: 0xff6600, glowColor: 0xff2200, opacity: 0.90, glowOpacity: 0.45, emissiveIntensity: 3.0,  stagger: 0.80, warpAmount: 0.18, numRings: 48, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 1400, ringDuration: 0.30, colorSpread: 0.08, brightSpread: 0.20, flickerAmp: 0.15, flickerSpeed: 4.0 },
+  dense:     { label: 'Dense',     lineColor: 0x00ffcc, glowColor: 0x00ff88, opacity: 0.45, glowOpacity: 0.12, emissiveIntensity: 1.2,  stagger: 0.30, warpAmount: 0.06, numRings: 96, direction: 'south-to-north', easingKey: 'easeInOutCubic', durationMs: 2400, ringDuration: 0.40, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
+  ghost:     { label: 'Ghost',     lineColor: 0x88ccff, glowColor: 0x4499ff, opacity: 0.35, glowOpacity: 0.08, emissiveIntensity: 0.8,  stagger: 0.70, warpAmount: 0.35, numRings: 16, direction: 'north-to-south', easingKey: 'easeOutExpo',    durationMs: 3200, ringDuration: 0.50, colorSpread: 0.12, brightSpread: 0.30, flickerAmp: 0.08, flickerSpeed: 0.8 },
+  scanner:   { label: 'Scanner',   lineColor: 0x00ff44, glowColor: 0x00cc33, opacity: 0.85, glowOpacity: 0.30, emissiveIntensity: 2.5,  stagger: 0.95, warpAmount: 0.04, numRings: 32, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs:  900, ringDuration: 0.20, colorSpread: 0.10, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
+  cosmic:    { label: 'Cosmic',    lineColor: 0x8844ff, glowColor: 0x4422cc, opacity: 0.70, glowOpacity: 0.35, emissiveIntensity: 2.2,  stagger: 0.50, warpAmount: 0.20, numRings: 64, direction: 'equator-out',    easingKey: 'easeInOutCubic', durationMs: 2500, ringDuration: 0.35, colorSpread: 0.25, brightSpread: 0.20, flickerAmp: 0.05, flickerSpeed: 1.5 },
+  ignition:  { label: 'Ignition',  lineColor: 0xffaa00, glowColor: 0xff4400, opacity: 0.95, glowOpacity: 0.55, emissiveIntensity: 4.0,  stagger: 0.90, warpAmount: 0.40, numRings: 40, direction: 'south-to-north', easingKey: 'backInOut',      durationMs:  900, ringDuration: 0.28, colorSpread: 0.15, brightSpread: 0.35, flickerAmp: 0.20, flickerSpeed: 6.0 },
+  neon:      { label: 'Neon',      lineColor: 0xff00ff, glowColor: 0x00ffff, opacity: 0.80, glowOpacity: 0.40, emissiveIntensity: 3.5,  stagger: 0.60, warpAmount: 0.15, numRings: 56, direction: 'south-to-north', easingKey: 'easeOutExpo',    durationMs: 1600, ringDuration: 0.32, colorSpread: 0.30, brightSpread: 0.15, flickerAmp: 0.10, flickerSpeed: 3.0 },
+  stealth:   { label: 'Stealth',   lineColor: 0x003322, glowColor: 0x004433, opacity: 0.30, glowOpacity: 0.06, emissiveIntensity: 0.6,  stagger: 0.20, warpAmount: 0.03, numRings: 24, direction: 'north-to-south', easingKey: 'linear',         durationMs: 4000, ringDuration: 0.45, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
+  solar:     { label: 'Solar',     lineColor: 0xffff00, glowColor: 0xff8800, opacity: 0.75, glowOpacity: 0.50, emissiveIntensity: 5.0,  stagger: 1.00, warpAmount: 0.08, numRings: 48, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 1200, ringDuration: 0.25, colorSpread: 0.20, brightSpread: 0.40, flickerAmp: 0.25, flickerSpeed: 2.5 },
+  wisp:      { label: 'Wisp',      lineColor: 0xffffff, glowColor: 0xaaccff, opacity: 0.20, glowOpacity: 0.05, emissiveIntensity: 0.5,  stagger: 0.85, warpAmount: 0.55, numRings:  8, direction: 'equator-out',    easingKey: 'easeOutExpo',    durationMs: 5000, ringDuration: 0.60, colorSpread: 0.15, brightSpread: 0.50, flickerAmp: 0.12, flickerSpeed: 0.5 },
+  pulse:     { label: 'Pulse',     lineColor: 0xff0066, glowColor: 0xff0033, opacity: 0.95, glowOpacity: 0.60, emissiveIntensity: 6.0,  stagger: 1.00, warpAmount: 0.25, numRings: 48, direction: 'equator-out',    easingKey: 'backInOut',      durationMs:  700, ringDuration: 0.15, colorSpread: 0.05, brightSpread: 0.10, flickerAmp: 0.30, flickerSpeed: 8.0 },
+  arctic:    { label: 'Arctic',    lineColor: 0x00eeff, glowColor: 0x88ffff, opacity: 0.55, glowOpacity: 0.20, emissiveIntensity: 1.8,  stagger: 0.45, warpAmount: 0.10, numRings: 36, direction: 'north-to-south', easingKey: 'easeInOutCubic', durationMs: 2200, ringDuration: 0.38, colorSpread: 0.08, brightSpread: 0.25, flickerAmp: 0.06, flickerSpeed: 1.2 },
+  grid:      { label: 'Grid',      lineColor: 0x00ffcc, glowColor: 0x00ffcc, opacity: 0.60, glowOpacity: 0.15, emissiveIntensity: 1.0,  stagger: 0.00, warpAmount: 0.00, numRings: 48, direction: 'south-to-north', easingKey: 'linear',         durationMs: 2000, ringDuration: 0.08, colorSpread: 0.00, brightSpread: 0.00, flickerAmp: 0.00, flickerSpeed: 2.0 },
+  ember:     { label: 'Ember',     lineColor: 0xff3300, glowColor: 0xff9900, opacity: 0.65, glowOpacity: 0.30, emissiveIntensity: 2.8,  stagger: 0.65, warpAmount: 0.30, numRings: 28, direction: 'south-to-north', easingKey: 'backInOut',      durationMs: 2800, ringDuration: 0.55, colorSpread: 0.12, brightSpread: 0.35, flickerAmp: 0.08, flickerSpeed: 1.8 },
 };
 
 const PRESET_KEYS = Object.keys(PRESETS);
@@ -421,6 +444,10 @@ function getOptions() {
     emissiveIntensity: +document.getElementById('slEmissive').value / 100,
     warpAmount:        +document.getElementById('slWarp').value / 100,
     glowRadius:        +document.getElementById('slGlowRad').value / 100,
+    colorSpread:       +document.getElementById('slColorSpread').value / 100,
+    brightSpread:      +document.getElementById('slBrightSpread').value / 100,
+    flickerAmp:        +document.getElementById('slFlickerAmp').value / 100,
+    flickerSpeed:      +document.getElementById('slFlickerSpeed').value / 10,
     morphDurationMs:   +document.getElementById('slMorphDur').value,
   };
 }
@@ -453,6 +480,10 @@ function syncUI(cfg) {
   set('slStagger',     cfg.stagger    !== undefined ? Math.round(cfg.stagger    * 100) : undefined, 'vStagger',     v => (v / 100).toFixed(2));
   set('slWarp',        cfg.warpAmount !== undefined ? Math.round(cfg.warpAmount * 100) : undefined, 'vWarp',        v => (v / 100).toFixed(2));
   set('slNumRings',    cfg.numRings,                                                                 'vNumRings');
+  set('slColorSpread',  cfg.colorSpread  !== undefined ? Math.round(cfg.colorSpread  * 100) : undefined, 'vColorSpread',  v => (v / 100).toFixed(2));
+  set('slBrightSpread', cfg.brightSpread !== undefined ? Math.round(cfg.brightSpread * 100) : undefined, 'vBrightSpread', v => (v / 100).toFixed(2));
+  set('slFlickerAmp',   cfg.flickerAmp   !== undefined ? Math.round(cfg.flickerAmp   * 100) : undefined, 'vFlickerAmp',   v => (v / 100).toFixed(2));
+  set('slFlickerSpeed', cfg.flickerSpeed !== undefined ? Math.round(cfg.flickerSpeed * 10)  : undefined, 'vFlickerSpeed', v => (v / 10).toFixed(1));
   if (cfg.ringDuration !== undefined) {
     const v = Math.max(0.001, cfg.ringDuration);
     set('slRingDur', Math.round(v * 100), 'vRingDur', x => (x / 100).toFixed(2));
@@ -501,6 +532,10 @@ function applyPreset(key, withMorph = true) {
     warpAmount:        p.warpAmount,
     numRings:          p.numRings,
     ringDuration:      p.ringDuration,
+    colorSpread:       p.colorSpread  ?? 0,
+    brightSpread:      p.brightSpread ?? 0,
+    flickerAmp:        p.flickerAmp   ?? 0,
+    flickerSpeed:      p.flickerSpeed ?? 2.0,
   }, dur);
 
   syncUI(p);
@@ -726,6 +761,34 @@ document.getElementById('slGlowRad').addEventListener('input', e => {
   anim._glowRings.scale.setScalar(v / old);
   anim._options.glowRadius = v;
 });
+document.getElementById('slColorSpread').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vColorSpread').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uColorSpread.value = v;
+  anim._glowRings.material.uniforms.uColorSpread.value = v;
+  anim._options.colorSpread = v;
+});
+document.getElementById('slBrightSpread').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vBrightSpread').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uBrightSpread.value = v;
+  anim._glowRings.material.uniforms.uBrightSpread.value = v;
+  anim._options.brightSpread = v;
+});
+document.getElementById('slFlickerAmp').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('vFlickerAmp').textContent = v.toFixed(2);
+  anim._baseRings.material.uniforms.uFlickerAmp.value = v;
+  anim._glowRings.material.uniforms.uFlickerAmp.value = v;
+  anim._options.flickerAmp = v;
+});
+document.getElementById('slFlickerSpeed').addEventListener('input', e => {
+  const v = e.target.value / 10;
+  document.getElementById('vFlickerSpeed').textContent = v.toFixed(1);
+  anim._baseRings.material.uniforms.uFlickerSpeed.value = v;
+  anim._glowRings.material.uniforms.uFlickerSpeed.value = v;
+  anim._options.flickerSpeed = v;
+});
 document.getElementById('slMorphDur').addEventListener('input', e => {
   anim._options.morphDurationMs = +e.target.value;
   document.getElementById('vMorphDur').textContent = e.target.value;
@@ -806,6 +869,10 @@ function randomizeAll() {
     direction:         randChoice(['south-to-north', 'north-to-south', 'equator-out']),
     easingKey:         randChoice(Object.keys(EASINGS)),
     durationMs:        randInt(600, 5000),
+    colorSpread:       rand(0, 0.5),
+    brightSpread:      rand(0, 0.5),
+    flickerAmp:        rand(0, 0.4),
+    flickerSpeed:      rand(0.3, 12),
   });
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
   setStatus('Randomized all');
@@ -860,9 +927,13 @@ function mutateAll(pct) {
     opacity:           nudge(opts.opacity,           0.1, 1.0,  str),
     glowOpacity:       nudge(opts.glowOpacity,       0.0, 0.6,  str),
     emissiveIntensity: nudge(opts.emissiveIntensity, 0.4, 6.0,  str),
-    stagger:           nudge(opts.stagger,           0.0, 1.0,  str),
-    warpAmount:        nudge(opts.warpAmount,        0.0, 0.55, str),
+    stagger:           nudge(opts.stagger,           0.0, 1.0,   str),
+    warpAmount:        nudge(opts.warpAmount,        0.0, 0.55,  str),
     ringDuration:      nudge(opts.ringDuration,      0.05, 0.75, str),
+    colorSpread:       nudge(opts.colorSpread,       0.0, 0.5,   str),
+    brightSpread:      nudge(opts.brightSpread,      0.0, 0.5,   str),
+    flickerAmp:        nudge(opts.flickerAmp,        0.0, 0.4,   str),
+    flickerSpeed:      nudge(opts.flickerSpeed,      0.2, 12.0,  str),
   };
   anim.morphTo(cfg, 400);
   syncUI(cfg);
@@ -884,11 +955,13 @@ function mutateColors(pct) {
 function mutateTiming(pct) {
   const str = pct / 100;
   const opts = anim._options;
-  const stagger     = nudge(opts.stagger,     0, 1,    str);
+  const stagger      = nudge(opts.stagger,      0,    1,    str);
   const ringDuration = nudge(opts.ringDuration, 0.05, 0.75, str);
-  const warpAmount  = nudge(opts.warpAmount,  0, 0.55, str);
-  anim.morphTo({ stagger, ringDuration, warpAmount }, +document.getElementById('slMorphDur').value);
-  syncUI({ stagger, ringDuration: ringDuration, warpAmount });
+  const warpAmount   = nudge(opts.warpAmount,   0,    0.55, str);
+  const flickerAmp   = nudge(opts.flickerAmp,   0,    0.4,  str);
+  const flickerSpeed = nudge(opts.flickerSpeed, 0.2,  12,   str);
+  anim.morphTo({ stagger, ringDuration, warpAmount, flickerAmp, flickerSpeed }, +document.getElementById('slMorphDur').value);
+  syncUI({ stagger, ringDuration, warpAmount, flickerAmp, flickerSpeed });
   setStatus('Mutated timing');
 }
 

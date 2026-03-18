@@ -32,6 +32,10 @@ const DEFAULTS = {
   warpAmount:        0.12,
   morphDurationMs:   800,
   upAxis:            'y',
+  colorSpread:       0.0,
+  brightSpread:      0.0,
+  flickerAmp:        0.0,
+  flickerSpeed:      2.0,
 };
 
 export class RingRevealAnimator {
@@ -57,6 +61,7 @@ export class RingRevealAnimator {
     this._progress  = 0;
     this._onComplete = null;
     this._morph     = null;
+    this._time      = 0;
 
     this._build();
   }
@@ -127,6 +132,11 @@ export class RingRevealAnimator {
    * @param {number} deltaMs
    */
   tick(deltaMs) {
+    // 0. Advance time for per-ring flicker
+    this._time += deltaMs / 1000;
+    this._baseRings.material.uniforms.uTime.value = this._time;
+    this._glowRings.material.uniforms.uTime.value = this._time;
+
     // 1. Advance reveal animation
     if (this._playing) {
       this._elapsed += deltaMs;
@@ -235,7 +245,11 @@ export class RingRevealAnimator {
         ringDuration: baseMat.uniforms.uRingDuration.value,
         warpAmount:   baseMat.uniforms.uWarpAmount.value,
         emissiveIntensity: baseMat.uniforms.uEmissiveIntensity.value,
-        direction: opts.direction,
+        direction:    opts.direction,
+        colorSpread:  baseMat.uniforms.uColorSpread.value,
+        brightSpread: baseMat.uniforms.uBrightSpread.value,
+        flickerAmp:   baseMat.uniforms.uFlickerAmp.value,
+        flickerSpeed: baseMat.uniforms.uFlickerSpeed.value,
       };
       const newBaseMat = createRingMaterial({ ...sharedArgs,
         lineColor: baseMat.uniforms.uColor.value.getHex(), opacity: 0,
@@ -252,6 +266,8 @@ export class RingRevealAnimator {
       this._scene.add(this._baseRings);
       this._scene.add(this._glowRings);
       this._setProgress(this._progress);
+      this._baseRings.material.uniforms.uTime.value = this._time;
+      this._glowRings.material.uniforms.uTime.value = this._time;
 
       crossFade = { oldBase, oldGlow, oldBaseOpacity, oldGlowOpacity };
     }
@@ -269,6 +285,10 @@ export class RingRevealAnimator {
         stagger:           baseMat.uniforms.uStagger.value,
         warpAmount:        baseMat.uniforms.uWarpAmount.value,
         ringDuration:      baseMat.uniforms.uRingDuration.value,
+        colorSpread:       baseMat.uniforms.uColorSpread.value,
+        brightSpread:      baseMat.uniforms.uBrightSpread.value,
+        flickerAmp:        baseMat.uniforms.uFlickerAmp.value,
+        flickerSpeed:      baseMat.uniforms.uFlickerSpeed.value,
         radius:            fromRadius,
       },
       to: {
@@ -286,6 +306,10 @@ export class RingRevealAnimator {
         stagger:           targetConfig.stagger           ?? baseMat.uniforms.uStagger.value,
         warpAmount:        targetConfig.warpAmount        ?? baseMat.uniforms.uWarpAmount.value,
         ringDuration:      targetConfig.ringDuration      ?? baseMat.uniforms.uRingDuration.value,
+        colorSpread:       targetConfig.colorSpread       ?? baseMat.uniforms.uColorSpread.value,
+        brightSpread:      targetConfig.brightSpread      ?? baseMat.uniforms.uBrightSpread.value,
+        flickerAmp:        targetConfig.flickerAmp        ?? baseMat.uniforms.uFlickerAmp.value,
+        flickerSpeed:      targetConfig.flickerSpeed      ?? baseMat.uniforms.uFlickerSpeed.value,
         radius:            toRadius,
       },
     };
@@ -346,6 +370,10 @@ export class RingRevealAnimator {
       ringDuration:      opts.ringDuration,
       warpAmount:        opts.warpAmount,
       direction:         opts.direction,
+      colorSpread:       opts.colorSpread,
+      brightSpread:      opts.brightSpread,
+      flickerAmp:        opts.flickerAmp,
+      flickerSpeed:      opts.flickerSpeed,
     };
 
     const baseMat = createRingMaterial({
@@ -399,6 +427,14 @@ export class RingRevealAnimator {
     glowMat.uniforms.uWarpAmount.value        = lerp(from.warpAmount,        to.warpAmount);
     baseMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
     glowMat.uniforms.uRingDuration.value      = lerp(from.ringDuration,      to.ringDuration);
+    baseMat.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
+    glowMat.uniforms.uColorSpread.value       = lerp(from.colorSpread,       to.colorSpread);
+    baseMat.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
+    glowMat.uniforms.uBrightSpread.value      = lerp(from.brightSpread,      to.brightSpread);
+    baseMat.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
+    glowMat.uniforms.uFlickerAmp.value        = lerp(from.flickerAmp,        to.flickerAmp);
+    baseMat.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
+    glowMat.uniforms.uFlickerSpeed.value      = lerp(from.flickerSpeed,      to.flickerSpeed);
 
     // Radius via scale
     const scale = lerp(from.radius, to.radius) / this._options.radius;
@@ -429,6 +465,10 @@ export class RingRevealAnimator {
       opts.stagger           = to.stagger;
       opts.warpAmount        = to.warpAmount;
       opts.ringDuration      = to.ringDuration;
+      opts.colorSpread       = to.colorSpread;
+      opts.brightSpread      = to.brightSpread;
+      opts.flickerAmp        = to.flickerAmp;
+      opts.flickerSpeed      = to.flickerSpeed;
       opts.lineColor         = to.lineColor.getHex();
       opts.glowColor         = to.glowColor.getHex();
       opts.radius            = to.radius;
