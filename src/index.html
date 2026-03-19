@@ -345,6 +345,15 @@
       transition: opacity 0.15s, visibility 0.15s;
     }
 
+    /* ── I-key full-expand: collapse sidebars + bottom row ── */
+    .s9-ov--i-hidden {
+      grid-template-columns: 1fr;
+      grid-template-areas: "topbar" "center" "statusbar";
+    }
+    .s9-ov--i-hidden .s9-ov__left,
+    .s9-ov--i-hidden .s9-ov__right { display: none; }
+    .s9-ov--i-hidden .center__bottom { display: none; }
+
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
       content: '';
@@ -2715,9 +2724,10 @@ document.getElementById('rain-grEnabled').addEventListener('change', applyGodRay
 const INFO_PANEL_IDS = [
   'intel-feed-1', 'sys-metrics', 'seq-log-right',
   'neural-readout-1', 'operative-log', 'data-stream-1',
-  'terminal-1', 'telescreen-1',
+  'terminal-1', 'telescreen-1', 'pulse-radar-1',
 ];
 const infoPanels = INFO_PANEL_IDS.map(id => document.querySelector(`[data-s9-id="${id}"]`));
+const sOv = document.querySelector('.s9-ov');
 let infoPanelsHidden = false;
 
 window.addEventListener('keydown', e => {
@@ -2726,6 +2736,7 @@ window.addEventListener('keydown', e => {
   } else if (e.key === 'i' || e.key === 'I') {
     infoPanelsHidden = !infoPanelsHidden;
     infoPanels.forEach(el => el?.classList.toggle('s9-panel--i-hidden', infoPanelsHidden));
+    sOv.classList.toggle('s9-ov--i-hidden', infoPanelsHidden);
   }
 });
 

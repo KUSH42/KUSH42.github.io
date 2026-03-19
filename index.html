@@ -344,6 +344,15 @@
       transition: opacity 0.15s, visibility 0.15s;
     }
 
+    /* ── I-key full-expand: collapse sidebars + bottom row ── */
+    .s9-ov--i-hidden {
+      grid-template-columns: 1fr;
+      grid-template-areas: "topbar" "center" "statusbar";
+    }
+    .s9-ov--i-hidden .s9-ov__left,
+    .s9-ov--i-hidden .s9-ov__right { display: none; }
+    .s9-ov--i-hidden .center__bottom { display: none; }
+
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
       content: '';
@@ -789,7 +798,7 @@
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-scM1lBgF.js"></script>
+  <script type="module" crossorigin src="/assets/index-eeoRGQzA.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/three-C_ueH2ui.js">
   <link rel="stylesheet" crossorigin href="/assets/index-DC1yr3Y5.css">
 </head>
