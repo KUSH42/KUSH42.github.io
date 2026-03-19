@@ -337,6 +337,14 @@
     .s9-ov__right .s9-panel:nth-child(2) { flex: 3;    min-height: 0; }
     .s9-ov__right .s9-panel:nth-child(3) { flex: none; }
 
+    /* ── I-key panel hide toggle ─────────────────────────── */
+    .s9-panel--i-hidden {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s, visibility 0.15s;
+    }
+
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
       content: '';
@@ -1541,6 +1549,40 @@
     </label>
   </div>
 
+  <div class="rr-sec rr-collapsible" data-target="ts-shader-body">CRT Shader</div>
+  <div id="ts-shader-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Warp</span>
+      <input type="range" id="ts-warp" min="0" max="300" value="100">
+      <span class="val" id="ts-vWarp">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Scanline sharp</span>
+      <input type="range" id="ts-hardPix" min="5" max="30" value="12">
+      <span class="val" id="ts-vHardPix">1.2</span>
+    </label>
+    <label>
+      <span class="ln">Phosphor mask</span>
+      <input type="range" id="ts-maskStr" min="0" max="100" value="100">
+      <span class="val" id="ts-vMaskStr">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Film grain</span>
+      <input type="range" id="ts-grain" min="0" max="150" value="40">
+      <span class="val" id="ts-vGrain">0.040</span>
+    </label>
+    <label>
+      <span class="ln">Halation</span>
+      <input type="range" id="ts-halation" min="0" max="300" value="100">
+      <span class="val" id="ts-vHalation">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Convergence</span>
+      <input type="range" id="ts-convergence" min="0" max="30" value="7">
+      <span class="val" id="ts-vConvergence">0.0007</span>
+    </label>
+  </div>
+
   <div class="rr-sec rr-collapsible" data-target="rain-godrays-body">God Rays</div>
   <div id="rain-godrays-body" class="rr-collapse-body">
     <label>
@@ -2610,6 +2652,38 @@ document.getElementById('ts-glowOpacity').addEventListener('input', e => {
   tsGlowEl.style.opacity = v;
 });
 
+// ── CRT Shader controls ───────────────────────────────────────
+document.getElementById('ts-warp').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('ts-vWarp').textContent = v.toFixed(2);
+  teleCRT.setShader({ warpMult: v });
+});
+document.getElementById('ts-hardPix').addEventListener('input', e => {
+  const v = e.target.value / 10;
+  document.getElementById('ts-vHardPix').textContent = v.toFixed(1);
+  teleCRT.setShader({ hardPix: -v });
+});
+document.getElementById('ts-maskStr').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('ts-vMaskStr').textContent = v.toFixed(2);
+  teleCRT.setShader({ maskStr: v });
+});
+document.getElementById('ts-grain').addEventListener('input', e => {
+  const v = e.target.value / 1000;
+  document.getElementById('ts-vGrain').textContent = v.toFixed(3);
+  teleCRT.setShader({ grainAmt: v });
+});
+document.getElementById('ts-halation').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('ts-vHalation').textContent = v.toFixed(2);
+  teleCRT.setShader({ halationStr: v });
+});
+document.getElementById('ts-convergence').addEventListener('input', e => {
+  const v = e.target.value / 10000;
+  document.getElementById('ts-vConvergence').textContent = v.toFixed(4);
+  teleCRT.setShader({ convergence: v });
+});
+
 // ── God Rays controls ─────────────────────────────────────────
 function applyGodRays() {
   const enabled  = document.getElementById('rain-grEnabled').checked;
@@ -2637,9 +2711,21 @@ document.getElementById('rain-grEnabled').addEventListener('change', applyGodRay
 });
 
 // H key toggles the ring reveal panel
+// I key toggles visibility of info/content panels
+const INFO_PANEL_IDS = [
+  'intel-feed-1', 'sys-metrics', 'seq-log-right',
+  'neural-readout-1', 'operative-log', 'data-stream-1',
+  'terminal-1', 'telescreen-1',
+];
+const infoPanels = INFO_PANEL_IDS.map(id => document.querySelector(`[data-s9-id="${id}"]`));
+let infoPanelsHidden = false;
+
 window.addEventListener('keydown', e => {
   if (e.key === 'h' || e.key === 'H') {
     rrPanel.classList.toggle('rr-visible');
+  } else if (e.key === 'i' || e.key === 'I') {
+    infoPanelsHidden = !infoPanelsHidden;
+    infoPanels.forEach(el => el?.classList.toggle('s9-panel--i-hidden', infoPanelsHidden));
   }
 });
 

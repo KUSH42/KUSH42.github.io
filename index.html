@@ -336,6 +336,14 @@
     .s9-ov__right .s9-panel:nth-child(2) { flex: 3;    min-height: 0; }
     .s9-ov__right .s9-panel:nth-child(3) { flex: none; }
 
+    /* ── I-key panel hide toggle ─────────────────────────── */
+    .s9-panel--i-hidden {
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s, visibility 0.15s;
+    }
+
     /* ── Scanlines overlay ───────────────────────────────── */
     .s9-ov::after {
       content: '';
@@ -781,7 +789,7 @@
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-Do6_64h3.js"></script>
+  <script type="module" crossorigin src="/assets/index-scM1lBgF.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/three-C_ueH2ui.js">
   <link rel="stylesheet" crossorigin href="/assets/index-DC1yr3Y5.css">
 </head>
@@ -1540,6 +1548,40 @@
       <input type="checkbox" id="ts-glowEnabled" checked>
       <input type="range" id="ts-glowOpacity" min="0" max="100" value="100">
       <span class="val" id="ts-vGlowOpacity">1.00</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-shader-body">CRT Shader</div>
+  <div id="ts-shader-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Warp</span>
+      <input type="range" id="ts-warp" min="0" max="300" value="100">
+      <span class="val" id="ts-vWarp">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Scanline sharp</span>
+      <input type="range" id="ts-hardPix" min="5" max="30" value="12">
+      <span class="val" id="ts-vHardPix">1.2</span>
+    </label>
+    <label>
+      <span class="ln">Phosphor mask</span>
+      <input type="range" id="ts-maskStr" min="0" max="100" value="100">
+      <span class="val" id="ts-vMaskStr">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Film grain</span>
+      <input type="range" id="ts-grain" min="0" max="150" value="40">
+      <span class="val" id="ts-vGrain">0.040</span>
+    </label>
+    <label>
+      <span class="ln">Halation</span>
+      <input type="range" id="ts-halation" min="0" max="300" value="100">
+      <span class="val" id="ts-vHalation">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Convergence</span>
+      <input type="range" id="ts-convergence" min="0" max="30" value="7">
+      <span class="val" id="ts-vConvergence">0.0007</span>
     </label>
   </div>
 
