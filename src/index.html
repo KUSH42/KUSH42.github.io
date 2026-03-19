@@ -1351,7 +1351,7 @@
   <div class="rr-sec">Glow</div>
   <label>
     <span class="ln">Glow radius</span>
-    <input type="range" id="rr-glowRad" min="100" max="200" value="108">
+    <input type="range" id="rr-glowRad" min="1000" max="2000" value="1008">
     <span class="val" id="rr-vGlowRad">1.008</span>
   </label>
   <label>
@@ -1405,6 +1405,59 @@
       <option value="latlon">Lat/lon grid</option>
       <option value="wire">Wireframe</option>
     </select>
+  </label>
+
+  <div class="rr-sec">Matrix Rain</div>
+  <label>
+    <span class="ln">Color</span>
+    <input type="color" id="rain-color" value="#00ff70">
+  </label>
+  <label>
+    <span class="ln">Opacity</span>
+    <input type="range" id="rain-opacity" min="0" max="100" value="45">
+    <span class="val" id="rain-vOpacity">0.45</span>
+  </label>
+  <label>
+    <span class="ln">Burst bloom</span>
+    <input type="checkbox" id="rain-burstBloom" checked>
+  </label>
+  <label>
+    <span class="ln">Globe interact</span>
+    <input type="checkbox" id="rain-globeInteract" checked>
+  </label>
+  <label>
+    <span class="ln">Glyph chroma</span>
+    <input type="checkbox" id="rain-chroma" checked>
+    <input type="range" id="rain-chromaScale" min="0" max="300" value="100">
+    <span class="val" id="rain-vChromaScale">1.0</span>
+  </label>
+  <label>
+    <span class="ln">Heat shimmer</span>
+    <input type="checkbox" id="rain-heat" checked>
+    <input type="range" id="rain-heatAmt" min="0" max="200" value="4">
+    <span class="val" id="rain-vHeatAmt">0.004</span>
+  </label>
+  <label>
+    <span class="ln">Lens streaks</span>
+    <input type="checkbox" id="rain-streaks" checked>
+    <input type="range" id="rain-streakAmt" min="0" max="200" value="55">
+    <span class="val" id="rain-vStreakAmt">0.055</span>
+  </label>
+  <label>
+    <span class="ln">Soften blur</span>
+    <input type="checkbox" id="rain-soften" checked>
+    <input type="range" id="rain-softenStr" min="0" max="100" value="2">
+    <span class="val" id="rain-vSoftenStr">0.002</span>
+  </label>
+  <label>
+    <span class="ln">POM depth</span>
+    <input type="range" id="rain-depth" min="0" max="200" value="4">
+    <span class="val" id="rain-vDepth">0.04</span>
+  </label>
+  <label>
+    <span class="ln">Normal str</span>
+    <input type="range" id="rain-normalStr" min="0" max="1500" value="600">
+    <span class="val" id="rain-vNormalStr">6.0</span>
   </label>
 
   <div class="rr-sec">Presets</div>
@@ -1751,7 +1804,7 @@ const radar   = initRadar(radarEl, { threatLevel: 0 });
 // ── Matrix Rain (after globe so canvas stacking is correct) ───
 const rainColor = getComputedStyle(document.documentElement)
   .getPropertyValue('--neon-green').trim() || '#00ff70';
-initMatrixRain(document.getElementById('matrix-rain-host'), {
+const matrixRain = initMatrixRain(document.getElementById('matrix-rain-host'), {
   color:      rainColor,
   opacity:    0.45,
   syncCamera: getThreatCamera(threatEl),
@@ -2089,7 +2142,7 @@ function rrInitPanel() {
 
   // Glow
   document.getElementById('rr-glowRad').addEventListener('input', e => {
-    const v = e.target.value / 100;
+    const v = e.target.value / 1000;
     document.getElementById('rr-vGlowRad').textContent = v.toFixed(3);
     const old = rrAnim._options.glowRadius;
     rrAnim._glowLayers.forEach(l => l.scale.setScalar(v / old));
@@ -2281,6 +2334,68 @@ document.getElementById('rr-randGlow').addEventListener('click', () => {
   rrAnim.morphTo({ glowColor: gc, glowColorB: gcB }, dur);
   rrSetColorPicker('rr-colGlow', gc);
   rrSetColorPicker('rr-colGlowB', gcB);
+});
+
+// ── Matrix Rain controls ──────────────────────────────────────
+document.getElementById('rain-color').addEventListener('input', e => {
+  matrixRain.setColor(e.target.value);
+});
+document.getElementById('rain-opacity').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('rain-vOpacity').textContent = v.toFixed(2);
+  matrixRain.setOpacity(v);
+});
+document.getElementById('rain-burstBloom').addEventListener('change', e => {
+  matrixRain.setBurstBloom(e.target.checked);
+});
+document.getElementById('rain-globeInteract').addEventListener('change', e => {
+  matrixRain.setGlobeInteract(e.target.checked);
+});
+document.getElementById('rain-chroma').addEventListener('change', e => {
+  const scale = +document.getElementById('rain-chromaScale').value / 100;
+  matrixRain.setGlyphChroma(e.target.checked, scale);
+});
+document.getElementById('rain-chromaScale').addEventListener('input', e => {
+  const scale = e.target.value / 100;
+  document.getElementById('rain-vChromaScale').textContent = scale.toFixed(1);
+  if (document.getElementById('rain-chroma').checked) matrixRain.setGlyphChroma(true, scale);
+});
+document.getElementById('rain-heat').addEventListener('change', e => {
+  const amt = +document.getElementById('rain-heatAmt').value / 1000;
+  matrixRain.setHeat(e.target.checked, amt);
+});
+document.getElementById('rain-heatAmt').addEventListener('input', e => {
+  const amt = e.target.value / 1000;
+  document.getElementById('rain-vHeatAmt').textContent = amt.toFixed(3);
+  matrixRain.setHeat(document.getElementById('rain-heat').checked, amt);
+});
+document.getElementById('rain-streaks').addEventListener('change', e => {
+  const amt = +document.getElementById('rain-streakAmt').value / 1000;
+  matrixRain.setStreaks(e.target.checked, amt);
+});
+document.getElementById('rain-streakAmt').addEventListener('input', e => {
+  const amt = e.target.value / 1000;
+  document.getElementById('rain-vStreakAmt').textContent = amt.toFixed(3);
+  matrixRain.setStreaks(document.getElementById('rain-streaks').checked, amt);
+});
+document.getElementById('rain-soften').addEventListener('change', e => {
+  const str = +document.getElementById('rain-softenStr').value / 1000;
+  matrixRain.setSoften(e.target.checked, str);
+});
+document.getElementById('rain-softenStr').addEventListener('input', e => {
+  const str = e.target.value / 1000;
+  document.getElementById('rain-vSoftenStr').textContent = str.toFixed(3);
+  matrixRain.setSoften(document.getElementById('rain-soften').checked, str);
+});
+document.getElementById('rain-depth').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('rain-vDepth').textContent = v.toFixed(2);
+  matrixRain.setDepth(v);
+});
+document.getElementById('rain-normalStr').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('rain-vNormalStr').textContent = v.toFixed(1);
+  matrixRain.setNormalStrength(v);
 });
 
 // H key toggles the ring reveal panel
