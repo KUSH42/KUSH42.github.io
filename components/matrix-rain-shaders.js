@@ -610,3 +610,58 @@ void main() {
   gl_FragColor = vec4(col2 * alpha, alpha);
 }
 `;
+
+// ── RainGodRaysShader ─────────────────────────────────────────
+// Screen-space crepuscular rays (GPU Gems 3 radial blur).
+// Samples back along a ray from each fragment toward the light source,
+// accumulating brightness with exponential decay.
+// Placed after bloom so glyph halos act as light sources.
+
+export const RainGodRaysShader = {
+  uniforms: {
+    tDiffuse:   { value: null },
+    uLightPos:  { value: null },   // vec2 in screen UV, default (0.5, 0.75)
+    uDensity:   { value: 0.93 },   // ray spacing scalar
+    uDecay:     { value: 0.96 },   // brightness decay per step
+    uWeight:    { value: 0.35 },   // per-sample contribution weight
+    uExposure:  { value: 0.45 },   // final exposure multiplier
+    uClampMax:  { value: 1.0 },    // max accumulated brightness
+    uEnabled:   { value: 0.0 },    // 0 = bypass
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform vec2  uLightPos;
+    uniform float uDensity;
+    uniform float uDecay;
+    uniform float uWeight;
+    uniform float uExposure;
+    uniform float uClampMax;
+    uniform float uEnabled;
+    varying vec2  vUv;
+
+    const int NUM_SAMPLES = 80;
+
+    void main() {
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (uEnabled < 0.5) { gl_FragColor = base; return; }
+
+      vec2 delta = (vUv - uLightPos) * (uDensity / float(NUM_SAMPLES));
+      vec2 uv    = vUv;
+      float decay = 1.0;
+      vec4  rays  = vec4(0.0);
+
+      for (int i = 0; i < NUM_SAMPLES; i++) {
+        uv -= delta;
+        vec4 s = texture2D(tDiffuse, uv);
+        s     *= decay * uWeight;
+        rays  += s;
+        decay *= uDecay;
+      }
+
+      rays *= uExposure;
+      rays  = min(rays, vec4(uClampMax));
+      gl_FragColor = base + rays;
+    }
+  `,
+};

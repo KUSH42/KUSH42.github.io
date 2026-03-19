@@ -17,7 +17,7 @@ import { FXAAShader }      from 'three/addons/shaders/FXAAShader.js';
 import {
   VERT, FRAG,
   RainPhosphorShader, RainHoloShader, RainHeatShader,
-  RainStreakShader, RainSoftenShader,
+  RainStreakShader, RainSoftenShader, RainGodRaysShader,
 } from './matrix-rain-shaders.js';
 
 // ── Glyph set (Matrix-Code.ttf — Rezmason/matrix, MIT license) ──
@@ -168,6 +168,12 @@ function buildPostProcessingPipeline(renderer, scene, camera, element) {
   const holoPass = new ShaderPass(RainHoloShader);
   composer.addPass(holoPass);
 
+  // God rays — screen-space crepuscular rays from configurable light position
+  const godRaysPass = new ShaderPass(RainGodRaysShader);
+  godRaysPass.uniforms.uLightPos.value = new THREE.Vector2(0.5, 0.75);
+  godRaysPass.enabled = true;
+  composer.addPass(godRaysPass);
+
   // FXAA — resolves sub-pixel edge jitter on distant glyph strokes
   const fxaaPass = new ShaderPass(FXAAShader);
   const pixelRatio = renderer.getPixelRatio();
@@ -176,7 +182,7 @@ function buildPostProcessingPipeline(renderer, scene, camera, element) {
   // OutputPass intentionally omitted: it forces alpha=1 on every pixel, which would
   // make the transparent canvas opaque and occlude the globe behind it.
 
-  return { composer, bloomPass, heatPass, phosphorPass, phosphorTex, softenPass, streakPass, holoPass, fxaaPass };
+  return { composer, bloomPass, heatPass, phosphorPass, phosphorTex, softenPass, streakPass, holoPass, godRaysPass, fxaaPass };
 }
 
 // ── State registry ────────────────────────────────────────────
@@ -275,12 +281,12 @@ export function initMatrixRain(element, opts = {}) {
   scene.add(mesh);
 
   let { composer, bloomPass, heatPass, phosphorPass, phosphorTex,
-        softenPass, streakPass, holoPass, fxaaPass } =
+        softenPass, streakPass, holoPass, godRaysPass, fxaaPass } =
     buildPostProcessingPipeline(renderer, scene, camera, element);
 
   const s = {
     renderer, composer, bloomPass, heatPass, softenPass, phosphorPass, phosphorTex,
-    holoPass, streakPass, fxaaPass, material, geom, atlas, ro: null, animId: 0,
+    holoPass, streakPass, godRaysPass, fxaaPass, material, geom, atlas, ro: null, animId: 0,
     syncCamera, burstBloomEnabled: true,
   };
   _state.set(element, s);
@@ -389,6 +395,24 @@ export function initMatrixRain(element, opts = {}) {
     setBurstBloom(on) { s.burstBloomEnabled = on; },
     setGlobeInteract(on) { uniforms.uGlobeInteract.value = on ? 1.0 : 0.0; },
     setGlyphChroma(on, scale) { uniforms.uGlyphChroma.value = on ? (scale ?? 1.0) : 0.0; },
+    /**
+     * @param {boolean} enabled
+     * @param {number}  [lightX]   0–1 screen UV X of light source
+     * @param {number}  [lightY]   0–1 screen UV Y of light source
+     * @param {number}  [density]  0–1 ray spacing scalar
+     * @param {number}  [decay]    0–1 per-sample decay
+     * @param {number}  [weight]   0–1 per-sample weight
+     * @param {number}  [exposure] 0–2 final exposure
+     */
+    setGodRays(enabled, lightX, lightY, density, decay, weight, exposure) {
+      godRaysPass.uniforms.uEnabled.value = enabled ? 1.0 : 0.0;
+      if (lightX    !== undefined) godRaysPass.uniforms.uLightPos.value.x = lightX;
+      if (lightY    !== undefined) godRaysPass.uniforms.uLightPos.value.y = lightY;
+      if (density   !== undefined) godRaysPass.uniforms.uDensity.value  = density;
+      if (decay     !== undefined) godRaysPass.uniforms.uDecay.value    = decay;
+      if (weight    !== undefined) godRaysPass.uniforms.uWeight.value   = weight;
+      if (exposure  !== undefined) godRaysPass.uniforms.uExposure.value = exposure;
+    },
   };
 }
 

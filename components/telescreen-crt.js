@@ -18,7 +18,8 @@ const VS = `
 
 // PUBLIC DOMAIN CRT STYLED SCAN-LINE SHADER by Timothy Lottes
 // Enhanced with dynamic beam width, halation, aperture grille mask,
-// corner masking, convergence error, and CRT gamma (γ=2.5).
+// corner masking, convergence error, CRT gamma (γ=2.5),
+// optional glitch distortion, and optional chromatic aberration.
 const FS = `
   precision mediump float;
   uniform sampler2D tDiffuse;
@@ -27,6 +28,16 @@ const FS = `
   uniform vec2  uImgOffset;
   uniform vec2  uImgScale;
   varying vec2  vUv;
+
+  // ── Glitch uniforms ──────────────────────────────────────────
+  uniform float uGlitchEnabled;   // 0 or 1
+  uniform float uGlitchStrength;  // 0 – 0.10, horizontal shift amount
+  uniform float uGlitchSpeed;     // 1 – 30, block-pattern change rate (blocks/sec)
+  uniform float uGlitchCols;      // 10 – 80, number of horizontal glitch bands
+
+  // ── Chromatic aberration uniforms ────────────────────────────
+  uniform float uChromaEnabled;   // 0 or 1
+  uniform float uChromaOffset;    // 0 – 0.025, radial R/B separation
 
   const float hardPix    = -1.2;
   const vec2  warp       = vec2(1.0/96.0, 1.0/72.0);
@@ -156,11 +167,41 @@ const FS = `
     return pow(max(c, vec3(0.0)), vec3(1.0 / 2.5));
   }
 
+  // ── Glitch: hash-driven horizontal band displacement ─────────
+  float glitchHash(float n) { return fract(sin(n) * 43758.5453123); }
+
+  vec2 applyGlitch(vec2 uv) {
+    if (uGlitchEnabled < 0.5 || uGlitchStrength < 0.0001) return uv;
+    float t    = floor(uTime * uGlitchSpeed);
+    float band = floor(uv.y * uGlitchCols);
+    float h1   = glitchHash(band * 137.3 + t);
+    float h2   = glitchHash(band *  91.7 + t + 1.0);
+    // ~15 % of bands receive a horizontal shift; a rare 3 % get a large tear
+    if (h1 > 0.85) {
+      float xOff = (h2 * 2.0 - 1.0) * uGlitchStrength;
+      uv.x = fract(uv.x + xOff);
+    } else if (h1 < 0.03) {
+      uv.x = fract(uv.x + (glitchHash(band + t * 7.3) - 0.5) * uGlitchStrength * 3.0);
+    }
+    return uv;
+  }
+
   void main() {
     vec2 pos = Warp(vUv);
 
+    // 0. Glitch distortion (before any texture sampling)
+    pos = applyGlitch(pos);
+
     // 1. Scanline rendering with dynamic beam width
     vec3 col = Tri(pos);
+
+    // 1b. Chromatic aberration — radial R/B split, before phosphor mask
+    if (uChromaEnabled > 0.5 && uChromaOffset > 0.0001) {
+      vec2 dir    = pos - 0.5;
+      vec2 offset = dir * uChromaOffset * 2.0;
+      col.r = Fetch(pos + offset, vec2(0.0)).r;
+      col.b = Fetch(pos - offset, vec2(0.0)).b;
+    }
 
     // 2. Phosphor mask (screen-layer effect)
     col *= Mask(gl_FragCoord.xy);
@@ -225,11 +266,17 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
     const uLocs = {
-      res:       gl.getUniformLocation(prog, 'iResolution'),
-      time:      gl.getUniformLocation(prog, 'uTime'),
-      imgOffset: gl.getUniformLocation(prog, 'uImgOffset'),
-      imgScale:  gl.getUniformLocation(prog, 'uImgScale'),
-      diffuse:   gl.getUniformLocation(prog, 'tDiffuse'),
+      res:            gl.getUniformLocation(prog, 'iResolution'),
+      time:           gl.getUniformLocation(prog, 'uTime'),
+      imgOffset:      gl.getUniformLocation(prog, 'uImgOffset'),
+      imgScale:       gl.getUniformLocation(prog, 'uImgScale'),
+      diffuse:        gl.getUniformLocation(prog, 'tDiffuse'),
+      glitchEnabled:  gl.getUniformLocation(prog, 'uGlitchEnabled'),
+      glitchStrength: gl.getUniformLocation(prog, 'uGlitchStrength'),
+      glitchSpeed:    gl.getUniformLocation(prog, 'uGlitchSpeed'),
+      glitchCols:     gl.getUniformLocation(prog, 'uGlitchCols'),
+      chromaEnabled:  gl.getUniformLocation(prog, 'uChromaEnabled'),
+      chromaOffset:   gl.getUniformLocation(prog, 'uChromaOffset'),
     };
 
     const tex = gl.createTexture();
@@ -250,6 +297,12 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   let startTime = null;
   let contextLost = false;
   let animId = 0;
+
+  // Effect parameters (mutated by setGlitch / setChroma)
+  const cfg = {
+    glitchEnabled: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30,
+    chromaEnabled: 0, chromaOffset: 0.006,
+  };
 
   function uploadTexture() {
     gl.activeTexture(gl.TEXTURE0);
@@ -309,6 +362,12 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       const r = imgRect(cw, ch, sw, sh);
       gl.uniform2f(glState.uLocs.imgOffset, r.ox, r.oy);
       gl.uniform2f(glState.uLocs.imgScale, r.sx, r.sy);
+      gl.uniform1f(glState.uLocs.glitchEnabled,  cfg.glitchEnabled);
+      gl.uniform1f(glState.uLocs.glitchStrength, cfg.glitchStrength);
+      gl.uniform1f(glState.uLocs.glitchSpeed,    cfg.glitchSpeed);
+      gl.uniform1f(glState.uLocs.glitchCols,     cfg.glitchCols);
+      gl.uniform1f(glState.uLocs.chromaEnabled,  cfg.chromaEnabled);
+      gl.uniform1f(glState.uLocs.chromaOffset,   cfg.chromaOffset);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, glState.tex);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -333,6 +392,26 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     destroy() {
       cancelAnimationFrame(animId);
       ro.disconnect();
+    },
+    /**
+     * @param {boolean} enabled
+     * @param {number}  [strength] 0–0.10 horizontal shift amount
+     * @param {number}  [speed]    1–30 block-change rate (blocks/sec)
+     * @param {number}  [cols]     10–80 number of horizontal bands
+     */
+    setGlitch(enabled, strength, speed, cols) {
+      cfg.glitchEnabled = enabled ? 1 : 0;
+      if (strength !== undefined) cfg.glitchStrength = strength;
+      if (speed    !== undefined) cfg.glitchSpeed    = speed;
+      if (cols     !== undefined) cfg.glitchCols     = cols;
+    },
+    /**
+     * @param {boolean} enabled
+     * @param {number}  [offset] 0–0.025 radial R/B separation
+     */
+    setChroma(enabled, offset) {
+      cfg.chromaEnabled = enabled ? 1 : 0;
+      if (offset !== undefined) cfg.chromaOffset = offset;
     },
   };
 }

@@ -1231,6 +1231,15 @@
   #rr-panel .rr-preset-grid button:hover {
     color: var(--neon-cyan); border-color: var(--panel-border-active);
   }
+
+  /* ── Collapsible sections ──────────────────────────────────── */
+  #rr-panel .rr-sec.rr-collapsible { cursor: pointer; user-select: none; }
+  #rr-panel .rr-sec.rr-collapsible::after {
+    content: ' ▸'; color: var(--panel-border-active); font-size: 9px;
+  }
+  #rr-panel .rr-sec.rr-collapsible.rr-open::after { content: ' ▾'; }
+  #rr-panel .rr-collapse-body { display: none; }
+  #rr-panel .rr-collapse-body.rr-open { display: block; }
 </style>
 
 <div id="rr-panel">
@@ -1459,6 +1468,80 @@
     <input type="range" id="rain-normalStr" min="0" max="1500" value="600">
     <span class="val" id="rain-vNormalStr">6.0</span>
   </label>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-glitch-body">Telescreen Glitch</div>
+  <div id="ts-glitch-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Enable</span>
+      <input type="checkbox" id="ts-glitchEnabled">
+    </label>
+    <label>
+      <span class="ln">Strength</span>
+      <input type="range" id="ts-glitchStrength" min="0" max="100" value="25">
+      <span class="val" id="ts-vGlitchStrength">0.025</span>
+    </label>
+    <label>
+      <span class="ln">Speed</span>
+      <input type="range" id="ts-glitchSpeed" min="1" max="300" value="80">
+      <span class="val" id="ts-vGlitchSpeed">8.0</span>
+    </label>
+    <label>
+      <span class="ln">Bands</span>
+      <input type="range" id="ts-glitchCols" min="5" max="100" value="30">
+      <span class="val" id="ts-vGlitchCols">30</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-chroma-body">Telescreen Chroma</div>
+  <div id="ts-chroma-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Enable</span>
+      <input type="checkbox" id="ts-chromaEnabled">
+    </label>
+    <label>
+      <span class="ln">Offset</span>
+      <input type="range" id="ts-chromaOffset" min="0" max="250" value="60">
+      <span class="val" id="ts-vChromaOffset">0.006</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="rain-godrays-body">God Rays</div>
+  <div id="rain-godrays-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Enable</span>
+      <input type="checkbox" id="rain-grEnabled">
+    </label>
+    <label>
+      <span class="ln">Light X</span>
+      <input type="range" id="rain-grLightX" min="0" max="100" value="50">
+      <span class="val" id="rain-vGrLightX">0.50</span>
+    </label>
+    <label>
+      <span class="ln">Light Y</span>
+      <input type="range" id="rain-grLightY" min="0" max="100" value="75">
+      <span class="val" id="rain-vGrLightY">0.75</span>
+    </label>
+    <label>
+      <span class="ln">Density</span>
+      <input type="range" id="rain-grDensity" min="0" max="100" value="93">
+      <span class="val" id="rain-vGrDensity">0.93</span>
+    </label>
+    <label>
+      <span class="ln">Decay</span>
+      <input type="range" id="rain-grDecay" min="0" max="100" value="96">
+      <span class="val" id="rain-vGrDecay">0.96</span>
+    </label>
+    <label>
+      <span class="ln">Weight</span>
+      <input type="range" id="rain-grWeight" min="0" max="100" value="35">
+      <span class="val" id="rain-vGrWeight">0.35</span>
+    </label>
+    <label>
+      <span class="ln">Exposure</span>
+      <input type="range" id="rain-grExposure" min="0" max="200" value="45">
+      <span class="val" id="rain-vGrExposure">0.45</span>
+    </label>
+  </div>
 
   <div class="rr-sec">Presets</div>
   <div class="rr-preset-grid" id="rr-presets"></div>
@@ -1758,7 +1841,7 @@ mountStream(streamEl);
 startDynamicStream(streamEl, appendRow);
 
 // ── Telescreen Feed ──────────────────────────────────────────
-initTelescreenCRT(
+const teleCRT = initTelescreenCRT(
   document.getElementById('ts-feed-src'),
   document.getElementById('ts-feed-canvas'),
   document.getElementById('ts-glow-canvas'),
@@ -2396,6 +2479,75 @@ document.getElementById('rain-normalStr').addEventListener('input', e => {
   const v = e.target.value / 100;
   document.getElementById('rain-vNormalStr').textContent = v.toFixed(1);
   matrixRain.setNormalStrength(v);
+});
+
+// ── Collapsible section toggles ───────────────────────────────
+document.querySelectorAll('#rr-panel .rr-collapsible').forEach(sec => {
+  sec.addEventListener('click', () => {
+    const body = document.getElementById(sec.dataset.target);
+    sec.classList.toggle('rr-open');
+    body.classList.toggle('rr-open');
+  });
+});
+
+// ── Telescreen Glitch controls ────────────────────────────────
+document.getElementById('ts-glitchEnabled').addEventListener('change', e => {
+  const str  = document.getElementById('ts-glitchStrength').value / 1000;
+  const spd  = document.getElementById('ts-glitchSpeed').value / 10;
+  const cols = +document.getElementById('ts-glitchCols').value;
+  teleCRT.setGlitch(e.target.checked, str, spd, cols);
+});
+document.getElementById('ts-glitchStrength').addEventListener('input', e => {
+  const v = e.target.value / 1000;
+  document.getElementById('ts-vGlitchStrength').textContent = v.toFixed(3);
+  teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, v);
+});
+document.getElementById('ts-glitchSpeed').addEventListener('input', e => {
+  const v = e.target.value / 10;
+  document.getElementById('ts-vGlitchSpeed').textContent = v.toFixed(1);
+  teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, v);
+});
+document.getElementById('ts-glitchCols').addEventListener('input', e => {
+  const v = +e.target.value;
+  document.getElementById('ts-vGlitchCols').textContent = v;
+  teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, v);
+});
+
+// ── Telescreen Chromatic Aberration controls ──────────────────
+document.getElementById('ts-chromaEnabled').addEventListener('change', e => {
+  const off = document.getElementById('ts-chromaOffset').value / 10000;
+  teleCRT.setChroma(e.target.checked, off);
+});
+document.getElementById('ts-chromaOffset').addEventListener('input', e => {
+  const v = e.target.value / 10000;
+  document.getElementById('ts-vChromaOffset').textContent = v.toFixed(4);
+  teleCRT.setChroma(document.getElementById('ts-chromaEnabled').checked, v);
+});
+
+// ── God Rays controls ─────────────────────────────────────────
+function applyGodRays() {
+  const enabled  = document.getElementById('rain-grEnabled').checked;
+  const lightX   = document.getElementById('rain-grLightX').value / 100;
+  const lightY   = document.getElementById('rain-grLightY').value / 100;
+  const density  = document.getElementById('rain-grDensity').value / 100;
+  const decay    = document.getElementById('rain-grDecay').value / 100;
+  const weight   = document.getElementById('rain-grWeight').value / 100;
+  const exposure = document.getElementById('rain-grExposure').value / 100;
+  matrixRain.setGodRays(enabled, lightX, lightY, density, decay, weight, exposure);
+}
+document.getElementById('rain-grEnabled').addEventListener('change', applyGodRays);
+[
+  ['rain-grLightX',  'rain-vGrLightX',  100, 2],
+  ['rain-grLightY',  'rain-vGrLightY',  100, 2],
+  ['rain-grDensity', 'rain-vGrDensity', 100, 2],
+  ['rain-grDecay',   'rain-vGrDecay',   100, 2],
+  ['rain-grWeight',  'rain-vGrWeight',  100, 2],
+  ['rain-grExposure','rain-vGrExposure',100, 2],
+].forEach(([id, vid, div, dec]) => {
+  document.getElementById(id).addEventListener('input', e => {
+    document.getElementById(vid).textContent = (e.target.value / div).toFixed(dec);
+    applyGodRays();
+  });
 });
 
 // H key toggles the ring reveal panel
