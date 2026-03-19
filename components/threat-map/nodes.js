@@ -32,6 +32,11 @@ export function addNode(element, { id, lat, lng, label, level }) {
   const state = _state.get(element);
   if (!state) return;
 
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    console.warn(`[s9-threatmap] addNode: invalid coordinates for "${id}": lat=${lat}, lng=${lng}`);
+    return;
+  }
+
   if (state.nodeMap.has(id)) {
     console.warn(`[s9-threatmap] addNode: node "${id}" already exists.`);
     return;
@@ -134,13 +139,14 @@ export function pulseNode(element, nodeId) {
   ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), outward);
   state.scene.add(ring);
 
-  const t0 = Date.now(), dur = 700;
-  (function tick() {
-    if (!_state.get(element)) { state.scene.remove(ring); geo.dispose(); mat.dispose(); return; }
-    const t = Math.min(1, (Date.now() - t0) / dur);
+  const t0 = performance.now(), dur = 700;
+  let _rafId;
+  (function tick(now) {
+    if (!_state.get(element)) { cancelAnimationFrame(_rafId); state.scene.remove(ring); geo.dispose(); mat.dispose(); return; }
+    const t = Math.min(1, (now - t0) / dur);
     ring.scale.setScalar(1 + t * 6);
     mat.opacity = 0.85 * (1 - t);
-    if (t < 1) { requestAnimationFrame(tick); }
+    if (t < 1) { _rafId = requestAnimationFrame(tick); }
     else { state.scene.remove(ring); geo.dispose(); mat.dispose(); }
-  })();
+  })(performance.now());
 }

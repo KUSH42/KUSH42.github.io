@@ -144,13 +144,15 @@ function buildPostProcessingPipeline(renderer, scene, camera, element) {
   const phosphorPass = new ShaderPass(RainPhosphorShader);
   phosphorPass.uniforms.tPrev.value = phosphorTex;
 
-  // Override render to capture output into feedback texture for next frame
+  // Override render to capture output into feedback texture for next frame.
+  // Always reads/writes this.uniforms.tPrev.value so that the resize handler can
+  // swap in a new FramebufferTexture by updating that uniform directly, without
+  // relying on a stale closure reference to the original phosphorTex variable.
   const _phosphorRender = phosphorPass.render.bind(phosphorPass);
   phosphorPass.render = function(rdr, writeBuffer, readBuffer, dt, mask) {
-    this.uniforms.tPrev.value = phosphorTex;
     _phosphorRender(rdr, writeBuffer, readBuffer, dt, mask);
     // writeBuffer is still the active render target after super.render()
-    rdr.copyFramebufferToTexture(phosphorTex);
+    rdr.copyFramebufferToTexture(this.uniforms.tPrev.value);
   };
   composer.addPass(phosphorPass);
 
@@ -362,11 +364,14 @@ export function initMatrixRain(element, opts = {}) {
       s.streakPass.uniforms.uAspect.value = w / h;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      // Recreate phosphor feedback texture at new size
+      // Recreate phosphor feedback texture at new size.
+      // Update the uniform directly so the render-override closure picks up the new
+      // texture without relying on the now-out-of-scope factory variable.
       const ds = renderer.getDrawingBufferSize(new THREE.Vector2());
       s.phosphorTex.dispose();
-      phosphorTex = new THREE.FramebufferTexture(ds.x, ds.y);
-      s.phosphorTex = phosphorTex;
+      const newPhosphorTex = new THREE.FramebufferTexture(ds.x, ds.y);
+      s.phosphorTex = newPhosphorTex;
+      s.phosphorPass.uniforms.tPrev.value = newPhosphorTex;
     });
   });
   s.ro.observe(element);

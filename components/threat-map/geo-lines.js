@@ -38,13 +38,19 @@ function _ringsToSegments(coordsList, radius) {
  * Called async after initThreatMap — failure is non-fatal (warns to console).
  */
 export async function _loadGeoLines(element) {
+  // Pre-check: don't start the fetch if the element is already destroyed.
+  // Also capture the abort signal so destroyThreatMap() can cancel in-flight requests.
+  const preState = _state.get(element);
+  if (!preState) return;
+
   let topo;
   try {
-    const res = await fetch('/data/countries-110m.json');
+    const res = await fetch('/data/countries-110m.json', { signal: preState.abortController.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     topo = await res.json();
     setTopoCache(topo);
   } catch (err) {
+    if (err.name === 'AbortError') return; // element destroyed — discard silently
     console.warn('[s9-threatmap] geo lines: failed to load /data/countries-110m.json', err);
     return;
   }

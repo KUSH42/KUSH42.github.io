@@ -65,6 +65,7 @@ export function initRadar(element, opts = {}) {
   } catch (e) {
     console.error('[pulse-radar] WebGL context creation failed', e);
     canvas.remove(); overlay.remove();
+    element.dispatchEvent(new CustomEvent('pulse-radar:init-failed', { bubbles: true, detail: { error: e } }));
     const noop = () => {};
     return { setRadarThreatLevel: noop, injectContact: () => '' };
   }

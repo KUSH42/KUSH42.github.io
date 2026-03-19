@@ -136,7 +136,9 @@ export function initGlobeSimulation(threatEl, streamEl, termEl, deps) {
   });
 
   // Dynamic globe simulation
+  let _simDestroyed = false;
   function runSimStep() {
+    if (_simDestroyed) return;
     const onGlobe = [...globeNodes.keys()];
     const offGlobe = CITY_POOL.filter(c => !globeNodes.has(c.id));
     const roll = Math.random();
@@ -168,8 +170,8 @@ export function initGlobeSimulation(threatEl, streamEl, termEl, deps) {
       const newLvl = Math.min(100, oldLvl + delta);
       updateNodeLevel(threatEl, id, newLvl);
       globeNodes.set(id, newLvl);
-      setThreatLevel(threatEl, Math.max(...globeNodes.values()));
-      setRadarThreatLevel(Math.max(...globeNodes.values()) / 100);
+      setThreatLevel(threatEl, Math.max(...Array.from(globeNodes.values())));
+      setRadarThreatLevel(Math.max(...Array.from(globeNodes.values())) / 100);
 
       printLine(termEl,
         `THREAT ESCALATION: ${city?.label ?? id} ${oldLvl}→${newLvl}`,
@@ -197,8 +199,8 @@ export function initGlobeSimulation(threatEl, streamEl, termEl, deps) {
       const newLvl = Math.max(0, oldLvl - _rnd(5, 18));
       updateNodeLevel(threatEl, id, newLvl);
       globeNodes.set(id, newLvl);
-      setThreatLevel(threatEl, Math.max(0, ...globeNodes.values()));
-      setRadarThreatLevel(Math.max(0, ...globeNodes.values()) / 100);
+      setThreatLevel(threatEl, Math.max(0, ...Array.from(globeNodes.values())));
+      setRadarThreatLevel(Math.max(0, ...Array.from(globeNodes.values())) / 100);
       printLine(termEl, `THREAT REDUCED: ${city?.label ?? id} LVL=${newLvl}`, 'info');
       const deEscOldBand = oldLvl >= 70 ? 2 : oldLvl >= 40 ? 1 : 0;
       const deEscNewBand = newLvl >= 70 ? 2 : newLvl >= 40 ? 1 : 0;
@@ -223,7 +225,7 @@ export function initGlobeSimulation(threatEl, streamEl, termEl, deps) {
   setTimeout(runSimStep, BOOT_CITIES.length * 300 + 2500);
 
   // Continuous arc background traffic
-  setInterval(() => {
+  const _arcIntervalId = setInterval(() => {
     const ids = [...globeNodes.keys()];
     if (ids.length < 2) return;
     const count = Math.random() < 0.4 ? 2 : 1;
@@ -236,7 +238,7 @@ export function initGlobeSimulation(threatEl, streamEl, termEl, deps) {
   }, 1200);
 
   // Auto-cycle through critical nodes
-  setInterval(() => {
+  const _cycleIntervalId = setInterval(() => {
     const criticals = [...globeNodes.entries()].filter(([, v]) => v >= 70);
     if (criticals.length === 0) return;
     const currentId = threatEl.getAttribute('data-active-node');
@@ -247,5 +249,12 @@ export function initGlobeSimulation(threatEl, streamEl, termEl, deps) {
     focusNode(threatEl, id);
   }, 8000);
 
-  return { globeNodes };
+  return {
+    globeNodes,
+    destroy() {
+      _simDestroyed = true;
+      clearInterval(_arcIntervalId);
+      clearInterval(_cycleIntervalId);
+    },
+  };
 }
