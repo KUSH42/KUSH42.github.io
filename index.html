@@ -605,6 +605,18 @@
       z-index: 4;
     }
 
+    /* Physical glass scratches — above static (z3), screen blend so darks are transparent */
+    .s9-telescreen__scratches {
+      position: absolute;
+      inset: 0;
+      background-image: url('/assets/scratches-CuKAcXgp.jpg');
+      background-size: cover;
+      mix-blend-mode: screen;
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: 4;
+    }
+
     /* ── Phase interference bands — two async layers ── */
     @keyframes ts-phase-a {
       0%   { transform: translateY(-100%); opacity: 0;    }
@@ -769,8 +781,8 @@
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-BjaluEr6.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/three-BJA8G7W0.js">
+  <script type="module" crossorigin src="/assets/index-ZzMyU7wK.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/three-C_ueH2ui.js">
   <link rel="stylesheet" crossorigin href="/assets/index-DC1yr3Y5.css">
 </head>
 
@@ -939,6 +951,7 @@
               <div class="s9-telescreen__static-b"></div>
               <div class="s9-telescreen__scanlines"></div>
               <div class="s9-telescreen__vignette"></div>
+              <div class="s9-telescreen__scratches"></div>
               <div class="s9-telescreen__bloom"></div>
               <div class="s9-telescreen__phase-a"></div>
               <div class="s9-telescreen__phase-b"></div>
@@ -1129,6 +1142,417 @@
 
 </div>
 
+<!-- ── Ring Reveal VFX panel (toggle with H key) ───────────────── -->
+<style>
+  #rr-panel {
+    display: none;
+    position: fixed;
+    top: 40px; right: 0; bottom: 31px;
+    width: 270px;
+    background: rgba(5, 14, 7, 0.97);
+    border-left: 1px solid var(--panel-border-active);
+    z-index: 200;
+    overflow-y: auto;
+    font-family: var(--font-terminal);
+    font-size: 11px;
+    color: var(--neon-cyan);
+    padding: 8px 10px 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--panel-border-active) transparent;
+  }
+  #rr-panel.rr-visible { display: block; }
+  #rr-panel .rr-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--panel-border-active);
+    padding-bottom: 6px; margin-bottom: 8px;
+  }
+  #rr-panel .rr-hdr-title {
+    font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--neon-cyan); text-shadow: 0 0 8px var(--neon-cyan);
+  }
+  #rr-panel .rr-enable-row {
+    display: flex; align-items: center; gap: 6px; font-size: 11px;
+    color: var(--text-secondary);
+  }
+  #rr-panel .rr-enable-row input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
+  #rr-panel .rr-sec {
+    font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--panel-border-active); margin: 10px 0 4px;
+    border-bottom: 1px solid var(--panel-border-dim);
+    padding-bottom: 2px;
+  }
+  #rr-panel label {
+    display: flex; align-items: center; gap: 5px;
+    margin: 3px 0; line-height: 1.6;
+  }
+  #rr-panel .ln { flex: 0 0 108px; color: var(--text-secondary); font-size: 10px; }
+  #rr-panel input[type=range] {
+    flex: 1; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
+  }
+  #rr-panel .val { flex: 0 0 40px; text-align: right; color: var(--neon-green); font-size: 10px; }
+  #rr-panel select {
+    flex: 1; background: #0b1a0e; color: var(--neon-cyan);
+    border: 1px solid var(--panel-border); font-family: var(--font-terminal);
+    font-size: 10px; cursor: pointer; padding: 1px 3px;
+  }
+  #rr-panel input[type=color] {
+    width: 28px; height: 18px; border: 1px solid var(--panel-border);
+    background: #0b1a0e; cursor: pointer; padding: 0;
+  }
+  #rr-panel input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
+  #rr-panel .rr-rand-btn {
+    padding: 1px 5px; background: transparent;
+    border: 1px solid var(--panel-border); color: var(--text-secondary);
+    font-family: var(--font-terminal); font-size: 11px; cursor: pointer;
+    transition: color .1s, border-color .1s; flex-shrink: 0;
+  }
+  #rr-panel .rr-rand-btn:hover { color: var(--neon-cyan); border-color: var(--panel-border-active); }
+  #rr-panel .rr-btns {
+    display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0;
+  }
+  #rr-panel .rr-btns button {
+    flex: 1; min-width: 48px; padding: 3px 4px;
+    background: transparent; border: 1px solid var(--panel-border);
+    color: var(--text-secondary); font-family: var(--font-terminal);
+    font-size: 10px; cursor: pointer; text-align: center;
+    transition: color .1s, border-color .1s;
+  }
+  #rr-panel .rr-btns button:hover, #rr-panel .rr-btns button.active {
+    color: var(--neon-cyan); border-color: var(--panel-border-active);
+  }
+  #rr-panel .rr-preset-grid {
+    display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0;
+  }
+  #rr-panel .rr-preset-grid button {
+    padding: 2px 6px; background: transparent;
+    border: 1px solid var(--panel-border); color: var(--text-secondary);
+    font-family: var(--font-terminal); font-size: 9px; cursor: pointer;
+    transition: color .1s, border-color .1s;
+  }
+  #rr-panel .rr-preset-grid button.active,
+  #rr-panel .rr-preset-grid button:hover {
+    color: var(--neon-cyan); border-color: var(--panel-border-active);
+  }
+
+  /* ── Collapsible sections ──────────────────────────────────── */
+  #rr-panel .rr-sec.rr-collapsible { cursor: pointer; user-select: none; }
+  #rr-panel .rr-sec.rr-collapsible::after {
+    content: ' ▸'; color: var(--panel-border-active); font-size: 9px;
+  }
+  #rr-panel .rr-sec.rr-collapsible.rr-open::after { content: ' ▾'; }
+  #rr-panel .rr-collapse-body { display: none; }
+  #rr-panel .rr-collapse-body.rr-open { display: block; }
+</style>
+
+<div id="rr-panel">
+  <div class="rr-hdr">
+    <span class="rr-hdr-title">Ring Reveal VFX</span>
+    <span class="rr-enable-row">
+      <input type="checkbox" id="rr-enable">
+      <label for="rr-enable" style="font-size:10px;color:var(--text-secondary)">Enable</label>
+    </span>
+  </div>
+
+  <div class="rr-sec">Playback</div>
+  <div class="rr-btns">
+    <button id="rr-play">&#9654; Play</button>
+    <button id="rr-rev">&#9664; Rev</button>
+    <button id="rr-stop">&#10074;&#10074; Stop</button>
+    <button id="rr-reset">&#8635; Reset</button>
+  </div>
+  <div class="rr-btns">
+    <button id="rr-loop">&#8635; Loop</button>
+    <button id="rr-once">&#8594; Once</button>
+  </div>
+  <label>
+    <span class="ln">Loop mode</span>
+    <select id="rr-loopMode">
+      <option value="play-reverse">Play &harr; Reverse</option>
+      <option value="play-reset">Play &rarr; Reset</option>
+    </select>
+  </label>
+  <label>
+    <span class="ln">Pause between</span>
+    <input type="range" id="rr-pause" min="0" max="3000" step="100" value="0">
+    <span class="val" id="rr-vPause">0</span> ms
+  </label>
+
+  <div class="rr-sec">Animation</div>
+  <label>
+    <span class="ln">Direction</span>
+    <select id="rr-dir">
+      <option value="south-to-north">south &rarr; north</option>
+      <option value="north-to-south">north &rarr; south</option>
+      <option value="equator-out">equator out</option>
+    </select>
+  </label>
+  <label>
+    <span class="ln">Easing</span>
+    <select id="rr-easing">
+      <option value="easeInOutCubic">easeInOutCubic</option>
+      <option value="easeOutExpo" selected>easeOutExpo</option>
+      <option value="backInOut">backInOut</option>
+      <option value="linear">linear</option>
+    </select>
+  </label>
+  <label>
+    <span class="ln">Duration</span>
+    <input type="range" id="rr-dur" min="200" max="15000" step="100" value="2000">
+    <span class="val" id="rr-vDur">2000</span> ms
+  </label>
+  <label>
+    <span class="ln">Stagger</span>
+    <input type="range" id="rr-stagger" min="0" max="100" value="55">
+    <span class="val" id="rr-vStagger">0.55</span>
+  </label>
+  <label>
+    <span class="ln">Ring fade</span>
+    <input type="range" id="rr-ringFade" min="1" max="99" value="35">
+    <span class="val" id="rr-vRingFade">0.35</span>
+  </label>
+  <label>
+    <span class="ln">Invert fade</span>
+    <input type="checkbox" id="rr-invert">
+  </label>
+
+  <div class="rr-sec">Appearance</div>
+  <label>
+    <span class="ln">Line color A&rarr;B</span>
+    <input type="color" id="rr-colLine" value="#00ffcc">
+    <input type="color" id="rr-colLineB" value="#00ffcc">
+    <button class="rr-rand-btn" id="rr-randLine" title="Randomize line gradient">~</button>
+  </label>
+  <label>
+    <span class="ln">Glow color A&rarr;B</span>
+    <input type="color" id="rr-colGlow" value="#00ffcc">
+    <input type="color" id="rr-colGlowB" value="#00ffcc">
+    <button class="rr-rand-btn" id="rr-randGlow" title="Randomize glow gradient">~</button>
+  </label>
+  <label>
+    <span class="ln">Gradient mode</span>
+    <select id="rr-gradMode">
+      <option value="0">RGB</option>
+      <option value="1">HSL short</option>
+      <option value="2">HSL long</option>
+      <option value="3">HSL CW</option>
+      <option value="4">HSL CCW</option>
+    </select>
+  </label>
+  <label>
+    <span class="ln">Opacity</span>
+    <input type="range" id="rr-opacity" min="0" max="100" value="70">
+    <span class="val" id="rr-vOpacity">0.70</span>
+  </label>
+  <label>
+    <span class="ln">Glow opacity</span>
+    <input type="range" id="rr-glowOp" min="0" max="100" value="25">
+    <span class="val" id="rr-vGlowOp">0.25</span>
+  </label>
+  <label>
+    <span class="ln">Emissive</span>
+    <input type="range" id="rr-emissive" min="10" max="2000" value="200">
+    <span class="val" id="rr-vEmissive">2.00</span>
+  </label>
+  <label>
+    <span class="ln">Warp amount</span>
+    <input type="range" id="rr-warp" min="-200" max="200" value="12">
+    <span class="val" id="rr-vWarp">0.12</span>
+  </label>
+
+  <div class="rr-sec">Glow</div>
+  <label>
+    <span class="ln">Glow radius</span>
+    <input type="range" id="rr-glowRad" min="1000" max="2000" value="1008">
+    <span class="val" id="rr-vGlowRad">1.008</span>
+  </label>
+  <label>
+    <span class="ln">Glow layers</span>
+    <input type="range" id="rr-glowLayers" min="1" max="12" step="1" value="3">
+    <span class="val" id="rr-vGlowLayers">3</span>
+  </label>
+  <label>
+    <span class="ln">Layer step</span>
+    <input type="range" id="rr-glowStep" min="0" max="200" value="4">
+    <span class="val" id="rr-vGlowStep">0.004</span>
+  </label>
+  <label>
+    <span class="ln">Layer falloff</span>
+    <input type="range" id="rr-glowFalloff" min="10" max="100" value="50">
+    <span class="val" id="rr-vGlowFalloff">0.50</span>
+  </label>
+
+  <div class="rr-sec">Ring Variation</div>
+  <label>
+    <span class="ln">Color spread</span>
+    <input type="range" id="rr-colorSpread" min="0" max="200" value="0">
+    <span class="val" id="rr-vColorSpread">0.00</span>
+  </label>
+  <label>
+    <span class="ln">Bright spread</span>
+    <input type="range" id="rr-brightSpread" min="0" max="200" value="0">
+    <span class="val" id="rr-vBrightSpread">0.00</span>
+  </label>
+  <label>
+    <span class="ln">Flicker amp</span>
+    <input type="range" id="rr-flickerAmp" min="-100" max="200" value="0">
+    <span class="val" id="rr-vFlickerAmp">0.00</span>
+  </label>
+  <label>
+    <span class="ln">Flicker speed</span>
+    <input type="range" id="rr-flickerSpeed" min="1" max="2000" value="20">
+    <span class="val" id="rr-vFlickerSpeed">2.0</span> Hz
+  </label>
+  <label>
+    <span class="ln">Arc color spread</span>
+    <input type="range" id="rr-arcSpread" min="-100" max="200" value="0">
+    <span class="val" id="rr-vArcSpread">0.00</span>
+  </label>
+
+  <div class="rr-sec">Globe</div>
+  <label>
+    <span class="ln">Overlay</span>
+    <select id="rr-globe">
+      <option value="none">None</option>
+      <option value="latlon">Lat/lon grid</option>
+      <option value="wire">Wireframe</option>
+    </select>
+  </label>
+
+  <div class="rr-sec">Matrix Rain</div>
+  <label>
+    <span class="ln">Color</span>
+    <input type="color" id="rain-color" value="#00ff70">
+  </label>
+  <label>
+    <span class="ln">Opacity</span>
+    <input type="range" id="rain-opacity" min="0" max="100" value="45">
+    <span class="val" id="rain-vOpacity">0.45</span>
+  </label>
+  <label>
+    <span class="ln">Burst bloom</span>
+    <input type="checkbox" id="rain-burstBloom" checked>
+  </label>
+  <label>
+    <span class="ln">Globe interact</span>
+    <input type="checkbox" id="rain-globeInteract" checked>
+  </label>
+  <label>
+    <span class="ln">Glyph chroma</span>
+    <input type="checkbox" id="rain-chroma" checked>
+    <input type="range" id="rain-chromaScale" min="0" max="300" value="100">
+    <span class="val" id="rain-vChromaScale">1.0</span>
+  </label>
+  <label>
+    <span class="ln">Heat shimmer</span>
+    <input type="checkbox" id="rain-heat" checked>
+    <input type="range" id="rain-heatAmt" min="0" max="200" value="4">
+    <span class="val" id="rain-vHeatAmt">0.004</span>
+  </label>
+  <label>
+    <span class="ln">Lens streaks</span>
+    <input type="checkbox" id="rain-streaks" checked>
+    <input type="range" id="rain-streakAmt" min="0" max="200" value="55">
+    <span class="val" id="rain-vStreakAmt">0.055</span>
+  </label>
+  <label>
+    <span class="ln">Soften blur</span>
+    <input type="checkbox" id="rain-soften" checked>
+    <input type="range" id="rain-softenStr" min="0" max="100" value="2">
+    <span class="val" id="rain-vSoftenStr">0.002</span>
+  </label>
+  <label>
+    <span class="ln">POM depth</span>
+    <input type="range" id="rain-depth" min="0" max="200" value="4">
+    <span class="val" id="rain-vDepth">0.04</span>
+  </label>
+  <label>
+    <span class="ln">Normal str</span>
+    <input type="range" id="rain-normalStr" min="0" max="1500" value="600">
+    <span class="val" id="rain-vNormalStr">6.0</span>
+  </label>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-glitch-body">Telescreen Glitch</div>
+  <div id="ts-glitch-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Enable</span>
+      <input type="checkbox" id="ts-glitchEnabled">
+    </label>
+    <label>
+      <span class="ln">Strength</span>
+      <input type="range" id="ts-glitchStrength" min="0" max="100" value="25">
+      <span class="val" id="ts-vGlitchStrength">0.025</span>
+    </label>
+    <label>
+      <span class="ln">Speed</span>
+      <input type="range" id="ts-glitchSpeed" min="1" max="300" value="80">
+      <span class="val" id="ts-vGlitchSpeed">8.0</span>
+    </label>
+    <label>
+      <span class="ln">Bands</span>
+      <input type="range" id="ts-glitchCols" min="5" max="100" value="30">
+      <span class="val" id="ts-vGlitchCols">30</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-chroma-body">Telescreen Chroma</div>
+  <div id="ts-chroma-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Enable</span>
+      <input type="checkbox" id="ts-chromaEnabled">
+    </label>
+    <label>
+      <span class="ln">Offset</span>
+      <input type="range" id="ts-chromaOffset" min="0" max="250" value="60">
+      <span class="val" id="ts-vChromaOffset">0.006</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="rain-godrays-body">God Rays</div>
+  <div id="rain-godrays-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Enable</span>
+      <input type="checkbox" id="rain-grEnabled">
+    </label>
+    <label>
+      <span class="ln">Light X</span>
+      <input type="range" id="rain-grLightX" min="0" max="100" value="50">
+      <span class="val" id="rain-vGrLightX">0.50</span>
+    </label>
+    <label>
+      <span class="ln">Light Y</span>
+      <input type="range" id="rain-grLightY" min="0" max="100" value="75">
+      <span class="val" id="rain-vGrLightY">0.75</span>
+    </label>
+    <label>
+      <span class="ln">Density</span>
+      <input type="range" id="rain-grDensity" min="0" max="100" value="93">
+      <span class="val" id="rain-vGrDensity">0.93</span>
+    </label>
+    <label>
+      <span class="ln">Decay</span>
+      <input type="range" id="rain-grDecay" min="0" max="100" value="96">
+      <span class="val" id="rain-vGrDecay">0.96</span>
+    </label>
+    <label>
+      <span class="ln">Weight</span>
+      <input type="range" id="rain-grWeight" min="0" max="100" value="35">
+      <span class="val" id="rain-vGrWeight">0.35</span>
+    </label>
+    <label>
+      <span class="ln">Exposure</span>
+      <input type="range" id="rain-grExposure" min="0" max="200" value="45">
+      <span class="val" id="rain-vGrExposure">0.45</span>
+    </label>
+  </div>
+
+  <div class="rr-sec">Presets</div>
+  <div class="rr-preset-grid" id="rr-presets"></div>
+  <label style="margin-top:6px;">
+    <span class="ln">Morph duration</span>
+    <input type="range" id="rr-morphDur" min="0" max="3000" step="50" value="800">
+    <span class="val" id="rr-vMorphDur">800</span> ms
+  </label>
+</div>
 
 </body>
 </html>
