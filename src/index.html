@@ -606,7 +606,7 @@
       z-index: 4;
     }
 
-    /* Physical glass scratches — above static (z3), screen blend so darks are transparent */
+    /* Physical glass scratches — above glow (z5), screen blend so darks are transparent */
     .s9-telescreen__scratches {
       position: absolute;
       inset: 0;
@@ -615,7 +615,7 @@
       mix-blend-mode: screen;
       opacity: 0.35;
       pointer-events: none;
-      z-index: 4;
+      z-index: 6;
     }
 
     /* ── Phase interference bands — two async layers ── */
@@ -1146,11 +1146,13 @@
     display: none;
     position: fixed;
     top: 40px; right: 0; bottom: 31px;
-    width: 270px;
+    width: max-content;
+    min-width: 280px;
     background: rgba(5, 14, 7, 0.97);
     border-left: 1px solid var(--panel-border-active);
     z-index: 200;
     overflow-y: auto;
+    overflow-x: hidden;
     font-family: var(--font-terminal);
     font-size: 11px;
     color: var(--neon-cyan);
@@ -1185,7 +1187,7 @@
   }
   #rr-panel .ln { flex: 0 0 108px; color: var(--text-secondary); font-size: 10px; }
   #rr-panel input[type=range] {
-    flex: 1; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
+    flex: 1; min-width: 100px; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
   }
   #rr-panel .val { flex: 0 0 40px; text-align: right; color: var(--neon-green); font-size: 10px; }
   #rr-panel select {
@@ -1502,6 +1504,40 @@
       <span class="ln">Offset</span>
       <input type="range" id="ts-chromaOffset" min="0" max="250" value="60">
       <span class="val" id="ts-vChromaOffset">0.006</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-surface-body">Telescreen Surface</div>
+  <div id="ts-surface-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Scratches</span>
+      <input type="checkbox" id="ts-scratchEnabled" checked>
+      <input type="range" id="ts-scratchOpacity" min="0" max="100" value="35">
+      <span class="val" id="ts-vScratchOpacity">0.35</span>
+    </label>
+    <label>
+      <span class="ln">Vignette</span>
+      <input type="checkbox" id="ts-vignetteEnabled" checked>
+      <input type="range" id="ts-vignetteOpacity" min="0" max="100" value="100">
+      <span class="val" id="ts-vVignetteOpacity">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Scanlines</span>
+      <input type="checkbox" id="ts-scanlinesEnabled">
+    </label>
+    <label>
+      <span class="ln">Static</span>
+      <input type="checkbox" id="ts-staticEnabled" checked>
+    </label>
+    <label>
+      <span class="ln">Phase bands</span>
+      <input type="checkbox" id="ts-phaseEnabled" checked>
+    </label>
+    <label>
+      <span class="ln">Bloom glow</span>
+      <input type="checkbox" id="ts-glowEnabled" checked>
+      <input type="range" id="ts-glowOpacity" min="0" max="100" value="100">
+      <span class="val" id="ts-vGlowOpacity">1.00</span>
     </label>
   </div>
 
@@ -2522,6 +2558,56 @@ document.getElementById('ts-chromaOffset').addEventListener('input', e => {
   const v = e.target.value / 10000;
   document.getElementById('ts-vChromaOffset').textContent = v.toFixed(4);
   teleCRT.setChroma(document.getElementById('ts-chromaEnabled').checked, v);
+});
+
+// ── Telescreen Surface controls ───────────────────────────────
+const tsScratchEl   = document.querySelector('.s9-telescreen__scratches');
+const tsVignetteEl  = document.querySelector('.s9-telescreen__vignette');
+const tsScanlinesEl = document.querySelector('.s9-telescreen__scanlines');
+const tsStaticEl    = document.querySelector('.s9-telescreen__static');
+const tsStaticBEl   = document.querySelector('.s9-telescreen__static-b');
+const tsPhaseEls    = [
+  document.querySelector('.s9-telescreen__phase-a'),
+  document.querySelector('.s9-telescreen__phase-b'),
+  document.querySelector('.s9-telescreen__phase-c'),
+];
+const tsGlowEl      = document.querySelector('.s9-telescreen__glow');
+
+document.getElementById('ts-scratchEnabled').addEventListener('change', e => {
+  tsScratchEl.style.display = e.target.checked ? '' : 'none';
+});
+document.getElementById('ts-scratchOpacity').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('ts-vScratchOpacity').textContent = v.toFixed(2);
+  tsScratchEl.style.opacity = v;
+});
+document.getElementById('ts-vignetteEnabled').addEventListener('change', e => {
+  tsVignetteEl.style.display = e.target.checked ? '' : 'none';
+});
+document.getElementById('ts-vignetteOpacity').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('ts-vVignetteOpacity').textContent = v.toFixed(2);
+  tsVignetteEl.style.opacity = v;
+});
+document.getElementById('ts-scanlinesEnabled').addEventListener('change', e => {
+  tsScanlinesEl.style.display = e.target.checked ? 'block' : 'none';
+});
+document.getElementById('ts-staticEnabled').addEventListener('change', e => {
+  const d = e.target.checked ? '' : 'none';
+  tsStaticEl.style.display = d;
+  tsStaticBEl.style.display = d;
+});
+document.getElementById('ts-phaseEnabled').addEventListener('change', e => {
+  const d = e.target.checked ? '' : 'none';
+  tsPhaseEls.forEach(el => { el.style.display = d; });
+});
+document.getElementById('ts-glowEnabled').addEventListener('change', e => {
+  tsGlowEl.style.display = e.target.checked ? '' : 'none';
+});
+document.getElementById('ts-glowOpacity').addEventListener('input', e => {
+  const v = e.target.value / 100;
+  document.getElementById('ts-vGlowOpacity').textContent = v.toFixed(2);
+  tsGlowEl.style.opacity = v;
 });
 
 // ── God Rays controls ─────────────────────────────────────────

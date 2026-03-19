@@ -605,7 +605,7 @@
       z-index: 4;
     }
 
-    /* Physical glass scratches — above static (z3), screen blend so darks are transparent */
+    /* Physical glass scratches — above glow (z5), screen blend so darks are transparent */
     .s9-telescreen__scratches {
       position: absolute;
       inset: 0;
@@ -614,7 +614,7 @@
       mix-blend-mode: screen;
       opacity: 0.35;
       pointer-events: none;
-      z-index: 4;
+      z-index: 6;
     }
 
     /* ── Phase interference bands — two async layers ── */
@@ -781,7 +781,7 @@
     .s9-radar__ring-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.7rem; color: var(--text-secondary); }
     .s9-radar__cardinal-label { position: absolute; white-space: nowrap; pointer-events: none; font-family: var(--font-terminal); font-size: 0.75rem; font-weight: 700; color: var(--text-secondary); letter-spacing: 0.05em; }
   </style>
-  <script type="module" crossorigin src="/assets/index-ZzMyU7wK.js"></script>
+  <script type="module" crossorigin src="/assets/index-Do6_64h3.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/three-C_ueH2ui.js">
   <link rel="stylesheet" crossorigin href="/assets/index-DC1yr3Y5.css">
 </head>
@@ -1148,11 +1148,13 @@
     display: none;
     position: fixed;
     top: 40px; right: 0; bottom: 31px;
-    width: 270px;
+    width: max-content;
+    min-width: 280px;
     background: rgba(5, 14, 7, 0.97);
     border-left: 1px solid var(--panel-border-active);
     z-index: 200;
     overflow-y: auto;
+    overflow-x: hidden;
     font-family: var(--font-terminal);
     font-size: 11px;
     color: var(--neon-cyan);
@@ -1187,7 +1189,7 @@
   }
   #rr-panel .ln { flex: 0 0 108px; color: var(--text-secondary); font-size: 10px; }
   #rr-panel input[type=range] {
-    flex: 1; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
+    flex: 1; min-width: 100px; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
   }
   #rr-panel .val { flex: 0 0 40px; text-align: right; color: var(--neon-green); font-size: 10px; }
   #rr-panel select {
@@ -1504,6 +1506,40 @@
       <span class="ln">Offset</span>
       <input type="range" id="ts-chromaOffset" min="0" max="250" value="60">
       <span class="val" id="ts-vChromaOffset">0.006</span>
+    </label>
+  </div>
+
+  <div class="rr-sec rr-collapsible" data-target="ts-surface-body">Telescreen Surface</div>
+  <div id="ts-surface-body" class="rr-collapse-body">
+    <label>
+      <span class="ln">Scratches</span>
+      <input type="checkbox" id="ts-scratchEnabled" checked>
+      <input type="range" id="ts-scratchOpacity" min="0" max="100" value="35">
+      <span class="val" id="ts-vScratchOpacity">0.35</span>
+    </label>
+    <label>
+      <span class="ln">Vignette</span>
+      <input type="checkbox" id="ts-vignetteEnabled" checked>
+      <input type="range" id="ts-vignetteOpacity" min="0" max="100" value="100">
+      <span class="val" id="ts-vVignetteOpacity">1.00</span>
+    </label>
+    <label>
+      <span class="ln">Scanlines</span>
+      <input type="checkbox" id="ts-scanlinesEnabled">
+    </label>
+    <label>
+      <span class="ln">Static</span>
+      <input type="checkbox" id="ts-staticEnabled" checked>
+    </label>
+    <label>
+      <span class="ln">Phase bands</span>
+      <input type="checkbox" id="ts-phaseEnabled" checked>
+    </label>
+    <label>
+      <span class="ln">Bloom glow</span>
+      <input type="checkbox" id="ts-glowEnabled" checked>
+      <input type="range" id="ts-glowOpacity" min="0" max="100" value="100">
+      <span class="val" id="ts-vGlowOpacity">1.00</span>
     </label>
   </div>
 
