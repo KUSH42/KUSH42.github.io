@@ -39,10 +39,14 @@ const FS = `
   uniform float uChromaEnabled;   // 0 or 1
   uniform float uChromaOffset;    // 0 – 0.025, radial R/B separation
 
-  const float hardPix    = -1.2;
-  const vec2  warp       = vec2(1.0/96.0, 1.0/72.0);
-  const float maskDark   = 0.5;
-  const float maskLight  = 1.5;
+  // ── CRT shader uniforms ───────────────────────────────────────
+  uniform float uHardPix;      // scanline sharpness, negative: -0.5 (soft) – -3.0 (sharp)
+  uniform float uWarpMult;     // barrel distortion multiplier: 0 = flat, 1 = default, 2 = strong
+  uniform float uMaskStr;      // phosphor mask strength: 0 = off, 1 = full
+  uniform float uGrainAmt;     // film grain amount: 0 – 0.15
+  uniform float uHalationStr;  // phosphor halation strength: 0 = off, 1 = default
+  uniform float uConvergence;  // convergence error: 0 = off, 0.0007 = default
+
   const float scrollRate = 0.325; // scanlines/sec
 
   float ToLinear1(float c) {
@@ -69,7 +73,7 @@ const FS = `
   vec3 FetchConv(vec2 pos, vec2 off) {
     highp vec2  hpos = pos;
     highp vec2  dir  = hpos - 0.5;
-    highp float mag  = 0.0007 * dot(dir, dir); // quadratic: zero at centre, grows to corners
+    highp float mag  = uConvergence * dot(dir, dir); // quadratic: zero at centre, grows to corners
     vec2 rPos = vec2(hpos + dir *  mag);
     vec2 bPos = vec2(hpos + dir * -mag);
     vec3 center = Fetch(pos,  off);
@@ -96,9 +100,9 @@ const FS = `
     vec3 c = FetchConv(pos, vec2( 0.0, off));
     vec3 d = FetchConv(pos, vec2( 1.0, off));
     float dst = Dist(pos).x;
-    float wb = Gaus(dst - 1.0, hardPix);
-    float wc = Gaus(dst + 0.0, hardPix);
-    float wd = Gaus(dst + 1.0, hardPix);
+    float wb = Gaus(dst - 1.0, uHardPix);
+    float wc = Gaus(dst + 0.0, uHardPix);
+    float wd = Gaus(dst + 1.0, uHardPix);
     return (b*wb + c*wc + d*wd) / (wb + wc + wd);
   }
 
@@ -109,11 +113,11 @@ const FS = `
     vec3 d = FetchConv(pos, vec2( 1.0, off));
     vec3 e = FetchConv(pos, vec2( 2.0, off));
     float dst = Dist(pos).x;
-    float wa = Gaus(dst - 2.0, hardPix);
-    float wb = Gaus(dst - 1.0, hardPix);
-    float wc = Gaus(dst + 0.0, hardPix);
-    float wd = Gaus(dst + 1.0, hardPix);
-    float we = Gaus(dst + 2.0, hardPix);
+    float wa = Gaus(dst - 2.0, uHardPix);
+    float wb = Gaus(dst - 1.0, uHardPix);
+    float wc = Gaus(dst + 0.0, uHardPix);
+    float wd = Gaus(dst + 1.0, uHardPix);
+    float we = Gaus(dst + 2.0, uHardPix);
     return (a*wa + b*wb + c*wc + d*wd + e*we) / (wa + wb + wc + wd + we);
   }
 
@@ -133,17 +137,18 @@ const FS = `
 
   vec2 Warp(vec2 pos) {
     pos = pos * 2.0 - 1.0;
-    pos *= vec2(1.0 + pos.y * pos.y * warp.x, 1.0 + pos.x * pos.x * warp.y);
+    vec2 warpAmt = vec2(1.0/96.0, 1.0/72.0) * uWarpMult;
+    pos *= vec2(1.0 + pos.y * pos.y * warpAmt.x, 1.0 + pos.x * pos.x * warpAmt.y);
     return pos * 0.5 + 0.5;
   }
 
   // Aperture grille: tight vertical R/G/B stripe triads (Trinitron-style).
   vec3 Mask(vec2 pos) {
     float stripe = fract(pos.x / 3.0) * 3.0;
-    vec3 mask = vec3(maskDark);
-    if      (stripe < 1.0) mask.r = maskLight;
-    else if (stripe < 2.0) mask.g = maskLight;
-    else                    mask.b = maskLight;
+    vec3 mask = vec3(0.5);
+    if      (stripe < 1.0) mask.r = 1.5;
+    else if (stripe < 2.0) mask.g = 1.5;
+    else                    mask.b = 1.5;
     return mask;
   }
 
@@ -204,15 +209,15 @@ const FS = `
     }
 
     // 2. Phosphor mask (screen-layer effect)
-    col *= Mask(gl_FragCoord.xy);
+    col *= mix(vec3(1.0), Mask(gl_FragCoord.xy), uMaskStr);
 
     // 3. Halation (glass-layer backscatter — above mask, not stripe-modulated)
     vec3 halo     = Horz5(pos, 0.0) * Gaus(Dist(pos).y, -2.5);
-    vec3 halation = max(vec3(0.0), halo - 0.35) * vec3(0.18, 0.12, 0.08);
+    vec3 halation = max(vec3(0.0), halo - 0.35) * vec3(0.18, 0.12, 0.08) * uHalationStr;
     col += halation;
 
     // 4. Film grain
-    float grain = (hash(gl_FragCoord.xy + fract(uTime * 73.0)) * 2.0 - 1.0) * 0.04;
+    float grain = (hash(gl_FragCoord.xy + fract(uTime * 73.0)) * 2.0 - 1.0) * uGrainAmt;
     col += grain;
 
     // 5. Corner masking (bezel/overscan fade)
@@ -277,6 +282,12 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       glitchCols:     gl.getUniformLocation(prog, 'uGlitchCols'),
       chromaEnabled:  gl.getUniformLocation(prog, 'uChromaEnabled'),
       chromaOffset:   gl.getUniformLocation(prog, 'uChromaOffset'),
+      hardPix:        gl.getUniformLocation(prog, 'uHardPix'),
+      warpMult:       gl.getUniformLocation(prog, 'uWarpMult'),
+      maskStr:        gl.getUniformLocation(prog, 'uMaskStr'),
+      grainAmt:       gl.getUniformLocation(prog, 'uGrainAmt'),
+      halationStr:    gl.getUniformLocation(prog, 'uHalationStr'),
+      convergence:    gl.getUniformLocation(prog, 'uConvergence'),
     };
 
     const tex = gl.createTexture();
@@ -298,10 +309,12 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   let contextLost = false;
   let animId = 0;
 
-  // Effect parameters (mutated by setGlitch / setChroma)
+  // Effect parameters (mutated by setGlitch / setChroma / setShader)
   const cfg = {
     glitchEnabled: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30,
     chromaEnabled: 0, chromaOffset: 0.006,
+    hardPix: -1.2, warpMult: 1.0, maskStr: 1.0,
+    grainAmt: 0.04, halationStr: 1.0, convergence: 0.0007,
   };
 
   function uploadTexture() {
@@ -368,6 +381,12 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       gl.uniform1f(glState.uLocs.glitchCols,     cfg.glitchCols);
       gl.uniform1f(glState.uLocs.chromaEnabled,  cfg.chromaEnabled);
       gl.uniform1f(glState.uLocs.chromaOffset,   cfg.chromaOffset);
+      gl.uniform1f(glState.uLocs.hardPix,        cfg.hardPix);
+      gl.uniform1f(glState.uLocs.warpMult,       cfg.warpMult);
+      gl.uniform1f(glState.uLocs.maskStr,        cfg.maskStr);
+      gl.uniform1f(glState.uLocs.grainAmt,       cfg.grainAmt);
+      gl.uniform1f(glState.uLocs.halationStr,    cfg.halationStr);
+      gl.uniform1f(glState.uLocs.convergence,    cfg.convergence);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, glState.tex);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -412,6 +431,24 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     setChroma(enabled, offset) {
       cfg.chromaEnabled = enabled ? 1 : 0;
       if (offset !== undefined) cfg.chromaOffset = offset;
+    },
+    /**
+     * Tune CRT shader constants.
+     * @param {Object} p
+     * @param {number} [p.hardPix]     scanline sharpness, negative: -0.5 (soft) to -3.0 (sharp)
+     * @param {number} [p.warpMult]    barrel distortion: 0 = flat, 1 = default, 2 = strong
+     * @param {number} [p.maskStr]     phosphor mask: 0 = off, 1 = full
+     * @param {number} [p.grainAmt]    film grain: 0 – 0.15
+     * @param {number} [p.halationStr] halation: 0 = off, 1 = default, 2 = heavy
+     * @param {number} [p.convergence] convergence error: 0 = off, 0.0007 = default
+     */
+    setShader({ hardPix, warpMult, maskStr, grainAmt, halationStr, convergence } = {}) {
+      if (hardPix     !== undefined) cfg.hardPix     = hardPix;
+      if (warpMult    !== undefined) cfg.warpMult    = warpMult;
+      if (maskStr     !== undefined) cfg.maskStr     = maskStr;
+      if (grainAmt    !== undefined) cfg.grainAmt    = grainAmt;
+      if (halationStr !== undefined) cfg.halationStr = halationStr;
+      if (convergence !== undefined) cfg.convergence = convergence;
     },
   };
 }
