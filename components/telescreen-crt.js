@@ -31,9 +31,11 @@ const FS = `
 
   // ── Glitch uniforms ──────────────────────────────────────────
   uniform float uGlitchEnabled;   // 0 or 1
+  uniform float uGlitchActive;    // 0 or 1 — JS-side sporadic trigger (in active burst)
   uniform float uGlitchStrength;  // 0 – 0.10, horizontal shift amount
   uniform float uGlitchSpeed;     // 1 – 30, block-pattern change rate (blocks/sec)
   uniform float uGlitchCols;      // 10 – 80, number of horizontal glitch bands
+  uniform float uGlitchRgb;       // 0 – 1, RGB channel split strength
 
   // ── CRT shader uniforms ───────────────────────────────────────
   uniform float uHardPix;      // scanline sharpness, negative: -0.5 (soft) – -3.0 (sharp)
@@ -141,9 +143,10 @@ const FS = `
   }
 
   // Aperture grille: tight vertical R/G/B stripe triads (Trinitron-style).
+  // Floor 0.15 → 10:1 active:inactive ratio; avg = 0.60 → visibly distinct stripes.
   vec3 Mask(vec2 pos) {
     float stripe = fract(pos.x / 3.0) * 3.0;
-    vec3 mask = vec3(0.5);
+    vec3 mask = vec3(0.15);
     if      (stripe < 1.0) mask.r = 1.5;
     else if (stripe < 2.0) mask.g = 1.5;
     else                    mask.b = 1.5;
@@ -173,19 +176,48 @@ const FS = `
   // ── Glitch: hash-driven horizontal band displacement ─────────
   float glitchHash(float n) { return fract(sin(n) * 43758.5453123); }
 
+  // Set by applyGlitch; read by main() for RGB split amount (in source pixels).
+  float gRgbSplitPx = 0.0;
+
   vec2 applyGlitch(vec2 uv) {
-    if (uGlitchEnabled < 0.5 || uGlitchStrength < 0.0001) return uv;
-    float t    = floor(uTime * uGlitchSpeed);
+    if (uGlitchEnabled < 0.5 || uGlitchActive < 0.5 || uGlitchStrength < 0.0001) return uv;
+
+    float t = floor(uTime * uGlitchSpeed);
+
+    // Weak vs strong glitch window (~15 % of windows are strong).
+    float intensity = step(0.85, glitchHash(t * 3.1 + 17.3));
+    float str = uGlitchStrength * mix(0.35, 1.0, intensity);
+
+    // RGB split scales with intensity.
+    gRgbSplitPx = uGlitchRgb * mix(1.5, 5.0, intensity);
+
     float band = floor(uv.y * uGlitchCols);
     float h1   = glitchHash(band * 137.3 + t);
     float h2   = glitchHash(band *  91.7 + t + 1.0);
-    // ~15 % of bands receive a horizontal shift; a rare 3 % get a large tear
-    if (h1 > 0.85) {
-      float xOff = (h2 * 2.0 - 1.0) * uGlitchStrength;
-      uv.x = fract(uv.x + xOff);
-    } else if (h1 < 0.03) {
-      uv.x = fract(uv.x + (glitchHash(band + t * 7.3) - 0.5) * uGlitchStrength * 3.0);
+
+    // Type 1 — thin band horizontal shift (~20 % of bands).
+    if (h1 > 0.80) {
+      uv.x = fract(uv.x + (h2 * 2.0 - 1.0) * str);
     }
+    // Type 2 — large tear (~4 % of bands).
+    else if (h1 < 0.04) {
+      uv.x = fract(uv.x + (glitchHash(band + t * 7.3) - 0.5) * str * 3.5);
+    }
+    // Type 3 — UV mirror in band (~6 % of bands, strong windows only).
+    else if (h1 > 0.72 && h1 < 0.78 && intensity > 0.5) {
+      uv.x = 1.0 - uv.x;
+    }
+
+    // Type 4 — block chunk: one large rect displaced per time window.
+    float blockRoll = glitchHash(t * 17.3 + 5.1);
+    if (blockRoll < 0.35 + intensity * 0.35) {
+      float blockY = glitchHash(t * 3.7  + 1.1);
+      float blockH = 0.015 + glitchHash(t * 11.3) * 0.07 * (1.0 + intensity);
+      if (abs(uv.y - blockY) < blockH) {
+        uv.x = fract(uv.x + (glitchHash(t * 23.1) - 0.5) * str * 2.5);
+      }
+    }
+
     return uv;
   }
 
@@ -197,6 +229,12 @@ const FS = `
 
     // 1. Scanline rendering with dynamic beam width
     vec3 col = Tri(pos);
+
+    // 1b. RGB channel split during active glitch (cheap: two extra Fetch calls for R/B).
+    if (uGlitchEnabled > 0.5 && uGlitchActive > 0.5 && gRgbSplitPx > 0.001) {
+      col.r = Fetch(pos, vec2( gRgbSplitPx, 0.0)).r;
+      col.b = Fetch(pos, vec2(-gRgbSplitPx, 0.0)).b;
+    }
 
     // 2. Phosphor mask (screen-layer effect)
     col *= mix(vec3(1.0), Mask(gl_FragCoord.xy), uMaskStr);
@@ -273,9 +311,11 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       imgScale:       gl.getUniformLocation(prog, 'uImgScale'),
       diffuse:        gl.getUniformLocation(prog, 'tDiffuse'),
       glitchEnabled:  gl.getUniformLocation(prog, 'uGlitchEnabled'),
+      glitchActive:   gl.getUniformLocation(prog, 'uGlitchActive'),
       glitchStrength: gl.getUniformLocation(prog, 'uGlitchStrength'),
       glitchSpeed:    gl.getUniformLocation(prog, 'uGlitchSpeed'),
       glitchCols:     gl.getUniformLocation(prog, 'uGlitchCols'),
+      glitchRgb:      gl.getUniformLocation(prog, 'uGlitchRgb'),
       hardPix:        gl.getUniformLocation(prog, 'uHardPix'),
       warpMult:       gl.getUniformLocation(prog, 'uWarpMult'),
       maskStr:        gl.getUniformLocation(prog, 'uMaskStr'),
@@ -330,8 +370,12 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   let animId = 0;
 
   // Effect parameters (mutated by setGlitch / setShader)
+  // Sporadic glitch timing state
+  let glitchNextFire = 0;
+  let glitchEndTime  = 0;
+
   const cfg = {
-    glitchEnabled: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30,
+    glitchEnabled: 0, glitchActive: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30, glitchRgb: 0.5,
     hardPix: -1.2, warpMult: 1.0, maskStr: 1.0,
     grainAmt: 0.04, halationStr: 1.0, convergence: 0.01, scratchStr: 0.35,
   };
@@ -387,6 +431,23 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     const t = (ts - startTime) / 1000;
 
     if (texReady && !contextLost) {
+      // Sporadic glitch: fire for a random duration, then quiet for a random delay.
+      if (cfg.glitchEnabled) {
+        if (t >= glitchEndTime) {
+          cfg.glitchActive = 0;
+          if (t >= glitchNextFire) {
+            const dur = 0.08 + Math.random() * 0.7;
+            glitchEndTime  = t + dur;
+            glitchNextFire = t + dur + 0.8 + Math.random() * 3.5;
+            cfg.glitchActive = 1;
+          }
+        } else {
+          cfg.glitchActive = 1;
+        }
+      } else {
+        cfg.glitchActive = 0;
+      }
+
       const cw = feedCvs.width, ch = feedCvs.height;
       const sw = srcImg.naturalWidth, sh = srcImg.naturalHeight;
       const resY = ch / 1.0, resX = (cw / ch) * resY;
@@ -396,9 +457,11 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       gl.uniform2f(glState.uLocs.imgOffset, r.ox, r.oy);
       gl.uniform2f(glState.uLocs.imgScale, r.sx, r.sy);
       gl.uniform1f(glState.uLocs.glitchEnabled,  cfg.glitchEnabled);
+      gl.uniform1f(glState.uLocs.glitchActive,   cfg.glitchActive);
       gl.uniform1f(glState.uLocs.glitchStrength, cfg.glitchStrength);
       gl.uniform1f(glState.uLocs.glitchSpeed,    cfg.glitchSpeed);
       gl.uniform1f(glState.uLocs.glitchCols,     cfg.glitchCols);
+      gl.uniform1f(glState.uLocs.glitchRgb,      cfg.glitchRgb);
       gl.uniform1f(glState.uLocs.hardPix,        cfg.hardPix);
       gl.uniform1f(glState.uLocs.warpMult,       cfg.warpMult);
       gl.uniform1f(glState.uLocs.maskStr,        cfg.maskStr);
@@ -438,12 +501,15 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
      * @param {number}  [strength] 0–0.10 horizontal shift amount
      * @param {number}  [speed]    1–30 block-change rate (blocks/sec)
      * @param {number}  [cols]     10–80 number of horizontal bands
+     * @param {number}  [rgb]      0–1 RGB channel split strength
      */
-    setGlitch(enabled, strength, speed, cols) {
+    setGlitch(enabled, strength, speed, cols, rgb) {
       cfg.glitchEnabled = enabled ? 1 : 0;
+      if (!cfg.glitchEnabled) { cfg.glitchActive = 0; glitchNextFire = 0; glitchEndTime = 0; }
       if (strength !== undefined) cfg.glitchStrength = strength;
       if (speed    !== undefined) cfg.glitchSpeed    = speed;
       if (cols     !== undefined) cfg.glitchCols     = cols;
+      if (rgb      !== undefined) cfg.glitchRgb      = rgb;
     },
     /**
      * Tune CRT shader constants.

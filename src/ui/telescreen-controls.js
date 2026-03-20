@@ -13,7 +13,8 @@ export function initTelescreenControls(teleCRT) {
     const str  = document.getElementById('ts-glitchStrength').value / 1000;
     const spd  = document.getElementById('ts-glitchSpeed').value / 10;
     const cols = +document.getElementById('ts-glitchCols').value;
-    teleCRT.setGlitch(e.target.checked, str, spd, cols);
+    const rgb  = document.getElementById('ts-glitchRgb').value / 100;
+    teleCRT.setGlitch(e.target.checked, str, spd, cols, rgb);
   });
   document.getElementById('ts-glitchStrength').addEventListener('input', e => {
     const v = e.target.value / 1000;
@@ -29,6 +30,11 @@ export function initTelescreenControls(teleCRT) {
     const v = +e.target.value;
     document.getElementById('ts-vGlitchCols').textContent = v;
     teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, v);
+  });
+  document.getElementById('ts-glitchRgb').addEventListener('input', e => {
+    const v = e.target.value / 100;
+    document.getElementById('ts-vGlitchRgb').textContent = v.toFixed(2);
+    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, v);
   });
 
 
