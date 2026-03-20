@@ -2037,7 +2037,7 @@ void main() {
     float str = uGlitchStrength * mix(0.35, 1.0, intensity);
 
     // RGB split scales with intensity.
-    gRgbSplitPx = uGlitchRgb * mix(1.5, 5.0, intensity);
+    gRgbSplitPx = uGlitchRgb * mix(4.0, 14.0, intensity);
 
     float band = floor(uv.y * uGlitchCols);
     float h1   = glitchHash(band * 137.3 + t);

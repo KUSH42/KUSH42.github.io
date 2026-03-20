@@ -189,7 +189,7 @@ const FS = `
     float str = uGlitchStrength * mix(0.35, 1.0, intensity);
 
     // RGB split scales with intensity.
-    gRgbSplitPx = uGlitchRgb * mix(1.5, 5.0, intensity);
+    gRgbSplitPx = uGlitchRgb * mix(4.0, 14.0, intensity);
 
     float band = floor(uv.y * uGlitchCols);
     float h1   = glitchHash(band * 137.3 + t);
@@ -379,10 +379,10 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   let glitchEndTime  = 0;
 
   const cfg = {
-    glitchEnabled: 0, glitchActive: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30, glitchRgb: 0.5,
+    glitchEnabled: 1, glitchActive: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30, glitchRgb: 0.5,
     glitchMaxDelay: 3.5, glitchMaxBurst: 0.7,
-    hardPix: -1.2, warpMult: 1.0, maskStr: 1.0,
-    grainAmt: 0.04, halationStr: 1.0, convergence: 0.01, scratchStr: 0.35,
+    hardPix: -1.2, warpMult: 2.0, maskStr: 1.0,
+    grainAmt: 0.04, halationStr: 3.0, convergence: 0.07, scratchStr: 0.2,
   };
 
   function uploadTexture() {
