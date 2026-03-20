@@ -525,6 +525,7 @@ html, body { height: 100%; overflow: hidden; }
   height: 100%;
   overflow: hidden;
   background: #000;
+  isolation: isolate;
 }
 
 /* Base image / canvas — desaturate + slight contrast boost for CRT base */
@@ -705,6 +706,7 @@ html, body { height: 100%; overflow: hidden; }
   100%      { opacity: 0.008; }
 }
 .s9-telescreen__static {
+  display: none;
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -716,6 +718,7 @@ html, body { height: 100%; overflow: hidden; }
   animation-delay: 0s, -7.2s;
 }
 .s9-telescreen__static-b {
+  display: none;
   position: absolute;
   inset: 0;
   overflow: hidden;

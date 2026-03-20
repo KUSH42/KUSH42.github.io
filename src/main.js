@@ -25,7 +25,7 @@ import { printLine }                from '../components/command-terminal.js';
 import { THEMES, applyTheme, initTheme } from './ui/theme.js';
 import { startClock }                    from './ui/clock.js';
 import { setupTerminal }                 from './ui/terminal-setup.js';
-import { initRRPanel }                   from './ui/ring-reveal-controls.js';
+import { initRRPanel }                   from './ui/ring-reveal-panel.js';
 import { buildGlobeOverlay }             from './ui/globe-overlay.js';
 import { initMatrixControls }            from './ui/matrix-controls.js';
 import { initTelescreenControls }        from './ui/telescreen-controls.js';

@@ -46,8 +46,6 @@ export function initTelescreenControls(teleCRT) {
   const tsScratchEl   = document.querySelector('.s9-telescreen__scratches');
   const tsVignetteEl  = document.querySelector('.s9-telescreen__vignette');
   const tsScanlinesEl = document.querySelector('.s9-telescreen__scanlines');
-  const tsStaticEl    = document.querySelector('.s9-telescreen__static');
-  const tsStaticBEl   = document.querySelector('.s9-telescreen__static-b');
   const tsPhaseEls    = [
     document.querySelector('.s9-telescreen__phase-a'),
     document.querySelector('.s9-telescreen__phase-b'),
@@ -74,11 +72,7 @@ export function initTelescreenControls(teleCRT) {
   document.getElementById('ts-scanlinesEnabled').addEventListener('change', e => {
     tsScanlinesEl.style.display = e.target.checked ? 'block' : 'none';
   });
-  document.getElementById('ts-staticEnabled').addEventListener('change', e => {
-    const d = e.target.checked ? '' : 'none';
-    tsStaticEl.style.display = d;
-    tsStaticBEl.style.display = d;
-  });
+
   document.getElementById('ts-phaseEnabled').addEventListener('change', e => {
     const d = e.target.checked ? '' : 'none';
     tsPhaseEls.forEach(el => { el.style.display = d; });
