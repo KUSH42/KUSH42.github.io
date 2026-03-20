@@ -292,8 +292,12 @@ void main() {
   vDist = (cellY - headY) / cellStep;
 
   // ── Rain-globe proximity pulse ──────────────────────────────
-  float headGlobeDist = abs(length(vec3(aWX, headY, aWZ)) - 1.0);
-  float globeProxRaw  = 1.0 - smoothstep(0.0, 0.4, headGlobeDist);
+  // Columns orbit at r=3.5–8.0, so 3D sphere-surface distance is always ≥2.5.
+  // Instead use a cylindrical check: pulse when head sweeps through the globe's
+  // Y-span, attenuated by XZ distance from globe surface.
+  float xzProx = 1.0 - smoothstep(1.0, 7.0, length(vec2(aWX, aWZ)) - 1.0);
+  float yProx  = 1.0 - smoothstep(0.0, 1.2, abs(headY));
+  float globeProxRaw = xzProx * yProx;
   vGlobeProx = globeProxRaw * smoothstep(3.0, 0.0, max(vDist, 0.0));
 
   // Tighter culling using per-column trail decay rate:
