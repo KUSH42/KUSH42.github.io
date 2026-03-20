@@ -35,10 +35,6 @@ const FS = `
   uniform float uGlitchSpeed;     // 1 – 30, block-pattern change rate (blocks/sec)
   uniform float uGlitchCols;      // 10 – 80, number of horizontal glitch bands
 
-  // ── Chromatic aberration uniforms ────────────────────────────
-  uniform float uChromaEnabled;   // 0 or 1
-  uniform float uChromaOffset;    // 0 – 0.025, radial R/B separation
-
   // ── CRT shader uniforms ───────────────────────────────────────
   uniform float uHardPix;      // scanline sharpness, negative: -0.5 (soft) – -3.0 (sharp)
   uniform float uWarpMult;     // barrel distortion multiplier: 0 = flat, 1 = default, 2 = strong
@@ -202,14 +198,6 @@ const FS = `
     // 1. Scanline rendering with dynamic beam width
     vec3 col = Tri(pos);
 
-    // 1b. Chromatic aberration — radial R/B split, before phosphor mask
-    if (uChromaEnabled > 0.5 && uChromaOffset > 0.0001) {
-      vec2 dir    = pos - 0.5;
-      vec2 offset = dir * uChromaOffset * 2.0;
-      col.r = Fetch(pos + offset, vec2(0.0)).r;
-      col.b = Fetch(pos - offset, vec2(0.0)).b;
-    }
-
     // 2. Phosphor mask (screen-layer effect)
     col *= mix(vec3(1.0), Mask(gl_FragCoord.xy), uMaskStr);
 
@@ -288,8 +276,6 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       glitchStrength: gl.getUniformLocation(prog, 'uGlitchStrength'),
       glitchSpeed:    gl.getUniformLocation(prog, 'uGlitchSpeed'),
       glitchCols:     gl.getUniformLocation(prog, 'uGlitchCols'),
-      chromaEnabled:  gl.getUniformLocation(prog, 'uChromaEnabled'),
-      chromaOffset:   gl.getUniformLocation(prog, 'uChromaOffset'),
       hardPix:        gl.getUniformLocation(prog, 'uHardPix'),
       warpMult:       gl.getUniformLocation(prog, 'uWarpMult'),
       maskStr:        gl.getUniformLocation(prog, 'uMaskStr'),
@@ -343,10 +329,9 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
   let contextLost = false;
   let animId = 0;
 
-  // Effect parameters (mutated by setGlitch / setChroma / setShader)
+  // Effect parameters (mutated by setGlitch / setShader)
   const cfg = {
     glitchEnabled: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30,
-    chromaEnabled: 0, chromaOffset: 0.006,
     hardPix: -1.2, warpMult: 1.0, maskStr: 1.0,
     grainAmt: 0.04, halationStr: 1.0, convergence: 0.01, scratchStr: 0.35,
   };
@@ -414,8 +399,6 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       gl.uniform1f(glState.uLocs.glitchStrength, cfg.glitchStrength);
       gl.uniform1f(glState.uLocs.glitchSpeed,    cfg.glitchSpeed);
       gl.uniform1f(glState.uLocs.glitchCols,     cfg.glitchCols);
-      gl.uniform1f(glState.uLocs.chromaEnabled,  cfg.chromaEnabled);
-      gl.uniform1f(glState.uLocs.chromaOffset,   cfg.chromaOffset);
       gl.uniform1f(glState.uLocs.hardPix,        cfg.hardPix);
       gl.uniform1f(glState.uLocs.warpMult,       cfg.warpMult);
       gl.uniform1f(glState.uLocs.maskStr,        cfg.maskStr);
@@ -461,14 +444,6 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       if (strength !== undefined) cfg.glitchStrength = strength;
       if (speed    !== undefined) cfg.glitchSpeed    = speed;
       if (cols     !== undefined) cfg.glitchCols     = cols;
-    },
-    /**
-     * @param {boolean} enabled
-     * @param {number}  [offset] 0–0.025 radial R/B separation
-     */
-    setChroma(enabled, offset) {
-      cfg.chromaEnabled = enabled ? 1 : 0;
-      if (offset !== undefined) cfg.chromaOffset = offset;
     },
     /**
      * Tune CRT shader constants.

@@ -31,16 +31,6 @@ export function initTelescreenControls(teleCRT) {
     teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, v);
   });
 
-  // ── Telescreen Chromatic Aberration controls ──────────────────
-  document.getElementById('ts-chromaEnabled').addEventListener('change', e => {
-    const off = document.getElementById('ts-chromaOffset').value / 10000;
-    teleCRT.setChroma(e.target.checked, off);
-  });
-  document.getElementById('ts-chromaOffset').addEventListener('input', e => {
-    const v = e.target.value / 10000;
-    document.getElementById('ts-vChromaOffset').textContent = v.toFixed(4);
-    teleCRT.setChroma(document.getElementById('ts-chromaEnabled').checked, v);
-  });
 
   // ── Telescreen Surface controls ───────────────────────────────
   const tsVignetteEl  = document.querySelector('.s9-telescreen__vignette');
