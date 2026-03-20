@@ -23,21 +23,21 @@ export function initTelescreenControls(teleCRT) {
   const state = {
     // Glitch
     glitchEnabled:  true,
-    glitchStrength: 0.025,
-    glitchSpeed:    8.0,
-    glitchCols:     30,
-    glitchRgb:      0.5,
-    glitchFreq:     3.5,   // maxDelay between bursts (seconds)
-    glitchBurst:    0.7,   // max burst duration (seconds)
+    glitchStrength: 0.01,
+    glitchSpeed:    24.0,
+    glitchCols:     50,
+    glitchRgb:      0.85,
+    glitchFreq:     0.3,   // maxDelay between bursts (seconds)
+    glitchBurst:    0.01,   // max burst duration (seconds)
     // Surface (CSS)
     scratchEnabled:  true,
-    scratchOpacity:  0.2,
+    scratchOpacity:  0.13,
     vignetteEnabled: true,
     vignetteOpacity: 1.0,
-    scanlinesEnabled: false,
+    scanlinesEnabled: true,
     phaseEnabled:    true,
     glowEnabled:     true,
-    glowOpacity:     1.0,
+    glowOpacity:     0.55,
     // CRT shader
     warpMult:    2.0,
     hardPix:     1.2,   // stored positive; negated on send
@@ -80,10 +80,10 @@ export function initTelescreenControls(teleCRT) {
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2), set: () => applyGlitch() },
     { id: 'ts-glitchFreq', valId: 'ts-vGlitchFreq', key: 'glitchFreq',
-      // slider 1–100 → maxDelay 8s–0.3s (inverted: higher = more frequent)
-      toSlider: v => ((8.0 - v) / 7.7) * 100,
-      fromSlider: v => 8.0 - (v / 100) * 7.7,
-      fmt: v => v.toFixed(1) + 's', set: () => applyGlitch() },
+      // slider 1–100 → maxDelay 8s–0.01s (inverted: higher = more frequent)
+      toSlider: v => ((8.0 - v) / 7.99) * 100,
+      fromSlider: v => 8.0 - (v / 100) * 7.99,
+      fmt: v => v < 0.1 ? v.toFixed(3) + 's' : v.toFixed(2) + 's', set: () => applyGlitch() },
     { id: 'ts-glitchBurst', valId: 'ts-vGlitchBurst', key: 'glitchBurst',
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2) + 's', set: () => applyGlitch() },
