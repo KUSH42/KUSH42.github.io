@@ -14,11 +14,11 @@ varying   vec4  vColor;
 void main() {
   vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
 
-  // Depth cue: back-hemisphere particles fade out, front stays bright.
-  // Camera is at z=3, globe radius ~1.  Near particles: -mvPos.z ~ 1.6,
-  // far particles: -mvPos.z ~ 4.4.  Map that range to [1.0, 0.12].
-  float depth  = clamp((-mvPos.z - 1.4) / 3.2, 0.0, 1.0);
-  float depthA = mix(1.0, 0.12, depth);
+  // Depth cue: back-hemisphere particles are dimmer, front stays full bright.
+  // Camera at z=3, globe radius 1.  Front: -mvPos.z~2, back: -mvPos.z~4.
+  // Map that range to alpha [1.0 → 0.35].
+  float depth  = clamp((-mvPos.z - 1.8) / 2.4, 0.0, 1.0);
+  float depthA = mix(1.0, 0.35, depth);
 
   vColor      = vec4(color.rgb, color.a * depthA);
   gl_PointSize = size * (3.0 / -mvPos.z);

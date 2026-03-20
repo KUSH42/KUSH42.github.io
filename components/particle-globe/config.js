@@ -10,7 +10,7 @@ export const DEFAULTS = {
   particleCount: 20_000,
 
   /** Base particle size range (world px) — randomized per particle at spawn */
-  sizeBase: 2.5,
+  sizeBase: 3.5,
   sizeVariance: 1.5,
 
   /** Shell radius range per particle (1.15–1.60 world units) */
@@ -18,7 +18,7 @@ export const DEFAULTS = {
   radiusMax: 1.60,
 
   /** Bloom post-process parameters */
-  bloomStrength:   0.6,
+  bloomStrength:   1.5,
   bloomRadius:     0.4,
   bloomThreshold:  0.25,
 
@@ -46,7 +46,7 @@ export const DEFAULTS = {
   slowFrameCount:  3,
 
   /** Particle alpha */
-  particleAlpha: 0.85,
+  particleAlpha: 1.0,
 
   /** Initial formation mode */
   defaultMode: 'globe',
