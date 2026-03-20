@@ -22,7 +22,7 @@ export function initTelescreenControls(teleCRT) {
   // Edit values here to change defaults; sliders initialise from this object.
   const state = {
     // Glitch
-    glitchEnabled:  false,
+    glitchEnabled:  true,
     glitchStrength: 0.025,
     glitchSpeed:    8.0,
     glitchCols:     30,
@@ -31,7 +31,7 @@ export function initTelescreenControls(teleCRT) {
     glitchBurst:    0.7,   // max burst duration (seconds)
     // Surface (CSS)
     scratchEnabled:  true,
-    scratchOpacity:  0.35,
+    scratchOpacity:  0.2,
     vignetteEnabled: true,
     vignetteOpacity: 1.0,
     scanlinesEnabled: false,
@@ -39,12 +39,12 @@ export function initTelescreenControls(teleCRT) {
     glowEnabled:     true,
     glowOpacity:     1.0,
     // CRT shader
-    warpMult:    1.0,
+    warpMult:    2.0,
     hardPix:     1.2,   // stored positive; negated on send
     maskStr:     1.0,
     grainAmt:    0.04,
-    halationStr: 1.0,
-    convergence: 0.01,
+    halationStr: 3.0,
+    convergence: 0.07,
   };
 
   // ── Glitch apply helper (reads full state) ────────────────────
