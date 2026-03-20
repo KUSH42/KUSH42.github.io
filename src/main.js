@@ -25,7 +25,7 @@ import { printLine }                from '../components/command-terminal.js';
 import { THEMES, applyTheme, initTheme } from './ui/theme.js';
 import { startClock }                    from './ui/clock.js';
 import { setupTerminal }                 from './ui/terminal-setup.js';
-import { initRRPanel }                   from './ui/rr-panel.js';
+import { initRRPanel }                   from './ui/ring-reveal-controls.js';
 import { buildGlobeOverlay }             from './ui/globe-overlay.js';
 import { initMatrixControls }            from './ui/matrix-controls.js';
 import { initTelescreenControls }        from './ui/telescreen-controls.js';
@@ -294,7 +294,7 @@ buildGlobeOverlay(threatEl);
 initMatrixControls(matrixRain);
 
 // ── Telescreen controls ───────────────────────────────────────
-initTelescreenControls(teleCRT, matrixRain);
+initTelescreenControls(teleCRT);
 
 // ── H key toggles the ring reveal panel ──────────────────────
 // ── I key toggles visibility of info/content panels ──────────
