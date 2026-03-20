@@ -43,7 +43,6 @@ export function initTelescreenControls(teleCRT) {
   });
 
   // ── Telescreen Surface controls ───────────────────────────────
-  const tsScratchEl   = document.querySelector('.s9-telescreen__scratches');
   const tsVignetteEl  = document.querySelector('.s9-telescreen__vignette');
   const tsScanlinesEl = document.querySelector('.s9-telescreen__scanlines');
   const tsPhaseEls    = [
@@ -53,13 +52,15 @@ export function initTelescreenControls(teleCRT) {
   ];
   const tsGlowEl      = document.querySelector('.s9-telescreen__glow');
 
+  // Scratches are rendered in the WebGL shader
   document.getElementById('ts-scratchEnabled').addEventListener('change', e => {
-    tsScratchEl.style.display = e.target.checked ? '' : 'none';
+    const v = e.target.checked ? document.getElementById('ts-scratchOpacity').value / 100 : 0;
+    teleCRT.setShader({ scratchStr: v });
   });
   document.getElementById('ts-scratchOpacity').addEventListener('input', e => {
     const v = e.target.value / 100;
     document.getElementById('ts-vScratchOpacity').textContent = v.toFixed(2);
-    tsScratchEl.style.opacity = v;
+    if (document.getElementById('ts-scratchEnabled').checked) teleCRT.setShader({ scratchStr: v });
   });
   document.getElementById('ts-vignetteEnabled').addEventListener('change', e => {
     tsVignetteEl.style.display = e.target.checked ? '' : 'none';
@@ -113,8 +114,8 @@ export function initTelescreenControls(teleCRT) {
     teleCRT.setShader({ halationStr: v });
   });
   document.getElementById('ts-convergence').addEventListener('input', e => {
-    const v = e.target.value / 10000;
-    document.getElementById('ts-vConvergence').textContent = v.toFixed(4);
+    const v = e.target.value / 1000;
+    document.getElementById('ts-vConvergence').textContent = v.toFixed(3);
     teleCRT.setShader({ convergence: v });
   });
 

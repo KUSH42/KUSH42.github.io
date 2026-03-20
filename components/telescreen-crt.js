@@ -45,7 +45,9 @@ const FS = `
   uniform float uMaskStr;      // phosphor mask strength: 0 = off, 1 = full
   uniform float uGrainAmt;     // film grain amount: 0 – 0.15
   uniform float uHalationStr;  // phosphor halation strength: 0 = off, 1 = default
-  uniform float uConvergence;  // convergence error: 0 = off, 0.0007 = default
+  uniform float uConvergence;  // convergence error: 0 = off, 0.01 = subtle, 0.1 = obvious
+  uniform sampler2D tScratch;  // glass scratch overlay (screen blend)
+  uniform float uScratchStr;   // scratch opacity: 0 = off, 0.35 = default
 
   const float scrollRate = 0.325; // scanlines/sec
 
@@ -220,6 +222,12 @@ const FS = `
     float grain = (hash(gl_FragCoord.xy + fract(uTime * 73.0)) * 2.0 - 1.0) * uGrainAmt;
     col += grain;
 
+    // 4b. Glass scratches (screen blend, locked to screen-space not image-space)
+    if (uScratchStr > 0.001) {
+      vec3 sTex = texture2D(tScratch, vUv).rgb;
+      col = 1.0 - (1.0 - col) * (1.0 - sTex * uScratchStr);
+    }
+
     // 5. Corner masking (bezel/overscan fade)
     col *= cornerMask(pos);
 
@@ -288,6 +296,8 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       grainAmt:       gl.getUniformLocation(prog, 'uGrainAmt'),
       halationStr:    gl.getUniformLocation(prog, 'uHalationStr'),
       convergence:    gl.getUniformLocation(prog, 'uConvergence'),
+      scratch:        gl.getUniformLocation(prog, 'tScratch'),
+      scratchStr:     gl.getUniformLocation(prog, 'uScratchStr'),
     };
 
     const tex = gl.createTexture();
@@ -298,11 +308,35 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.uniform1i(uLocs.diffuse, 0);
+    gl.uniform1i(uLocs.scratch, 1); // tScratch → TEXTURE1
 
-    Object.assign(glState, { prog, buf, tex, aPos, uLocs });
+    // Scratch texture — placeholder 1×1 black; real image uploaded by uploadScratch()
+    const scratchTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, scratchTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.activeTexture(gl.TEXTURE0);
+
+    Object.assign(glState, { prog, buf, tex, scratchTex, aPos, uLocs });
   }
 
   initGL();
+
+  // Load scratch overlay image; re-upload on context restore
+  function uploadScratch() {
+    if (!scratchImg.complete || !scratchImg.naturalWidth || !glState.scratchTex) return;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, glState.scratchTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scratchImg);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+  const scratchImg = new Image();
+  scratchImg.onload = uploadScratch;
+  scratchImg.src = '/data/scratches.jpg';
 
   let texReady = false;
   let startTime = null;
@@ -314,7 +348,7 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     glitchEnabled: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30,
     chromaEnabled: 0, chromaOffset: 0.006,
     hardPix: -1.2, warpMult: 1.0, maskStr: 1.0,
-    grainAmt: 0.04, halationStr: 1.0, convergence: 0.0007,
+    grainAmt: 0.04, halationStr: 1.0, convergence: 0.01, scratchStr: 0.35,
   };
 
   function uploadTexture() {
@@ -359,6 +393,7 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
     initGL();
     sizeFeed();
     uploadTexture();
+    uploadScratch();
   });
 
   function render(ts) {
@@ -387,6 +422,9 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
       gl.uniform1f(glState.uLocs.grainAmt,       cfg.grainAmt);
       gl.uniform1f(glState.uLocs.halationStr,    cfg.halationStr);
       gl.uniform1f(glState.uLocs.convergence,    cfg.convergence);
+      gl.uniform1f(glState.uLocs.scratchStr,     cfg.scratchStr);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, glState.scratchTex);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, glState.tex);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -442,13 +480,14 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
      * @param {number} [p.halationStr] halation: 0 = off, 1 = default, 2 = heavy
      * @param {number} [p.convergence] convergence error: 0 = off, 0.0007 = default
      */
-    setShader({ hardPix, warpMult, maskStr, grainAmt, halationStr, convergence } = {}) {
+    setShader({ hardPix, warpMult, maskStr, grainAmt, halationStr, convergence, scratchStr } = {}) {
       if (hardPix     !== undefined) cfg.hardPix     = hardPix;
       if (warpMult    !== undefined) cfg.warpMult    = warpMult;
       if (maskStr     !== undefined) cfg.maskStr     = maskStr;
       if (grainAmt    !== undefined) cfg.grainAmt    = grainAmt;
       if (halationStr !== undefined) cfg.halationStr = halationStr;
       if (convergence !== undefined) cfg.convergence = convergence;
+      if (scratchStr  !== undefined) cfg.scratchStr  = scratchStr;
     },
   };
 }

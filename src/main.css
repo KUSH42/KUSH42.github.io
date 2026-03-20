@@ -602,8 +602,9 @@ html, body { height: 100%; overflow: hidden; }
   z-index: 4;
 }
 
-/* Physical glass scratches — above glow (z5), screen blend so darks are transparent */
+/* Physical glass scratches — rendered in WebGL shader (screen blend), not CSS */
 .s9-telescreen__scratches {
+  display: none;
   position: absolute;
   inset: 0;
   background-image: url('/data/scratches.jpg');
