@@ -227,13 +227,17 @@ const FS = `
     // 0. Glitch distortion (before any texture sampling)
     pos = applyGlitch(pos);
 
-    // 1. Scanline rendering with dynamic beam width
-    vec3 col = Tri(pos);
-
-    // 1b. RGB channel split during active glitch (cheap: two extra Fetch calls for R/B).
+    // 1. Scanline rendering with dynamic beam width.
+    // RGB split applied at UV level (signal corruption before beam reads it),
+    // so shifted R/B channels go through horizontal scanline reconstruction too.
+    vec3 col;
     if (uGlitchEnabled > 0.5 && uGlitchActive > 0.5 && gRgbSplitPx > 0.001) {
-      col.r = Fetch(pos, vec2( gRgbSplitPx, 0.0)).r;
-      col.b = Fetch(pos, vec2(-gRgbSplitPx, 0.0)).b;
+      float splitUv = gRgbSplitPx / iResolution.x;
+      col   = Tri(pos);
+      col.r = Horz5(pos + vec2(splitUv, 0.0), 0.0).r;
+      col.b = Horz5(pos - vec2(splitUv, 0.0), 0.0).b;
+    } else {
+      col = Tri(pos);
     }
 
     // 2. Phosphor mask (screen-layer effect)
@@ -376,6 +380,7 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
 
   const cfg = {
     glitchEnabled: 0, glitchActive: 0, glitchStrength: 0.025, glitchSpeed: 8, glitchCols: 30, glitchRgb: 0.5,
+    glitchMaxDelay: 3.5, glitchMaxBurst: 0.7,
     hardPix: -1.2, warpMult: 1.0, maskStr: 1.0,
     grainAmt: 0.04, halationStr: 1.0, convergence: 0.01, scratchStr: 0.35,
   };
@@ -436,9 +441,9 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
         if (t >= glitchEndTime) {
           cfg.glitchActive = 0;
           if (t >= glitchNextFire) {
-            const dur = 0.08 + Math.random() * 0.7;
+            const dur = 0.08 + Math.random() * cfg.glitchMaxBurst;
             glitchEndTime  = t + dur;
-            glitchNextFire = t + dur + 0.8 + Math.random() * 3.5;
+            glitchNextFire = t + dur + 0.3 + Math.random() * cfg.glitchMaxDelay;
             cfg.glitchActive = 1;
           }
         } else {
@@ -503,13 +508,15 @@ export function initTelescreenCRT(srcImg, feedCvs, glowCvs) {
      * @param {number}  [cols]     10–80 number of horizontal bands
      * @param {number}  [rgb]      0–1 RGB channel split strength
      */
-    setGlitch(enabled, strength, speed, cols, rgb) {
+    setGlitch(enabled, strength, speed, cols, rgb, maxDelay, maxBurst) {
       cfg.glitchEnabled = enabled ? 1 : 0;
       if (!cfg.glitchEnabled) { cfg.glitchActive = 0; glitchNextFire = 0; glitchEndTime = 0; }
       if (strength !== undefined) cfg.glitchStrength = strength;
       if (speed    !== undefined) cfg.glitchSpeed    = speed;
       if (cols     !== undefined) cfg.glitchCols     = cols;
       if (rgb      !== undefined) cfg.glitchRgb      = rgb;
+      if (maxDelay !== undefined) cfg.glitchMaxDelay = maxDelay;
+      if (maxBurst !== undefined) cfg.glitchMaxBurst = maxBurst;
     },
     /**
      * Tune CRT shader constants.

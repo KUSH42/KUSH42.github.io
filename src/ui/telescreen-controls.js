@@ -36,6 +36,17 @@ export function initTelescreenControls(teleCRT) {
     document.getElementById('ts-vGlitchRgb').textContent = v.toFixed(2);
     teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, v);
   });
+  document.getElementById('ts-glitchFreq').addEventListener('input', e => {
+    // slider 1–100 → maxDelay 8s–0.3s (inverted: higher slider = more frequent)
+    const v = 8.0 - (e.target.value / 100) * 7.7;
+    document.getElementById('ts-vGlitchFreq').textContent = v.toFixed(1) + 's';
+    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, undefined, v);
+  });
+  document.getElementById('ts-glitchBurst').addEventListener('input', e => {
+    const v = e.target.value / 100;
+    document.getElementById('ts-vGlitchBurst').textContent = v.toFixed(2) + 's';
+    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, undefined, undefined, v);
+  });
 
 
   // ── Telescreen Surface controls ───────────────────────────────
