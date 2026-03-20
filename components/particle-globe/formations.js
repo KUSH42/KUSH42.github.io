@@ -9,14 +9,15 @@
 import { GLOBE_RADIUS } from '../threat-map/state.js';
 
 // ── Lat/lon wireframe segment cache ──────────────────────────────────────────
-// Built once on first call to globeTargets and reused.
+// Built once on first call to globeTargets and reused.  Invalidated if
+// LAT_RINGS or LON_SEGS change (the cache is keyed to these constants).
 let _wfSegments = null;
 let _wfSegCount  = 0;
 
 function _buildWireframeSegments() {
   const R        = GLOBE_RADIUS;
-  const LAT_RINGS = 18;   // horizontal circles
-  const LON_SEGS  = 36;   // vertical lines
+  const LAT_RINGS = 24;   // horizontal circles
+  const LON_SEGS  = 48;   // vertical lines
   const segs = [];
 
   // Latitude circles (constant-y rings)
@@ -127,11 +128,17 @@ export function globeTargets(count, target) {
   if (!_wfSegments) _buildWireframeSegments();
 
   for (let i = 0; i < count; i++) {
-    const s  = Math.floor(Math.random() * _wfSegCount) * 6;
-    const t  = Math.random();
-    const ix = i * 3;
-    target[ix]   = _wfSegments[s]   + (_wfSegments[s+3] - _wfSegments[s])   * t;
-    target[ix+1] = _wfSegments[s+1] + (_wfSegments[s+4] - _wfSegments[s+1]) * t;
-    target[ix+2] = _wfSegments[s+2] + (_wfSegments[s+5] - _wfSegments[s+2]) * t;
+    const s    = Math.floor(Math.random() * _wfSegCount) * 6;
+    const t    = Math.random();
+    const ix   = i * 3;
+    // Interpolate along the chosen edge
+    const x = _wfSegments[s]   + (_wfSegments[s+3] - _wfSegments[s])   * t;
+    const y = _wfSegments[s+1] + (_wfSegments[s+4] - _wfSegments[s+1]) * t;
+    const z = _wfSegments[s+2] + (_wfSegments[s+5] - _wfSegments[s+2]) * t;
+    // Tiny radial jitter (±3%) so the shell has slight volume
+    const jitter = 1.0 + (Math.random() - 0.5) * 0.06;
+    target[ix]   = x * jitter;
+    target[ix+1] = y * jitter;
+    target[ix+2] = z * jitter;
   }
 }
