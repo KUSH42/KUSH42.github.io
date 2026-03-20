@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { particleVertexShader, particleFragmentShader } from './shaders.js';
 import { DEFAULTS } from './config.js';
-import { shellTargets, vortexTargets, cloudTargets } from './formations.js';
+import { shellTargets, vortexTargets, cloudTargets, globeTargets } from './formations.js';
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -86,8 +86,8 @@ export function createParticleSystem(scene, particleCount, maxCount, colors, par
   points.renderOrder = 5;
   scene.add(points);
 
-  // Compute initial shell targets
-  shellTargets(particleCount, baseR, target);
+  // Compute initial globe targets
+  globeTargets(particleCount, target);
   // Seed CPU pos to match geometry
   pos.set(posArr.subarray(0, maxCount * 3));
 
@@ -221,7 +221,9 @@ export function resizeParticleCount(pState, newCount, alpha = DEFAULTS.particleA
  */
 export function setFormation(pState, mode) {
   const { activeCount, baseR, target } = pState;
-  if (mode === 'shell') {
+  if (mode === 'globe') {
+    globeTargets(activeCount, target);
+  } else if (mode === 'shell') {
     shellTargets(activeCount, baseR, target);
   } else if (mode === 'vortex') {
     vortexTargets(activeCount, baseR, target);

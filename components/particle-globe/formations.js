@@ -6,6 +6,49 @@
  * Float32Arrays from the particle state object.
  */
 
+import { GLOBE_RADIUS } from '../threat-map/state.js';
+
+// ── Lat/lon wireframe segment cache ──────────────────────────────────────────
+// Built once on first call to globeTargets and reused.
+let _wfSegments = null;
+let _wfSegCount  = 0;
+
+function _buildWireframeSegments() {
+  const R        = GLOBE_RADIUS;
+  const LAT_RINGS = 18;   // horizontal circles
+  const LON_SEGS  = 36;   // vertical lines
+  const segs = [];
+
+  // Latitude circles (constant-y rings)
+  for (let j = 1; j < LAT_RINGS; j++) {
+    const phi = Math.PI * j / LAT_RINGS;
+    const y   = R * Math.cos(phi);
+    const r   = R * Math.sin(phi);
+    for (let i = 0; i < LON_SEGS; i++) {
+      const t1 = 2 * Math.PI * i       / LON_SEGS;
+      const t2 = 2 * Math.PI * (i + 1) / LON_SEGS;
+      segs.push(r * Math.cos(t1), y, r * Math.sin(t1),
+                r * Math.cos(t2), y, r * Math.sin(t2));
+    }
+  }
+
+  // Longitude lines (meridians)
+  for (let i = 0; i < LON_SEGS; i++) {
+    const theta = 2 * Math.PI * i / LON_SEGS;
+    const cosT  = Math.cos(theta);
+    const sinT  = Math.sin(theta);
+    for (let j = 0; j < LAT_RINGS; j++) {
+      const phi1 = Math.PI * j       / LAT_RINGS;
+      const phi2 = Math.PI * (j + 1) / LAT_RINGS;
+      segs.push(R * Math.sin(phi1) * cosT, R * Math.cos(phi1), R * Math.sin(phi1) * sinT,
+                R * Math.sin(phi2) * cosT, R * Math.cos(phi2), R * Math.sin(phi2) * sinT);
+    }
+  }
+
+  _wfSegments = new Float32Array(segs);
+  _wfSegCount  = Math.floor(_wfSegments.length / 6);
+}
+
 /**
  * SHELL mode — uniform spherical distribution using the Fibonacci lattice.
  * Produces no clustering at poles. Each particle is placed at baseR[i] * unitVec.
@@ -69,5 +112,26 @@ export function cloudTargets(count, target) {
     target[ix]   = r * Math.sin(phi) * Math.cos(th);
     target[ix+1] = r * Math.cos(phi);
     target[ix+2] = r * Math.sin(phi) * Math.sin(th);
+  }
+}
+
+/**
+ * GLOBE mode — particles distributed along the lat/lon wireframe grid of the
+ * globe sphere. Particles cluster along meridians and latitude circles,
+ * forming a visible wireframe pattern when viewed through bloom.
+ *
+ * @param {number}       count  - Number of active particles to position
+ * @param {Float32Array} target - Output: target positions (count * 3 floats, xyz)
+ */
+export function globeTargets(count, target) {
+  if (!_wfSegments) _buildWireframeSegments();
+
+  for (let i = 0; i < count; i++) {
+    const s  = Math.floor(Math.random() * _wfSegCount) * 6;
+    const t  = Math.random();
+    const ix = i * 3;
+    target[ix]   = _wfSegments[s]   + (_wfSegments[s+3] - _wfSegments[s])   * t;
+    target[ix+1] = _wfSegments[s+1] + (_wfSegments[s+4] - _wfSegments[s+1]) * t;
+    target[ix+2] = _wfSegments[s+2] + (_wfSegments[s+5] - _wfSegments[s+2]) * t;
   }
 }

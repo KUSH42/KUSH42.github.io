@@ -8,10 +8,6 @@ import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass }       from 'three/addons/postprocessing/ShaderPass.js';
-import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
-import { LineMaterial }     from 'three/addons/lines/LineMaterial.js';
-import { LineSegments2 }    from 'three/addons/lines/LineSegments2.js';
-
 import { GLOBE_RADIUS }  from '../threat-map/state.js';
 import { _readCSSColors } from '../threat-map/utils.js';
 import { HoloShader }    from '../threat-map/shaders.js';
@@ -37,27 +33,20 @@ function _parseCSSColor(hex) {
 }
 
 /**
- * Push updated theme colors into all globe materials and the particle color buffer.
+ * Push updated theme colors into the rim material, constellation lines, and particle buffer.
  *
  * @param {object} s     - PGState
  * @param {object} colors - { neonCyan, ... } from _readCSSColors()
  */
 function _applyThemeColors(s, colors) {
-  const c = new THREE.Color(colors.neonCyan || '#00d4b0');
+  const c  = new THREE.Color(colors.neonCyan || '#00d4b0');
   const cv = new THREE.Vector3(c.r, c.g, c.b);
-
-  // Globe line materials
-  s.globeBackMat.color.copy(c);
-  s.globeFrontMat.color.copy(c);
-  s.globeGlowMat.color.copy(c);
 
   // Fresnel rim uniform
   s.rimMesh.material.uniforms.uColor.value.copy(cv);
 
   // Constellation lines color
-  if (s.linesMesh) {
-    s.linesMesh.material.color.copy(c);
-  }
+  if (s.linesMesh) s.linesMesh.material.color.copy(c);
 
   // Particle colors — rewrite color attribute
   const alpha    = DEFAULTS.particleAlpha;
@@ -107,96 +96,8 @@ export function initParticleGlobe(element) {
   );
   camera.position.set(0, 0, DEFAULTS.cameraZ);
 
-  // ── Globe layers (faithful clone of threat-map lines 89–228) ─────────────
+  // ── Fresnel rim — edge glow around the globe silhouette ──────────────────
   const cyanColor = new THREE.Color(colors.neonCyan || '#00d4b0');
-
-  const globeGeo   = new THREE.SphereGeometry(GLOBE_RADIUS, 48, 48);
-  const occluderGeo = new THREE.SphereGeometry(GLOBE_RADIUS * 0.98, 48, 48);
-
-  const wfPositions = new THREE.WireframeGeometry(globeGeo).getAttribute('position').array;
-  const wfLineGeo   = new LineSegmentsGeometry();
-  wfLineGeo.setPositions(wfPositions);
-
-  // Layer 0: ghost back wires
-  const globeBackMat = new LineMaterial({
-    color:       cyanColor,
-    linewidth:   1,
-    transparent: true,
-    opacity:     0.014,
-    depthTest:   true,
-    depthWrite:  false,
-  });
-  globeBackMat.resolution.set(W, H);
-  const globeBack = new LineSegments2(wfLineGeo, globeBackMat);
-  globeBack.renderOrder = 0;
-  scene.add(globeBack);
-
-  // Layer 1a: back-side occluder (depth write, always-depth)
-  const occluderMat = new THREE.MeshBasicMaterial({
-    colorWrite: false,
-    depthWrite: true,
-    depthTest:  true,
-    depthFunc:  THREE.AlwaysDepth,
-    side:       THREE.BackSide,
-  });
-  const occluder = new THREE.Mesh(occluderGeo, occluderMat);
-  occluder.renderOrder = 1;
-  scene.add(occluder);
-
-  // Layer 1b: front-side depth writer
-  const frontOccluderMat = new THREE.MeshBasicMaterial({
-    colorWrite: false,
-    depthWrite: true,
-    depthTest:  true,
-    side:       THREE.FrontSide,
-  });
-  const frontOccluder = new THREE.Mesh(globeGeo, frontOccluderMat);
-  frontOccluder.renderOrder = 1;
-  scene.add(frontOccluder);
-
-  // Layer 1.5: semi-transparent dark surface
-  const globeSurfaceMat = new THREE.MeshBasicMaterial({
-    color:       new THREE.Color('#010e0b'),
-    transparent: true,
-    opacity:     0.72,
-    depthTest:   true,
-    depthWrite:  true,
-    side:        THREE.DoubleSide,
-  });
-  const globeSurface = new THREE.Mesh(globeGeo, globeSurfaceMat);
-  globeSurface.renderOrder = 1;
-  scene.add(globeSurface);
-
-  // Layer 2: visible front wires
-  const globeFrontMat = new LineMaterial({
-    color:       cyanColor,
-    linewidth:   1,
-    transparent: true,
-    opacity:     0.05,
-    depthTest:   true,
-    depthWrite:  false,
-  });
-  globeFrontMat.resolution.set(W, H);
-  const globeFront = new LineSegments2(wfLineGeo, globeFrontMat);
-  globeFront.renderOrder = 2;
-  scene.add(globeFront);
-
-  // Layer 3: glow wireframe (additive)
-  const globeGlowMat = new LineMaterial({
-    color:       cyanColor,
-    linewidth:   1,
-    transparent: true,
-    opacity:     0.03,
-    blending:    THREE.AdditiveBlending,
-    depthTest:   true,
-    depthWrite:  false,
-  });
-  globeGlowMat.resolution.set(W, H);
-  const globeGlow = new LineSegments2(wfLineGeo, globeGlowMat);
-  globeGlow.renderOrder = 3;
-  scene.add(globeGlow);
-
-  // Layer 4: fresnel rim glow
   const rimGeo = new THREE.SphereGeometry(GLOBE_RADIUS, 48, 48);
   const rimMat = new THREE.ShaderMaterial({
     uniforms: {
@@ -319,9 +220,6 @@ export function initParticleGlobe(element) {
     renderer.setSize(rw, rh);
     composer.setSize(rw, rh);
     bloomPass.resolution.set(rw, rh);
-    globeBackMat.resolution.set(rw, rh);
-    globeFrontMat.resolution.set(rw, rh);
-    globeGlowMat.resolution.set(rw, rh);
   });
   resizeObserver.observe(element);
 
@@ -347,13 +245,8 @@ export function initParticleGlobe(element) {
     resumeTimer: null,
     reducedMotion,
 
-    // Globe meshes
-    globeGeo, occluderGeo, rimGeo,
-    globeBack, globeBackMat,
-    occluder, frontOccluder,
-    globeSurface,
-    globeFront, globeFrontMat,
-    globeGlow, globeGlowMat,
+    // Globe — only the fresnel rim remains; particles form the globe body
+    rimGeo,
     rimMesh,
 
     // Particle system (spread from particleState)
@@ -498,12 +391,8 @@ export function destroyParticleGlobe(element) {
   s.particleMat.dispose();
   if (s.linesGeo)  s.linesGeo.dispose();
   if (s.linesMesh) s.linesMesh.material.dispose();
-  s.globeGeo.dispose();
-  s.occluderGeo.dispose();
   s.rimGeo.dispose();
-  s.globeBackMat.dispose();
-  s.globeFrontMat.dispose();
-  s.globeGlowMat.dispose();
+  s.rimMesh.material.dispose();
 
   s.renderer.dispose();
   if (s.renderer.domElement.parentNode) {

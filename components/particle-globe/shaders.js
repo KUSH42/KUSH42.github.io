@@ -14,7 +14,7 @@ varying   vec4  vColor;
 void main() {
   vColor      = color;
   vec4 mvPos  = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = size * (300.0 / -mvPos.z);
+  gl_PointSize = size * (3.0 / -mvPos.z);
   gl_Position  = projectionMatrix * mvPos;
 }
 `;

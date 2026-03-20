@@ -17,6 +17,7 @@ export function initPGPanel(state) {
 
   // ── Formation buttons ─────────────────────────────────────────────────────
   const modeButtons = {
+    globe:  document.getElementById('pg-mode-globe'),
     shell:  document.getElementById('pg-mode-shell'),
     vortex: document.getElementById('pg-mode-vortex'),
     cloud:  document.getElementById('pg-mode-cloud'),
@@ -24,7 +25,6 @@ export function initPGPanel(state) {
 
   function _setActiveMode(mode) {
     setFormation(state, mode);
-    state.params.particleCount; // no change needed — formation uses activeCount
     for (const [key, btn] of Object.entries(modeButtons)) {
       if (btn) btn.classList.toggle('active', key === mode);
     }
@@ -34,8 +34,9 @@ export function initPGPanel(state) {
     if (btn) btn.addEventListener('click', () => _setActiveMode(key));
   }
 
-  // Mark default active
-  if (modeButtons.shell) modeButtons.shell.classList.add('active');
+  // Mark default active (matches DEFAULTS.defaultMode = 'globe')
+  if (modeButtons.globe) modeButtons.globe.classList.add('active');
+  if (modeButtons.shell) modeButtons.shell.classList.remove('active');
 
   // ── Particle count slider ─────────────────────────────────────────────────
   const pgCount  = document.getElementById('pg-count');

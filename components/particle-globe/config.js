@@ -46,10 +46,10 @@ export const DEFAULTS = {
   slowFrameCount:  3,
 
   /** Particle alpha */
-  particleAlpha: 0.7,
+  particleAlpha: 0.85,
 
   /** Initial formation mode */
-  defaultMode: 'shell',
+  defaultMode: 'globe',
 
   /** Camera */
   cameraFov: 45,
