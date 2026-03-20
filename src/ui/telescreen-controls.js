@@ -8,48 +8,7 @@ export function initTelescreenControls(teleCRT) {
     });
   });
 
-  // ── Telescreen Glitch controls ────────────────────────────────
-  document.getElementById('ts-glitchEnabled').addEventListener('change', e => {
-    const str  = document.getElementById('ts-glitchStrength').value / 1000;
-    const spd  = document.getElementById('ts-glitchSpeed').value / 10;
-    const cols = +document.getElementById('ts-glitchCols').value;
-    const rgb  = document.getElementById('ts-glitchRgb').value / 100;
-    teleCRT.setGlitch(e.target.checked, str, spd, cols, rgb);
-  });
-  document.getElementById('ts-glitchStrength').addEventListener('input', e => {
-    const v = e.target.value / 1000;
-    document.getElementById('ts-vGlitchStrength').textContent = v.toFixed(3);
-    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, v);
-  });
-  document.getElementById('ts-glitchSpeed').addEventListener('input', e => {
-    const v = e.target.value / 10;
-    document.getElementById('ts-vGlitchSpeed').textContent = v.toFixed(1);
-    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, v);
-  });
-  document.getElementById('ts-glitchCols').addEventListener('input', e => {
-    const v = +e.target.value;
-    document.getElementById('ts-vGlitchCols').textContent = v;
-    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, v);
-  });
-  document.getElementById('ts-glitchRgb').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vGlitchRgb').textContent = v.toFixed(2);
-    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, v);
-  });
-  document.getElementById('ts-glitchFreq').addEventListener('input', e => {
-    // slider 1–100 → maxDelay 8s–0.3s (inverted: higher slider = more frequent)
-    const v = 8.0 - (e.target.value / 100) * 7.7;
-    document.getElementById('ts-vGlitchFreq').textContent = v.toFixed(1) + 's';
-    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, undefined, v);
-  });
-  document.getElementById('ts-glitchBurst').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vGlitchBurst').textContent = v.toFixed(2) + 's';
-    teleCRT.setGlitch(document.getElementById('ts-glitchEnabled').checked, undefined, undefined, undefined, undefined, undefined, v);
-  });
-
-
-  // ── Telescreen Surface controls ───────────────────────────────
+  // ── DOM refs for CSS-only surface effects ─────────────────────
   const tsVignetteEl  = document.querySelector('.s9-telescreen__vignette');
   const tsScanlinesEl = document.querySelector('.s9-telescreen__scanlines');
   const tsPhaseEls    = [
@@ -57,73 +16,155 @@ export function initTelescreenControls(teleCRT) {
     document.querySelector('.s9-telescreen__phase-b'),
     document.querySelector('.s9-telescreen__phase-c'),
   ];
-  const tsGlowEl      = document.querySelector('.s9-telescreen__glow');
+  const tsGlowEl = document.querySelector('.s9-telescreen__glow');
 
-  // Scratches are rendered in the WebGL shader
-  document.getElementById('ts-scratchEnabled').addEventListener('change', e => {
-    const v = e.target.checked ? document.getElementById('ts-scratchOpacity').value / 100 : 0;
-    teleCRT.setShader({ scratchStr: v });
-  });
-  document.getElementById('ts-scratchOpacity').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vScratchOpacity').textContent = v.toFixed(2);
-    if (document.getElementById('ts-scratchEnabled').checked) teleCRT.setShader({ scratchStr: v });
-  });
-  document.getElementById('ts-vignetteEnabled').addEventListener('change', e => {
-    tsVignetteEl.style.display = e.target.checked ? '' : 'none';
-  });
-  document.getElementById('ts-vignetteOpacity').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vVignetteOpacity').textContent = v.toFixed(2);
-    tsVignetteEl.style.opacity = v;
-  });
-  document.getElementById('ts-scanlinesEnabled').addEventListener('change', e => {
-    tsScanlinesEl.style.display = e.target.checked ? 'block' : 'none';
-  });
+  // ── Single source of truth for all UI defaults ────────────────
+  // Edit values here to change defaults; sliders initialise from this object.
+  const state = {
+    // Glitch
+    glitchEnabled:  false,
+    glitchStrength: 0.025,
+    glitchSpeed:    8.0,
+    glitchCols:     30,
+    glitchRgb:      0.5,
+    glitchFreq:     3.5,   // maxDelay between bursts (seconds)
+    glitchBurst:    0.7,   // max burst duration (seconds)
+    // Surface (CSS)
+    scratchEnabled:  true,
+    scratchOpacity:  0.35,
+    vignetteEnabled: true,
+    vignetteOpacity: 1.0,
+    scanlinesEnabled: false,
+    phaseEnabled:    true,
+    glowEnabled:     true,
+    glowOpacity:     1.0,
+    // CRT shader
+    warpMult:    1.0,
+    hardPix:     1.2,   // stored positive; negated on send
+    maskStr:     1.0,
+    grainAmt:    0.04,
+    halationStr: 1.0,
+    convergence: 0.01,
+  };
 
-  document.getElementById('ts-phaseEnabled').addEventListener('change', e => {
-    const d = e.target.checked ? '' : 'none';
-    tsPhaseEls.forEach(el => { el.style.display = d; });
-  });
-  document.getElementById('ts-glowEnabled').addEventListener('change', e => {
-    tsGlowEl.style.display = e.target.checked ? '' : 'none';
-  });
-  document.getElementById('ts-glowOpacity').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vGlowOpacity').textContent = v.toFixed(2);
-    tsGlowEl.style.opacity = v;
-  });
+  // ── Glitch apply helper (reads full state) ────────────────────
+  function applyGlitch() {
+    teleCRT.setGlitch(
+      state.glitchEnabled,
+      state.glitchStrength,
+      state.glitchSpeed,
+      state.glitchCols,
+      state.glitchRgb,
+      state.glitchFreq,
+      state.glitchBurst,
+    );
+  }
 
-  // ── CRT Shader controls ───────────────────────────────────────
-  document.getElementById('ts-warp').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vWarp').textContent = v.toFixed(2);
-    teleCRT.setShader({ warpMult: v });
-  });
-  document.getElementById('ts-hardPix').addEventListener('input', e => {
-    const v = e.target.value / 10;
-    document.getElementById('ts-vHardPix').textContent = v.toFixed(1);
-    teleCRT.setShader({ hardPix: -v });
-  });
-  document.getElementById('ts-maskStr').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vMaskStr').textContent = v.toFixed(2);
-    teleCRT.setShader({ maskStr: v });
-  });
-  document.getElementById('ts-grain').addEventListener('input', e => {
-    const v = e.target.value / 1000;
-    document.getElementById('ts-vGrain').textContent = v.toFixed(3);
-    teleCRT.setShader({ grainAmt: v });
-  });
-  document.getElementById('ts-halation').addEventListener('input', e => {
-    const v = e.target.value / 100;
-    document.getElementById('ts-vHalation').textContent = v.toFixed(2);
-    teleCRT.setShader({ halationStr: v });
-  });
-  document.getElementById('ts-convergence').addEventListener('input', e => {
-    const v = e.target.value / 1000;
-    document.getElementById('ts-vConvergence').textContent = v.toFixed(3);
-    teleCRT.setShader({ convergence: v });
-  });
+  // ── Binding table ─────────────────────────────────────────────
+  // type 'range'    : { id, valId, key, toSlider, fromSlider, fmt, set }
+  // type 'checkbox' : { id, key, set }
+  const BINDINGS = [
+    // ── Glitch ──
+    { type: 'checkbox', id: 'ts-glitchEnabled', key: 'glitchEnabled',
+      set: () => applyGlitch() },
+    { id: 'ts-glitchStrength', valId: 'ts-vGlitchStrength', key: 'glitchStrength',
+      toSlider: v => v * 1000, fromSlider: v => v / 1000,
+      fmt: v => v.toFixed(3), set: () => applyGlitch() },
+    { id: 'ts-glitchSpeed', valId: 'ts-vGlitchSpeed', key: 'glitchSpeed',
+      toSlider: v => v * 10, fromSlider: v => v / 10,
+      fmt: v => v.toFixed(1), set: () => applyGlitch() },
+    { id: 'ts-glitchCols', valId: 'ts-vGlitchCols', key: 'glitchCols',
+      toSlider: v => v, fromSlider: v => +v,
+      fmt: v => String(v), set: () => applyGlitch() },
+    { id: 'ts-glitchRgb', valId: 'ts-vGlitchRgb', key: 'glitchRgb',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2), set: () => applyGlitch() },
+    { id: 'ts-glitchFreq', valId: 'ts-vGlitchFreq', key: 'glitchFreq',
+      // slider 1–100 → maxDelay 8s–0.3s (inverted: higher = more frequent)
+      toSlider: v => ((8.0 - v) / 7.7) * 100,
+      fromSlider: v => 8.0 - (v / 100) * 7.7,
+      fmt: v => v.toFixed(1) + 's', set: () => applyGlitch() },
+    { id: 'ts-glitchBurst', valId: 'ts-vGlitchBurst', key: 'glitchBurst',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2) + 's', set: () => applyGlitch() },
 
+    // ── Surface — scratches (shader) ──
+    { type: 'checkbox', id: 'ts-scratchEnabled', key: 'scratchEnabled',
+      set: v => teleCRT.setShader({ scratchStr: v ? state.scratchOpacity : 0 }) },
+    { id: 'ts-scratchOpacity', valId: 'ts-vScratchOpacity', key: 'scratchOpacity',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => { if (state.scratchEnabled) teleCRT.setShader({ scratchStr: v }); } },
+
+    // ── Surface — CSS ──
+    { type: 'checkbox', id: 'ts-vignetteEnabled', key: 'vignetteEnabled',
+      set: v => { tsVignetteEl.style.display = v ? '' : 'none'; } },
+    { id: 'ts-vignetteOpacity', valId: 'ts-vVignetteOpacity', key: 'vignetteOpacity',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => { tsVignetteEl.style.opacity = v; } },
+    { type: 'checkbox', id: 'ts-scanlinesEnabled', key: 'scanlinesEnabled',
+      set: v => { tsScanlinesEl.style.display = v ? 'block' : 'none'; } },
+    { type: 'checkbox', id: 'ts-phaseEnabled', key: 'phaseEnabled',
+      set: v => { tsPhaseEls.forEach(el => { el.style.display = v ? '' : 'none'; }); } },
+    { type: 'checkbox', id: 'ts-glowEnabled', key: 'glowEnabled',
+      set: v => { tsGlowEl.style.display = v ? '' : 'none'; } },
+    { id: 'ts-glowOpacity', valId: 'ts-vGlowOpacity', key: 'glowOpacity',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => { tsGlowEl.style.opacity = v; } },
+
+    // ── CRT shader ──
+    { id: 'ts-warp', valId: 'ts-vWarp', key: 'warpMult',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => teleCRT.setShader({ warpMult: v }) },
+    { id: 'ts-hardPix', valId: 'ts-vHardPix', key: 'hardPix',
+      toSlider: v => v * 10, fromSlider: v => v / 10,
+      fmt: v => v.toFixed(1),
+      set: v => teleCRT.setShader({ hardPix: -v }) },
+    { id: 'ts-maskStr', valId: 'ts-vMaskStr', key: 'maskStr',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => teleCRT.setShader({ maskStr: v }) },
+    { id: 'ts-grain', valId: 'ts-vGrain', key: 'grainAmt',
+      toSlider: v => v * 1000, fromSlider: v => v / 1000,
+      fmt: v => v.toFixed(3),
+      set: v => teleCRT.setShader({ grainAmt: v }) },
+    { id: 'ts-halation', valId: 'ts-vHalation', key: 'halationStr',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => teleCRT.setShader({ halationStr: v }) },
+    { id: 'ts-convergence', valId: 'ts-vConvergence', key: 'convergence',
+      toSlider: v => v * 1000, fromSlider: v => v / 1000,
+      fmt: v => v.toFixed(3),
+      set: v => teleCRT.setShader({ convergence: v }) },
+  ];
+
+  // ── Wire bindings: init slider from state, attach event ───────
+  for (const b of BINDINGS) {
+    const el = document.getElementById(b.id);
+    if (!el) continue;
+    const isCheck = b.type === 'checkbox';
+    const valEl   = b.valId ? document.getElementById(b.valId) : null;
+
+    // Initialise control from state
+    if (isCheck) {
+      el.checked = state[b.key];
+    } else {
+      el.value = b.toSlider(state[b.key]);
+      if (valEl) valEl.textContent = b.fmt(state[b.key]);
+    }
+
+    // Apply initial state to target (shader / CSS)
+    b.set(state[b.key]);
+
+    // Wire event
+    el.addEventListener(isCheck ? 'change' : 'input', e => {
+      const raw = isCheck ? e.target.checked : +e.target.value;
+      state[b.key] = isCheck ? raw : b.fromSlider(raw);
+      if (!isCheck && valEl) valEl.textContent = b.fmt(state[b.key]);
+      b.set(state[b.key]);
+    });
+  }
 }
