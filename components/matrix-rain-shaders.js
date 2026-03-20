@@ -576,7 +576,7 @@ void main() {
   col2 += uColor * edgeGlow * trail;
 
   // ── Globe impact pulse — additive glow when head is near globe surface ──
-  float impulseBright = vGlobeProx * trail * mask * 2.5 * uGlobeInteract;
+  float impulseBright = vGlobeProx * trail * mask * 8.0 * uGlobeInteract;
   col2 += vec3(0.6, 1.0, 0.7) * impulseBright;
 
   // ── Normals + Lighting (skipped for dim trail glyphs — saves 4 taps) ──
