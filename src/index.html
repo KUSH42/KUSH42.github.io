@@ -31,6 +31,7 @@
     <span class="topbar__tab topbar__tab--active" data-tab="overview" role="tab" aria-selected="true" tabindex="0">OVERVIEW</span>
     <span class="topbar__tab" data-tab="tactical" role="tab" aria-selected="false" tabindex="0">TACTICAL</span>
     <span class="topbar__tab" data-tab="network" role="tab" aria-selected="false" tabindex="0">NETWORK</span>
+    <span class="topbar__tab" data-tab="particle-globe" role="tab" aria-selected="false" tabindex="0">PARTICLE GLOBE</span>
     <div class="topbar__spacer"></div>
     <div class="topbar__theme-btns" title="SWITCH THEME">
       <button class="topbar__theme-btn topbar__theme-btn--active" data-theme-set="" style="background:#00d4b0" title="MATRIX GREEN"></button>
@@ -262,6 +263,11 @@
 
     </div>
 
+    <!-- VIEW: PARTICLE GLOBE -->
+    <div class="center__view" data-view="particle-globe">
+      <div class="pg-map" data-pg-host style="position:relative;flex:1;min-height:0;width:100%;height:100%;"></div>
+    </div>
+
     <!-- VIEW: NETWORK — Signal Intercept Canvas -->
     <div class="center__view" data-view="network">
 
@@ -398,87 +404,111 @@
     scrollbar-color: var(--panel-border-active) transparent;
   }
   #rr-panel.rr-visible { display: block; }
-  #rr-panel .rr-hdr {
+
+  #pg-panel {
+    display: none;
+    position: fixed;
+    top: 40px; right: 0; bottom: 31px;
+    width: max-content;
+    min-width: 280px;
+    background: rgba(5, 14, 7, 0.97);
+    border-left: 1px solid var(--panel-border-active);
+    z-index: 200;
+    overflow-y: auto;
+    overflow-x: hidden;
+    font-family: var(--font-terminal);
+    font-size: 11px;
+    color: var(--neon-cyan);
+    padding: 8px 10px 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--panel-border-active) transparent;
+  }
+  #pg-panel.pg-visible { display: block; }
+
+  #rr-panel .rr-hdr, #pg-panel .rr-hdr {
     display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid var(--panel-border-active);
     padding-bottom: 6px; margin-bottom: 8px;
   }
-  #rr-panel .rr-hdr-title {
+  #rr-panel .rr-hdr-title, #pg-panel .rr-hdr-title {
     font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
     color: var(--neon-cyan); text-shadow: 0 0 8px var(--neon-cyan);
   }
-  #rr-panel .rr-enable-row {
+  #rr-panel .rr-enable-row, #pg-panel .rr-enable-row {
     display: flex; align-items: center; gap: 6px; font-size: 11px;
     color: var(--text-secondary);
   }
-  #rr-panel .rr-enable-row input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
-  #rr-panel .rr-sec {
+  #rr-panel .rr-enable-row input[type=checkbox], #pg-panel .rr-enable-row input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
+  #rr-panel .rr-sec, #pg-panel .rr-sec {
     font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
     color: var(--panel-border-active); margin: 10px 0 4px;
     border-bottom: 1px solid var(--panel-border-dim);
     padding-bottom: 2px;
   }
-  #rr-panel label {
+  #rr-panel label, #pg-panel label {
     display: flex; align-items: center; gap: 5px;
     margin: 3px 0; line-height: 1.6;
   }
-  #rr-panel .ln { flex: 0 0 108px; color: var(--text-secondary); font-size: 10px; }
-  #rr-panel input[type=range] {
+  #rr-panel .ln, #pg-panel .ln { flex: 0 0 108px; color: var(--text-secondary); font-size: 10px; }
+  #rr-panel input[type=range], #pg-panel input[type=range] {
     flex: 1; min-width: 100px; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
   }
-  #rr-panel .val { flex: 0 0 40px; text-align: right; color: var(--neon-green); font-size: 10px; }
-  #rr-panel select {
+  #rr-panel .val, #pg-panel .val { flex: 0 0 40px; text-align: right; color: var(--neon-green); font-size: 10px; }
+  #rr-panel select, #pg-panel select {
     flex: 1; background: #0b1a0e; color: var(--neon-cyan);
     border: 1px solid var(--panel-border); font-family: var(--font-terminal);
     font-size: 10px; cursor: pointer; padding: 1px 3px;
   }
-  #rr-panel input[type=color] {
+  #rr-panel input[type=color], #pg-panel input[type=color] {
     width: 28px; height: 18px; border: 1px solid var(--panel-border);
     background: #0b1a0e; cursor: pointer; padding: 0;
   }
-  #rr-panel input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
-  #rr-panel .rr-rand-btn {
+  #rr-panel input[type=checkbox], #pg-panel input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
+  #rr-panel .rr-rand-btn, #pg-panel .rr-rand-btn {
     padding: 1px 5px; background: transparent;
     border: 1px solid var(--panel-border); color: var(--text-secondary);
     font-family: var(--font-terminal); font-size: 11px; cursor: pointer;
     transition: color .1s, border-color .1s; flex-shrink: 0;
   }
-  #rr-panel .rr-rand-btn:hover { color: var(--neon-cyan); border-color: var(--panel-border-active); }
-  #rr-panel .rr-btns {
+  #rr-panel .rr-rand-btn:hover, #pg-panel .rr-rand-btn:hover { color: var(--neon-cyan); border-color: var(--panel-border-active); }
+  #rr-panel .rr-btns, #pg-panel .rr-btns {
     display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0;
   }
-  #rr-panel .rr-btns button {
+  #rr-panel .rr-btns button, #pg-panel .rr-btns button {
     flex: 1; min-width: 48px; padding: 3px 4px;
     background: transparent; border: 1px solid var(--panel-border);
     color: var(--text-secondary); font-family: var(--font-terminal);
     font-size: 10px; cursor: pointer; text-align: center;
     transition: color .1s, border-color .1s;
   }
-  #rr-panel .rr-btns button:hover, #rr-panel .rr-btns button.active {
+  #rr-panel .rr-btns button:hover, #rr-panel .rr-btns button.active,
+  #pg-panel .rr-btns button:hover, #pg-panel .rr-btns button.active {
     color: var(--neon-cyan); border-color: var(--panel-border-active);
   }
-  #rr-panel .rr-preset-grid {
+  #rr-panel .rr-preset-grid, #pg-panel .rr-preset-grid {
     display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0;
   }
-  #rr-panel .rr-preset-grid button {
+  #rr-panel .rr-preset-grid button, #pg-panel .rr-preset-grid button {
     padding: 2px 6px; background: transparent;
     border: 1px solid var(--panel-border); color: var(--text-secondary);
     font-family: var(--font-terminal); font-size: 9px; cursor: pointer;
     transition: color .1s, border-color .1s;
   }
   #rr-panel .rr-preset-grid button.active,
-  #rr-panel .rr-preset-grid button:hover {
+  #rr-panel .rr-preset-grid button:hover,
+  #pg-panel .rr-preset-grid button.active,
+  #pg-panel .rr-preset-grid button:hover {
     color: var(--neon-cyan); border-color: var(--panel-border-active);
   }
 
   /* ── Collapsible sections ──────────────────────────────────── */
-  #rr-panel .rr-sec.rr-collapsible { cursor: pointer; user-select: none; }
-  #rr-panel .rr-sec.rr-collapsible::after {
+  #rr-panel .rr-sec.rr-collapsible, #pg-panel .rr-sec.rr-collapsible { cursor: pointer; user-select: none; }
+  #rr-panel .rr-sec.rr-collapsible::after, #pg-panel .rr-sec.rr-collapsible::after {
     content: ' ▸'; color: var(--panel-border-active); font-size: 9px;
   }
-  #rr-panel .rr-sec.rr-collapsible.rr-open::after { content: ' ▾'; }
-  #rr-panel .rr-collapse-body { display: none; }
-  #rr-panel .rr-collapse-body.rr-open { display: block; }
+  #rr-panel .rr-sec.rr-collapsible.rr-open::after, #pg-panel .rr-sec.rr-collapsible.rr-open::after { content: ' ▾'; }
+  #rr-panel .rr-collapse-body, #pg-panel .rr-collapse-body { display: none; }
+  #rr-panel .rr-collapse-body.rr-open, #pg-panel .rr-collapse-body.rr-open { display: block; }
 </style>
 
 <div id="rr-panel">
@@ -856,6 +886,72 @@
     <span class="ln">Morph duration</span>
     <input type="range" id="rr-morphDur" min="0" max="3000" step="50" value="800">
     <span class="val" id="rr-vMorphDur">800</span> ms
+  </label>
+</div>
+
+<!-- ── Particle Globe control panel (toggle with P key) ──────────── -->
+<div id="pg-panel">
+  <div class="rr-hdr">
+    <span class="rr-hdr-title">PARTICLE GLOBE</span>
+    <span id="pg-perf-warn" style="display:none;font-size:9px;color:var(--neon-warn);">PERF: LINES OFF</span>
+  </div>
+
+  <div class="rr-sec">Formation</div>
+  <div class="rr-btns">
+    <button id="pg-mode-shell" class="active">SHELL</button>
+    <button id="pg-mode-vortex">VORTEX</button>
+    <button id="pg-mode-cloud">CLOUD</button>
+  </div>
+
+  <div class="rr-sec">Particles</div>
+  <label>
+    <span class="ln">Count</span>
+    <input type="range" id="pg-count" min="5000" max="30000" step="1000" value="20000">
+    <span class="val" id="pg-vCount">20000</span>
+  </label>
+  <label>
+    <span class="ln">Size</span>
+    <input type="range" id="pg-size" min="50" max="300" value="100">
+    <span class="val" id="pg-vSize">1.0</span>
+  </label>
+
+  <div class="rr-sec">Interaction</div>
+  <label>
+    <span class="ln">Repulsion radius</span>
+    <input type="range" id="pg-repelR" min="10" max="150" value="50">
+    <span class="val" id="pg-vRepelR">0.50</span>
+  </label>
+  <label>
+    <span class="ln">Repulsion strength</span>
+    <input type="range" id="pg-repelS" min="0" max="200" value="60">
+    <span class="val" id="pg-vRepelS">0.006</span>
+  </label>
+  <label>
+    <span class="ln">Spring stiffness</span>
+    <input type="range" id="pg-spring" min="10" max="120" value="40">
+    <span class="val" id="pg-vSpring">0.04</span>
+  </label>
+
+  <div class="rr-sec">Connections</div>
+  <label>
+    <span class="ln">Enable lines</span>
+    <input type="checkbox" id="pg-lines">
+  </label>
+  <label>
+    <span class="ln">Threshold</span>
+    <input type="range" id="pg-thresh" min="10" max="60" value="25">
+    <span class="val" id="pg-vThresh">0.25</span>
+  </label>
+
+  <div class="rr-sec">Rendering</div>
+  <label>
+    <span class="ln">Bloom strength</span>
+    <input type="range" id="pg-bloom" min="0" max="200" value="60">
+    <span class="val" id="pg-vBloom">0.60</span>
+  </label>
+  <label>
+    <span class="ln">Auto-rotate</span>
+    <input type="checkbox" id="pg-autoRotate" checked>
   </label>
 </div>
 

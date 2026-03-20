@@ -29,6 +29,8 @@ import { initRRPanel }                   from './ui/ring-reveal-panel.js';
 import { buildGlobeOverlay }             from './ui/globe-overlay.js';
 import { initMatrixControls }            from './ui/matrix-controls.js';
 import { initTelescreenControls }        from './ui/telescreen-controls.js';
+import { initParticleGlobe, getParticleGlobeState } from '../components/particle-globe/index.js';
+import { initPGPanel }                   from './ui/particle-globe-panel.js';
 
 // ── UTC clock ────────────────────────────────────────────────
 startClock();
@@ -41,6 +43,7 @@ const tabs  = document.querySelectorAll('.topbar__tab[data-tab]');
 const views = document.querySelectorAll('.center__view[data-view]');
 let matrixInited = false;
 let tacticalInited = false;
+let particleGlobeInited = false;
 
 const termEl = document.querySelector('.s9-terminal');
 
@@ -61,6 +64,10 @@ function switchTab(name) {
   if (name === 'tactical' && !tacticalInited) {
     tacticalInited = true;
     _initTacticalView();
+  }
+  if (name === 'particle-globe' && !particleGlobeInited) {
+    particleGlobeInited = true;
+    _initParticleGlobeView();
   }
 
   printLine(termEl, `VIEW: ${name.toUpperCase()} ACTIVATED`, 'sys');
@@ -267,7 +274,20 @@ setupTerminal({
   npCity, npSkyline, npCountry, npPop, npCoords, npThreat, npStatus, nodePopup,
 });
 
+// ── Particle Globe panel ──────────────────────────────────────
+const pgPanel = document.getElementById('pg-panel');
+
+// ── Ring Reveal panel ─────────────────────────────────────────
+const rrPanel = document.getElementById('rr-panel');
+
 // ── Lazy-init views (called from switchTab) ───────────────────
+function _initParticleGlobeView() {
+  const pgEl = document.querySelector('[data-pg-host]');
+  initParticleGlobe(pgEl);
+  const pgState = getParticleGlobeState(pgEl);
+  if (pgState) initPGPanel(pgState);
+  setTimeout(() => pgPanel.classList.add('pg-visible'), 200);
+}
 function _initTacticalView() {
   initTactical(
     document.getElementById('threatmap-tactical'),
@@ -281,9 +301,6 @@ function _initNetworkView() {
     setActiveNode: setMatrixActiveNode,
   });
 }
-
-// ── Ring Reveal panel ─────────────────────────────────────────
-const rrPanel = document.getElementById('rr-panel');
 const rrAnim = getRevealAnim(threatEl);
 initRRPanel(rrAnim);
 
@@ -310,6 +327,8 @@ let infoPanelsHidden = false;
 window.addEventListener('keydown', e => {
   if (e.key === 'h' || e.key === 'H') {
     rrPanel.classList.toggle('rr-visible');
+  } else if (e.key === 'p' || e.key === 'P') {
+    pgPanel.classList.toggle('pg-visible');
   } else if (e.key === 'i' || e.key === 'I') {
     infoPanelsHidden = !infoPanelsHidden;
     infoPanels.forEach(el => el?.classList.toggle('s9-panel--i-hidden', infoPanelsHidden));
