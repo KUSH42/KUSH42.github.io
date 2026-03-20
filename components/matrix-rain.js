@@ -399,48 +399,6 @@ export function initMatrixRain(element, opts = {}) {
     },
     setBurstBloom(on) { s.burstBloomEnabled = on; },
     setGlobeInteract(on) { uniforms.uGlobeInteract.value = on ? 1.0 : 0.0; },
-    setDebugGlobeColumn(enabled) {
-      const attrA = geom.getAttribute('aColA');
-      const attrB = geom.getAttribute('aColB');
-      // 4 debug columns just outside the globe surface (r=1.2, xzProx≈1.0).
-      // speed=1.5 → cycleH≈34 → 22s cycle, head spends ~1.6s in Y±1.2 band.
-      // aYOff=-6 → headY starts at ~2.0, sweeps through Y=0 within ~1.3s of spawn.
-      const debugCols = [
-        { wx:  1.2, wz:  0.0 },
-        { wx:  0.0, wz:  1.2 },
-        { wx: -1.2, wz:  0.0 },
-        { wx:  0.0, wz: -1.2 },
-      ];
-      const lastCol = N_COLS - debugCols.length;
-      for (let d = 0; d < debugCols.length; d++) {
-        const c = lastCol + d;
-        for (let r = 0; r < N_ROWS; r++) {
-          const i4 = (c * N_ROWS + r) * 4;
-          if (enabled) {
-            attrA.array[i4]     = debugCols[d].wx;
-            attrA.array[i4 + 1] = debugCols[d].wz;
-            attrA.array[i4 + 2] = 1.5;   // slow: head visible in proximity band ~1.6s
-            attrA.array[i4 + 3] = d * 0.25; // stagger seeds so heads don't all pulse at once
-            attrB.array[i4]     = -6.0;  // yOff: headY(t=0) = -6+8 = 2, just above equator
-            attrB.array[i4 + 1] = 1.0;   // scale
-            attrB.array[i4 + 2] = 3.0;   // alpha: very bright
-            attrB.array[i4 + 3] = 0.015; // trail decay
-          } else {
-            // Exile: push to outer shell with alpha=0
-            attrA.array[i4]     = R_MIN;
-            attrA.array[i4 + 1] = 0.0;
-            attrA.array[i4 + 2] = 1.0;
-            attrA.array[i4 + 3] = d * 0.25;
-            attrB.array[i4]     = 0.0;
-            attrB.array[i4 + 1] = 1.0;
-            attrB.array[i4 + 2] = 0.0;   // alpha=0: invisible
-            attrB.array[i4 + 3] = 0.015;
-          }
-        }
-      }
-      attrA.needsUpdate = true;
-      attrB.needsUpdate = true;
-    },
     setGlyphChroma(on, scale) { uniforms.uGlyphChroma.value = on ? (scale ?? 1.0) : 0.0; },
     /**
      * @param {boolean} enabled

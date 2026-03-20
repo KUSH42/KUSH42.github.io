@@ -6,7 +6,6 @@ export function initMatrixControls(matrixRain) {
     opacity:      0.45,
     burstBloom:   true,
     globeInteract: true,
-    debugGlobeCols: false,
     chroma:       true,
     chromaScale:  1.0,
     heat:         true,
@@ -47,8 +46,6 @@ export function initMatrixControls(matrixRain) {
       set: v => matrixRain.setBurstBloom(v) },
     { type: 'checkbox', id: 'rain-globeInteract', key: 'globeInteract',
       set: v => matrixRain.setGlobeInteract(v) },
-    { type: 'checkbox', id: 'rain-debugGlobeCols', key: 'debugGlobeCols',
-      set: v => matrixRain.setDebugGlobeColumn(v) },
 
     // chroma checkbox + scale
     { type: 'checkbox', id: 'rain-chroma', key: 'chroma',
