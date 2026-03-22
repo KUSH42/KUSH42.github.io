@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Biblically Accurate WebGPU CRT-Shader — Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
+  <link rel="stylesheet" href="telescreen.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    #demo-screen { width: 100%; height: 100%; }
+
+    .s9-telescreen canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+
+    /* ── Controls overlay ───────────────────────────────────── */
+    #video-bar {
+      position: fixed;
+      bottom: 36px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 200;
+      font-family: var(--font-terminal);
+      font-size: 11px;
+      min-width: min(640px, 90vw);
+      max-width: 90vw;
+    }
+
+    /* Source row */
+    #source-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Player row */
+    #player-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #video-bar label.pick-btn,
+    #video-bar button {
+      background: rgba(0,0,0,0.80);
+      border: 1px solid var(--panel-border, #333);
+      color: var(--neon-cyan, #00d4b0);
+      padding: 4px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: inherit;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #video-bar label.pick-btn:hover,
+    #video-bar button:hover {
+      background: rgba(0, 212, 176, 0.12);
+    }
+    #video-bar input[type="file"] { display: none; }
+
+    #url-input {
+      flex: 1;
+      min-width: 0;
+      background: rgba(0,0,0,0.80);
+      border: 1px solid var(--panel-border, #333);
+      color: var(--neon-cyan, #00d4b0);
+      padding: 4px 8px;
+      font-family: var(--font-terminal);
+      font-size: 11px;
+      letter-spacing: .04em;
+      outline: none;
+    }
+    #url-input::placeholder { color: var(--text-dim, rgba(0,212,176,.35)); }
+    #url-input:focus { border-color: var(--panel-border-active, rgba(0,212,176,.88)); }
+
+    #video-status {
+      flex: 1;
+      font-size: 10px;
+      color: var(--text-dim, #555);
+      letter-spacing: .06em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    /* Play/Pause — square-ish */
+    #btn-playpause {
+      padding: 4px 8px;
+      min-width: 32px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    /* Time display */
+    #time-display {
+      font-family: var(--font-terminal);
+      font-size: 10px;
+      color: var(--text-secondary, rgba(0,212,176,.65));
+      letter-spacing: .04em;
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 72px;
+      text-align: center;
+    }
+
+    /* Seek bar */
+    #seek-bar {
+      flex: 1;
+      min-width: 0;
+      accent-color: var(--neon-cyan, #00d4b0);
+      cursor: pointer;
+      height: 14px;
+    }
+
+    /* Mute button */
+    #btn-mute {
+      padding: 4px 6px;
+      min-width: 28px;
+      text-align: center;
+    }
+
+    /* Volume slider */
+    #vol-bar {
+      width: 70px;
+      flex-shrink: 0;
+      accent-color: var(--neon-cyan, #00d4b0);
+      cursor: pointer;
+      height: 14px;
+    }
+
+    #key-hint {
+      position: fixed;
+      bottom: 8px;
+      left: 10px;
+      font-family: var(--font-terminal);
+      font-size: 10px;
+      color: var(--text-dim);
+      pointer-events: none;
+      z-index: 100;
+      letter-spacing: .08em;
+    }
+
+    #no-webgpu {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #c00;
+      font-family: monospace;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 9999;
+    }
+    #no-webgpu.hidden { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+    .rr-sub-hdr {
+      font-size: 0.7em;
+      opacity: 0.5;
+      padding: 6px 0 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.webgpu.js",
+      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.webgpu.js",
+      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.tsl.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <div id="no-webgpu" class="hidden">
+    <span>WebGPU not available.</span>
+    <span style="font-size:12px;color:#888">This demo requires WebGPU. Try Chrome 113+ or Edge 113+ on a supported GPU.<br>
+    Brave: <code>brave://flags</code> → "Choose ANGLE graphics backend" → Vulkan → relaunch.</span>
+  </div>
+
+  <!-- Fullscreen telescreen -->
+  <div id="demo-screen">
+    <div class="s9-telescreen">
+      <!-- Three.js canvas injected by script -->
+<div class="s9-telescreen__tint"></div>
+      <div class="s9-telescreen__scanlines"></div>
+      <div class="s9-telescreen__vignette"></div>
+      <div class="s9-telescreen__bloom"></div>
+      <div class="s9-telescreen__phase-a"></div>
+      <div class="s9-telescreen__phase-b"></div>
+      <div class="s9-telescreen__phase-c"></div>
+      <div class="s9-telescreen__sag" aria-hidden="true"></div>
+      <div class="s9-telescreen__rollbar" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <!-- Controls overlay -->
+  <div id="video-bar">
+    <!-- Source row -->
+    <div id="source-row">
+      <label class="pick-btn" for="file-input">Load file</label>
+      <input type="file" id="file-input" accept="video/*">
+      <input type="text" id="url-input" placeholder="Direct video URL…" autocomplete="off" spellcheck="false">
+      <button id="btn-load-url">Load</button>
+      <span id="video-status">No video loaded</span>
+      <button id="btn-clear">Clear</button>
+    </div>
+    <!-- Player row -->
+    <div id="player-row">
+      <button id="btn-playpause" title="Play / Pause">⏵</button>
+      <span id="time-display">0:00 / 0:00</span>
+      <input type="range" id="seek-bar" min="0" max="100" step="0.05" value="0">
+      <button id="btn-mute" title="Mute / Unmute">🔊</button>
+      <input type="range" id="vol-bar" min="0" max="100" value="80" title="Volume">
+    </div>
+  </div>
+
+  <!-- Settings panel — toggle with H key -->
+  <div id="rr-panel">
+    <div class="rr-hdr">
+      <span class="rr-hdr-title">CRT Settings</span>
+      <span style="font-size:9px;color:var(--text-dim)">[H] close</span>
+    </div>
+
+    <div class="rr-sec">CRT Preset</div>
+    <div style="padding: 6px 8px;">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <span class="ln" style="min-width:0;flex:1">Archetype</span>
+        <select id="ts-preset" style="flex:1;font-size:10px;">
+          <option value="trinitron">Trinitron KV-27XBR (1996 NTSC)</option>
+          <option value="commodore1084">Commodore 1084S (1987)</option>
+          <option value="pvm14">Sony PVM-14L2 (1991 broadcast)</option>
+          <option value="arcade240p">Wells-Gardner U3000 (1982 arcade)</option>
+          <option value="palTv">Grundig ST 63-751 (1992 PAL)</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-glitch-body">Telescreen Glitch</div>
+    <div id="ts-glitch-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Enable</span>
+        <input type="checkbox" id="ts-glitchEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Strength</span>
+        <input type="range" id="ts-glitchStrength" min="0" max="100" value="10">
+        <span class="val" id="ts-vGlitchStrength">0.010</span>
+      </label>
+      <label>
+        <span class="ln">Speed</span>
+        <input type="range" id="ts-glitchSpeed" min="1" max="300" value="240">
+        <span class="val" id="ts-vGlitchSpeed">24.0</span>
+      </label>
+      <label>
+        <span class="ln">Bands</span>
+        <input type="range" id="ts-glitchCols" min="5" max="100" value="50">
+        <span class="val" id="ts-vGlitchCols">50</span>
+      </label>
+      <label>
+        <span class="ln">RGB split</span>
+        <input type="range" id="ts-glitchRgb" min="0" max="100" value="75">
+        <span class="val" id="ts-vGlitchRgb">0.75</span>
+      </label>
+      <label>
+        <span class="ln">Frequency</span>
+        <input type="range" id="ts-glitchFreq" min="1" max="100" value="50">
+        <span class="val" id="ts-vGlitchFreq">4.00s</span>
+      </label>
+      <label>
+        <span class="ln">Burst length</span>
+        <input type="range" id="ts-glitchBurst" min="1" max="100" value="1">
+        <span class="val" id="ts-vGlitchBurst">0.01s</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-surface-body">Telescreen Surface</div>
+    <div id="ts-surface-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Scratches</span>
+        <input type="checkbox" id="ts-scratchEnabled" checked>
+        <input type="range" id="ts-scratchOpacity" min="0" max="100" value="2">
+        <span class="val" id="ts-vScratchOpacity">0.015</span>
+      </label>
+      <label>
+        <span class="ln">Vignette</span>
+        <input type="checkbox" id="ts-vignetteEnabled" checked>
+        <input type="range" id="ts-vignetteOpacity" min="0" max="100" value="25">
+        <span class="val" id="ts-vVignetteOpacity">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Scanlines</span>
+        <input type="checkbox" id="ts-scanlinesEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Phase bands</span>
+        <input type="checkbox" id="ts-phaseEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Voltage sag</span>
+        <input type="checkbox" id="ts-sagEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Sync rollbar</span>
+        <input type="checkbox" id="ts-rollbarEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Snow</span>
+        <input type="checkbox" id="ts-snowEnabled" checked>
+        <input type="range" id="ts-snow" min="0" max="100" value="5">
+        <span class="val" id="ts-vSnow">0.05</span>
+      </label>
+      <label>
+        <span class="ln">Flicker (50 Hz = EU, 60 Hz = US)</span>
+        <input type="checkbox" id="ts-flickerEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Flicker rate</span>
+        <input type="range" id="ts-flickerRate" min="25" max="120" step="0.1" value="59.4">
+        <span class="val" id="ts-vFlickerRate">59.4 Hz</span>
+      </label>
+      <label>
+        <span class="ln">Flicker decay</span>
+        <input type="range" id="ts-flickerTau" min="1" max="2000" step="1" value="15">
+        <span class="val" id="ts-vFlickerTau">0.15 ms</span>
+      </label>
+      <label>
+        <span class="ln">Decay R (µs)</span>
+        <input type="range" id="ts-flickerTauR" min="5" max="100" step="1" value="15">
+        <span class="val" id="ts-vFlickerTauR">0.15 ms</span>
+      </label>
+      <label>
+        <span class="ln">Decay G (µs)</span>
+        <input type="range" id="ts-flickerTauG" min="1" max="3000" step="1" value="10">
+        <span class="val" id="ts-vFlickerTauG">0.10 ms</span>
+      </label>
+      <label>
+        <span class="ln">Decay B (µs)</span>
+        <input type="range" id="ts-flickerTauB" min="5" max="100" step="1" value="15">
+        <span class="val" id="ts-vFlickerTauB">0.15 ms</span>
+      </label>
+      <label>
+        <span class="ln">Flicker amount</span>
+        <input type="range" id="ts-flickerAmt" min="0" max="100" step="1" value="100">
+        <span class="val" id="ts-vFlickerAmt">1.00</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-shader-body">CRT Shader</div>
+    <div id="ts-shader-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Warp</span>
+        <input type="range" id="ts-warp" min="0" max="300" value="25">
+        <span class="val" id="ts-vWarp">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Pixel sharpness</span>
+        <input type="range" id="ts-hardPix" min="5" max="30" value="30">
+        <span class="val" id="ts-vHardPix">3.0</span>
+      </label>
+      <label>
+        <span class="ln">Scan sharpness</span>
+        <input type="range" id="ts-hardScan" min="4" max="16" value="6">
+        <span class="val" id="ts-vHardScan">6.0</span>
+      </label>
+      <label>
+        <span class="ln">Scroll speed</span>
+        <input type="range" id="ts-scrollRate" min="0" max="200" value="5">
+        <span class="val" id="ts-vScrollRate">0.050</span>
+      </label>
+      <label>
+        <span class="ln">Brightness</span>
+        <input type="range" id="ts-brightBoost" min="50" max="200" value="60">
+        <span class="val" id="ts-vBrightBoost">0.60</span>
+      </label>
+      <label>
+        <span class="ln">Phosphor mask</span>
+        <input type="range" id="ts-maskStr" min="0" max="100" value="100">
+        <span class="val" id="ts-vMaskStr">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Mask type</span>
+        <select id="ts-maskType">
+          <option value="0">Aperture grille</option>
+          <option value="1">Shadow mask</option>
+          <option value="2">Slot mask</option>
+          <option value="3">Grille + damper</option>
+          <option value="4">Delta triad</option>
+          <option value="5">VGA grid</option>
+          <option value="6">Hi-res grille</option>
+          <option value="7">CGWG</option>
+        </select>
+      </label>
+      <!-- maskSmooth: 0 = binary hard stripes, 1 = raised-cosine soft edges.
+           Profiles reach the floor value at stripe boundaries (no cross-channel bleed). -->
+      <label>
+        <span class="ln">Mask smooth</span>
+        <input type="range" id="ts-maskSmooth" min="0" max="100" step="1" value="16">
+        <span class="val" id="ts-vMaskSmooth">0.16</span>
+      </label>
+      <label>
+        <span class="ln">Film grain</span>
+        <input type="range" id="ts-grain" min="0" max="150" value="12">
+        <span class="val" id="ts-vGrain">0.012</span>
+      </label>
+      <label>
+        <span class="ln">Halation</span>
+        <input type="range" id="ts-halation" min="0" max="300" value="200">
+        <span class="val" id="ts-vHalation">2.00</span>
+      </label>
+      <!-- halationSharp: controls vertical Gaussian scatter width.
+           Slider shows positive "softness" value (= -halationSharp).
+           Range: 10 (= -0.10, very wide diffuse scatter) to 250 (= -2.50, tight scanline bleed).
+           Default 40 (= -0.40, approximate crt-royale halation width). -->
+      <label>
+        <span class="ln">Halo softness</span>
+        <input type="range" id="ts-halationSharp" min="10" max="250" step="1" value="40">
+        <span class="val" id="ts-vHalationSharp">0.40</span>
+      </label>
+      <label>
+        <span class="ln">Convergence</span>
+        <input type="range" id="ts-convergence" min="0" max="300" value="36">
+        <span class="val" id="ts-vConvergence">0.036</span>
+      </label>
+      <label>
+        <span class="ln">Conv Static X</span>
+        <input type="range" id="ts-convStaticX" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvStaticX">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv Static Y</span>
+        <input type="range" id="ts-convStaticY" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvStaticY">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv B X</span>
+        <input type="range" id="ts-convBX" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvBX">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv B Y</span>
+        <input type="range" id="ts-convBY" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvBY">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv aspect (0=radial, 1=H-only)</span>
+        <input type="range" id="ts-convAspect" min="0" max="100" step="1" value="100">
+        <span class="val" id="ts-vConvAspect">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Kernel gamma</span>
+        <input type="range" id="ts-kernelGamma" min="100" max="350" step="1" value="250">
+        <span class="val" id="ts-vKernelGamma">2.50</span>
+      </label>
+      <label>
+        <span class="ln">H-swim</span>
+        <input type="range" id="ts-swim" min="0" max="100" value="10">
+        <span class="val" id="ts-vSwim">0.20</span>
+      </label>
+      <label>
+        <span class="ln">9300K temp</span>
+        <input type="range" id="ts-colorTemp" min="0" max="100" value="0">
+        <span class="val" id="ts-vColorTemp">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Mask pitch scale</span>
+        <input type="range" id="ts-maskScale" min="50" max="400" step="1" value="100">
+        <span class="val" id="ts-vMaskScale">1.00×</span>
+      </label>
+      <label>
+        <span class="ln">Edge defocus</span>
+        <input type="range" id="ts-defocus" min="0" max="100" step="1" value="66">
+        <span class="val" id="ts-vDefocus">0.66</span>
+      </label>
+      <label>
+        <span class="ln">P22 primaries</span>
+        <input type="range" id="ts-p22" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vP22">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Black level</span>
+        <input type="range" id="ts-blackLevel" min="0" max="2" step="1" value="0">
+        <span class="val" id="ts-vBlackLevel">0.000</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-bloom-body">GPU Bloom</div>
+    <div id="ts-bloom-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Enable GPU bloom</span>
+        <input type="checkbox" id="ts-bloomEnabled">
+      </label>
+      <label>
+        <span class="ln">Strength</span>
+        <input type="range" id="ts-bloomStrength" min="0" max="200" step="1" value="25">
+        <span class="val" id="ts-vBloomStrength">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Radius</span>
+        <input type="range" id="ts-bloomRadius" min="10" max="400" step="1" value="180">
+        <span class="val" id="ts-vBloomRadius">1.80</span>
+      </label>
+      <label>
+        <span class="ln">Threshold</span>
+        <input type="range" id="ts-bloomThreshold" min="0" max="100" step="1" value="5">
+        <span class="val" id="ts-vBloomThreshold">0.05</span>
+      </label>
+      <label>
+        <span class="ln">Core radius</span>
+        <input type="range" id="ts-bloomCoreRadius" min="0" max="100" step="1" value="35">
+        <span class="val" id="ts-vBloomCoreRadius">0.35</span>
+      </label>
+      <label>
+        <span class="ln">Core strength</span>
+        <input type="range" id="ts-bloomCoreStrength" min="0" max="200" step="1" value="60">
+        <span class="val" id="ts-vBloomCoreStrength">0.60</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-perf-body">Performance</div>
+    <div id="ts-perf-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Phosphor persistence</span>
+        <input type="checkbox" id="ts-persistenceEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Persistence amount</span>
+        <input type="range" id="ts-persistence" min="0" max="70" step="1" value="50">
+        <span class="val" id="ts-vPersistence">0.50</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible rr-open" data-target="ts-accuracy-body">Accuracy</div>
+    <div id="ts-accuracy-body" class="rr-collapse-body rr-open">
+      <label>
+        <span class="ln">Source preset</span>
+        <select id="ts-sourcePreset">
+          <option value="">— pick —</option>
+          <option value="0,0">Output res (0×0)</option>
+          <option value="240,240">VHS / composite (240×240)</option>
+          <option value="320,200">CGA / EGA (320×200)</option>
+          <option value="320,240">SD / PSX / N64 (320×240)</option>
+          <option value="320,480">NTSC interlaced (320×480)</option>
+          <option value="384,288">PAL broadcast (384×288)</option>
+          <option value="640,480">SVGA / early 3D (640×480)</option>
+        </select>
+      </label>
+      <label>
+        <span class="ln">Source width (0=output)</span>
+        <input type="number" id="ts-sourceSizeX" min="0" max="3840" step="1" value="0" style="width:5em">
+      </label>
+      <label>
+        <span class="ln">Source height (0=output)</span>
+        <input type="number" id="ts-sourceSizeY" min="0" max="2160" step="1" value="0" style="width:5em">
+      </label>
+      <label>
+        <span class="ln">Interlace</span>
+        <input type="checkbox" id="ts-interlace">
+      </label>
+      <label>
+        <span class="ln">Halo warmth</span>
+        <input type="range" id="ts-halationWarm" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vHalationWarm">0.00</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-interference-body">Interference</div>
+    <div id="ts-interference-body" class="rr-collapse-body">
+      <div class="rr-sub-hdr">Hum Bar</div>
+      <label>
+        <span class="ln">Hum bar amount</span>
+        <input type="range" id="ts-humAmt" min="0" max="400" step="1" value="22">
+        <span class="val" id="ts-vHumAmt">0.022</span>
+      </label>
+      <label>
+        <span class="ln">Hum bars (1=fundamental, 2=2nd harmonic)</span>
+        <input type="range" id="ts-humBars" min="1" max="3" step="1" value="1">
+        <span class="val" id="ts-vHumBars">1</span>
+      </label>
+      <label>
+        <span class="ln">Hum bar drift (Hz beat)</span>
+        <input type="range" id="ts-humRate" min="0" max="500" step="1" value="60">
+        <span class="val" id="ts-vHumRate">0.060 Hz</span>
+      </label>
+      <div class="rr-sub-hdr">Ghosting / Multipath</div>
+      <label>
+        <span class="ln">Ghost offset (px)</span>
+        <input type="range" id="ts-ghostOffset" min="-80" max="80" step="1" value="0">
+        <span class="val" id="ts-vGhostOffset">0 px</span>
+      </label>
+      <label>
+        <span class="ln">Ghost strength</span>
+        <input type="range" id="ts-ghostStr" min="-300" max="300" step="1" value="0">
+        <span class="val" id="ts-vGhostStr">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Ghost tint R</span>
+        <input type="range" id="ts-ghostTintR" min="50" max="150" step="1" value="100">
+        <span class="val" id="ts-vGhostTintR">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Ghost tint G</span>
+        <input type="range" id="ts-ghostTintG" min="50" max="150" step="1" value="97">
+        <span class="val" id="ts-vGhostTintG">0.97</span>
+      </label>
+      <label>
+        <span class="ln">Ghost tint B</span>
+        <input type="range" id="ts-ghostTintB" min="50" max="150" step="1" value="104">
+        <span class="val" id="ts-vGhostTintB">1.04</span>
+      </label>
+      <div class="rr-sub-hdr">AGC Hunting</div>
+      <label>
+        <span class="ln">AGC hunting amount</span>
+        <input type="range" id="ts-agcAmt" min="0" max="200" step="1" value="12">
+        <span class="val" id="ts-vAgcAmt">0.012</span>
+      </label>
+      <label>
+        <span class="ln">AGC rate (Hz)</span>
+        <input type="range" id="ts-agcRate" min="3" max="40" step="1" value="12">
+        <span class="val" id="ts-vAgcRate">1.2 Hz</span>
+      </label>
+      <div class="rr-sub-hdr">Dot Crawl &amp; Burst-Loss</div>
+      <label>
+        <span class="ln">Dot crawl amount</span>
+        <input type="range" id="ts-dotCrawlAmt" min="0" max="500" step="1" value="90">
+        <span class="val" id="ts-vDotCrawlAmt">0.090</span>
+      </label>
+      <label>
+        <span class="ln">Burst-loss desaturation</span>
+        <input type="range" id="ts-glitchBurstLoss" min="0" max="100" step="1" value="70">
+        <span class="val" id="ts-vGlitchBurstLoss">0.70</span>
+      </label>
+      <div class="rr-sub-hdr">VBI Bleed</div>
+      <label>
+        <span class="ln">VBI bleed amount</span>
+        <input type="range" id="ts-vbiStr" min="0" max="100" step="1" value="7">
+        <span class="val" id="ts-vVbiStr">0.07</span>
+      </label>
+      <label>
+        <span class="ln">VBI bleed rows</span>
+        <input type="range" id="ts-vbiLines" min="1" max="8" step="1" value="3">
+        <span class="val" id="ts-vVbiLines">3</span>
+      </label>
+    </div>
+  </div>
+
+  <div id="key-hint">[ H ] settings</div>
+
+  <script type="module">
+    import * as THREE                                    from 'three/webgpu';
+    import { initTelescreenCRTWebGPU,
+             loadBloomDependencies }                    from './telescreen-crt-webgpu.js';
+    import { initTelescreenCRTControls }               from './telescreen-controls-webgpu.js';
+    import { PRESETS }                                  from './crt-presets.js';
+
+    await loadBloomDependencies();
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let mode = 'none';     // 'none' | 'local'
+    let isMuted = false;
+    let currentVolume = 80;
+    let prevObjectUrl = null;
+    let seekDragging = false;
+    let pollId = null;
+    let canPlayHandler = null;  // pending setVideoSource deferred to canplay
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function fmtTime(s) {
+      if (!isFinite(s) || s < 0) return '0:00';
+      const m = Math.floor(s / 60);
+      return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+    }
+
+    // ── DOM refs ─────────────────────────────────────────────────────────────
+    const statusEl      = document.getElementById('video-status');
+    const btnPlayPause  = document.getElementById('btn-playpause');
+    const btnMute       = document.getElementById('btn-mute');
+    const btnClear      = document.getElementById('btn-clear');
+    const btnLoadUrl    = document.getElementById('btn-load-url');
+    const seekBar       = document.getElementById('seek-bar');
+    const volBar        = document.getElementById('vol-bar');
+    const timeDisplay   = document.getElementById('time-display');
+    const urlInput      = document.getElementById('url-input');
+    const fileInput     = document.getElementById('file-input');
+
+    // ── Overlay canvas setup ─────────────────────────────────────────────────
+    function makeOverlayCanvas(w, h) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      return c;
+    }
+
+    function drawOverlay(ctx, w, h, showDot, label) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.font = '13px "Share Tech Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(0, 212, 176, 0.9)';
+      ctx.fillText(label, 14, h - 14);
+      ctx.fillStyle = 'rgba(255, 55, 55, 1.0)';
+      const recX = w - 90;
+      if (showDot) ctx.fillText('●', recX, 30);
+      ctx.fillText('REC', recX + 12, 32);
+    }
+
+    function makeSMPTETexture() {
+      const w = 640, h = 480;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      const bars = ['#C0C0C0','#C0C000','#00C0C0','#00C000','#C000C0','#C00000','#0000C0'];
+      const bw = w / bars.length;
+      bars.forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(i * bw, 0, bw, h * 0.67);
+      });
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, h * 0.67, w, h * 0.33);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(w * 0.10, h * 0.74, w * 0.12, h * 0.16);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(w * 0.34, h * 0.74, w * 0.32, h * 0.16);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(w * 0.78, h * 0.74, w * 0.12, h * 0.16);
+      ctx.fillStyle = 'rgba(192,192,192,0.9)';
+      ctx.font = 'bold 26px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('TELESCREEN-CRT WEBGPU', w / 2, h * 0.56);
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(192,192,192,0.65)';
+      ctx.fillText('load a file or press H for settings', w / 2, h * 0.63);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    // Hidden <video> element for local video / direct URL playback.
+    const videoEl       = document.createElement('video');
+    videoEl.loop        = true;
+    videoEl.playsInline = true;
+
+    async function boot() {
+      const wrapper = document.querySelector('.s9-telescreen');
+
+      const canvas = document.createElement('canvas');
+      canvas.setAttribute('aria-label', 'CRT feed');
+      wrapper.insertBefore(canvas, wrapper.firstChild);
+
+      const renderer = new THREE.WebGPURenderer({ canvas, antialias: false });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.NoToneMapping;
+
+      try {
+        await renderer.init();
+      } catch (e) {
+        document.getElementById('no-webgpu').classList.remove('hidden');
+        console.error('WebGPU init failed:', e);
+        return;
+      }
+
+      if (!renderer.backend?.isWebGPUBackend) {
+        document.getElementById('no-webgpu').classList.remove('hidden');
+        return;
+      }
+
+      const scene  = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      let videoAspect = 16 / 9;
+      const camera = new THREE.OrthographicCamera(
+        -videoAspect / 2, videoAspect / 2,
+        0.5, -0.5,
+        0.1, 10
+      );
+      camera.position.z = 1;
+
+      // SMPTE test pattern — default source, hidden when video is loaded.
+      // z=0.005: sits in front of the video mesh (z=0) so the black DataTexture
+      // placeholder doesn't bleed through in SMPTE mode.
+      const smpteMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(videoAspect, 1.0),
+        new THREE.MeshBasicMaterial({ map: makeSMPTETexture() })
+      );
+      smpteMesh.position.z = 0.005;
+      scene.add(smpteMesh);
+
+      const OW = 640, OH = 360;
+      const overlayCanvas = makeOverlayCanvas(OW, OH);
+      const overlayCtx    = overlayCanvas.getContext('2d');
+      const overlayTex    = new THREE.CanvasTexture(overlayCanvas);
+      overlayTex.colorSpace = THREE.SRGBColorSpace;
+      const overlayPlane  = new THREE.Mesh(
+        new THREE.PlaneGeometry(videoAspect, 1.0),
+        new THREE.MeshBasicMaterial({ map: overlayTex, transparent: true })
+      );
+      overlayPlane.position.z = 0.01;
+      scene.add(overlayPlane);
+
+      let recDot = true;
+      let overlayLabel = 'CH-01 // SMPTE-TEST // LIVE';
+      drawOverlay(overlayCtx, OW, OH, recDot, overlayLabel);
+      overlayTex.needsUpdate = true;
+      const recInterval = setInterval(() => {
+        recDot = !recDot;
+        drawOverlay(overlayCtx, OW, OH, recDot, overlayLabel);
+        overlayTex.needsUpdate = true;
+      }, 600);
+
+      const crt = initTelescreenCRTWebGPU(renderer, scene, camera, {
+        scratchUrl:  './data/scratches.jpg',
+        autoRender:  true,
+        videoSource: videoEl,
+        bloom: { enabled: true, strength: 0.25, radius: 1.8, threshold: 0.0 },
+      });
+      // Replace the blank VideoTexture (no src → invalid GPU texture view) with a
+      // valid 1×1 black DataTexture until the user actually loads a video file.
+      crt.setVideoSource(null);
+
+      videoEl.addEventListener('loadedmetadata', () => {
+        if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+          videoAspect = videoEl.videoWidth / videoEl.videoHeight;
+          overlayPlane.geometry.dispose();
+          overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          updateCamera();
+        }
+      });
+
+      // Pass PRESETS so the preset picker is populated. Do NOT call crt.setShader() here
+      // with a preset's sourceSizeX/Y — fitPlane manages source size from the video element.
+      // applyPreset() already strips sourceSizeX/Y, so the picker is safe to use at runtime.
+      initTelescreenCRTControls(crt, { presets: PRESETS });
+
+      // ── Camera fit — keeps content aspect ratio with letterbox/pillarbox ────
+      function updateCamera() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const S = w / h;
+        const A = videoAspect;
+        if (S >= A) {
+          camera.top    =  0.5;
+          camera.bottom = -0.5;
+          camera.left   = -S / 2;
+          camera.right  =  S / 2;
+        } else {
+          camera.left   = -A / 2;
+          camera.right  =  A / 2;
+          camera.top    =  A / (2 * S);
+          camera.bottom = -A / (2 * S);
+        }
+        camera.updateProjectionMatrix();
+      }
+
+      // ── Playback polling ────────────────────────────────────────────────────
+      function startPoll() {
+        stopPoll();
+        pollId = setInterval(() => {
+          if (seekDragging) return;
+          const cur = videoEl.currentTime;
+          const dur = isFinite(videoEl.duration) ? videoEl.duration : 0;
+          if (dur > 0) {
+            seekBar.value = (cur / dur) * 100;
+            timeDisplay.textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+          }
+          updatePlayPauseBtn();
+        }, 300);
+      }
+
+      function stopPoll() {
+        if (pollId !== null) { clearInterval(pollId); pollId = null; }
+      }
+
+      function updatePlayPauseBtn() {
+        btnPlayPause.textContent = (!videoEl.paused && !videoEl.ended) ? '⏸' : '⏵';
+      }
+
+      // ── Mode switching ──────────────────────────────────────────────────────
+      function clearSource() {
+        stopPoll();
+        if (canPlayHandler) {
+          videoEl.removeEventListener('canplay', canPlayHandler);
+          canPlayHandler = null;
+        }
+        videoEl.pause();
+        videoEl.src = '';
+        if (prevObjectUrl) { URL.revokeObjectURL(prevObjectUrl); prevObjectUrl = null; }
+        crt.setVideoSource(null);
+        mode = 'none';
+        seekBar.value = 0;
+        timeDisplay.textContent = '0:00 / 0:00';
+        btnPlayPause.textContent = '⏵';
+        statusEl.textContent = 'No video loaded';
+        // Restore SMPTE and reset camera to 16:9
+        smpteMesh.visible = true;
+        videoAspect = 16 / 9;
+        overlayPlane.geometry.dispose();
+        overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+        updateCamera();
+        overlayLabel = 'CH-01 // SMPTE-TEST // LIVE';
+      }
+
+      function loadLocalVideo(src, label) {
+        clearSource();
+        prevObjectUrl = src.startsWith('blob:') ? src : null;
+        smpteMesh.visible = false;
+        overlayLabel = 'CH-02 // VIDEO-SRC // LIVE';
+        mode = 'local';
+        videoEl.volume = currentVolume / 100;
+        videoEl.muted  = isMuted;
+        videoEl.src    = src;
+        videoEl.load();
+        // Defer setVideoSource until the browser has a decodable frame — a
+        // VideoTexture with no frame data causes a WebGPU bind group error.
+        canPlayHandler = () => {
+          canPlayHandler = null;
+          crt.setVideoSource(videoEl);
+        };
+        videoEl.addEventListener('canplay', canPlayHandler, { once: true });
+        // Try with audio; fall back to muted if autoplay policy blocks it.
+        videoEl.play().catch(() => {
+          videoEl.muted = true;
+          isMuted = true;
+          btnMute.textContent = '🔇';
+          volBar.value = 0;
+          videoEl.play().catch(() => {});
+        });
+        statusEl.textContent = label;
+        startPoll();
+      }
+
+      // ── Control event listeners ─────────────────────────────────────────────
+      fileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        loadLocalVideo(URL.createObjectURL(file), file.name);
+        e.target.value = '';
+      });
+
+      btnLoadUrl.addEventListener('click', () => {
+        const url = urlInput.value.trim();
+        if (!url) return;
+        const label = url.split('/').pop().split('?')[0] || 'video';
+        loadLocalVideo(url, label);
+        urlInput.value = '';
+      });
+
+      urlInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') btnLoadUrl.click();
+      });
+
+      btnClear.addEventListener('click', clearSource);
+
+      btnPlayPause.addEventListener('click', () => {
+        if (videoEl.paused) videoEl.play().catch(() => {});
+        else videoEl.pause();
+        updatePlayPauseBtn();
+      });
+
+      // Seek bar — pause polling while dragging to avoid feedback
+      seekBar.addEventListener('mousedown',  () => { seekDragging = true; });
+      seekBar.addEventListener('touchstart', () => { seekDragging = true; }, { passive: true });
+      seekBar.addEventListener('input', () => {
+        const dur = isFinite(videoEl.duration) ? videoEl.duration : 0;
+        if (dur > 0) videoEl.currentTime = (seekBar.value / 100) * dur;
+      });
+      seekBar.addEventListener('change', () => { seekDragging = false; });
+
+      // Volume
+      volBar.addEventListener('input', () => {
+        currentVolume = parseInt(volBar.value, 10);
+        isMuted = currentVolume === 0;
+        btnMute.textContent = isMuted ? '🔇' : '🔊';
+        videoEl.volume = currentVolume / 100;
+        videoEl.muted  = isMuted;
+      });
+
+      // Mute toggle
+      btnMute.addEventListener('click', () => {
+        isMuted = !isMuted;
+        btnMute.textContent = isMuted ? '🔇' : '🔊';
+        volBar.value = isMuted ? 0 : currentVolume;
+        videoEl.muted = isMuted;
+      });
+
+      // Sync time display while video plays (local)
+      videoEl.addEventListener('play',  updatePlayPauseBtn);
+      videoEl.addEventListener('pause', updatePlayPauseBtn);
+      videoEl.addEventListener('ended', updatePlayPauseBtn);
+
+      // ── Resize handling ───────────────────────────────────────────────────
+      function onResize() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h, false);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        updateCamera();
+      }
+      window.addEventListener('resize', onResize);
+      onResize(); // apply on first frame
+
+      // ── Source resolution preset ───────────────────────────────────────────
+      document.getElementById('ts-sourcePreset').addEventListener('change', e => {
+        if (!e.target.value) return;
+        const [w, h] = e.target.value.split(',').map(Number);
+        const xEl = document.getElementById('ts-sourceSizeX');
+        const yEl = document.getElementById('ts-sourceSizeY');
+        xEl.value = w;
+        yEl.value = h;
+        // Fire change events so the controls module picks them up
+        xEl.dispatchEvent(new Event('change'));
+        yEl.dispatchEvent(new Event('change'));
+        e.target.value = ''; // reset to placeholder so re-selecting same value still fires
+      });
+
+      // ── H key panel toggle ─────────────────────────────────────────────────
+      const panel = document.getElementById('rr-panel');
+      const hint  = document.getElementById('key-hint');
+      window.addEventListener('keydown', e => {
+        if (e.target === urlInput) return; // don't steal 'h' while typing
+        if (e.key === 'h' || e.key === 'H') {
+          panel.classList.toggle('rr-visible');
+          hint.textContent = panel.classList.contains('rr-visible') ? '' : '[ H ] settings';
+        }
+      });
+    }
+
+    boot().catch(e => {
+      document.getElementById('no-webgpu').classList.remove('hidden');
+      console.error('telescreen-crt-webgpu boot error:', e);
+    });
+  </script>
+</body>
+</html>

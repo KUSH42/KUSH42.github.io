@@ -1,0 +1,373 @@
+/* ============================================================
+   telescreen.css — Telescreen CRT component styles
+   Covers: CSS variables, settings panel, telescreen layers.
+   ============================================================ */
+
+/* ── CSS custom properties ──────────────────────────────────── */
+:root {
+  --font-terminal: "Share Tech Mono", "Courier New", monospace;
+  --neon-cyan:  #00d4b0;
+  --neon-green: #00ff70;
+  --neon-alert: #ff8c00;
+  --neon-warn:  #b0ff44;
+  --text-primary:   #00d4b0;
+  --text-secondary: rgba(0, 212, 176, .65);
+  --text-dim:       rgba(0, 212, 176, .35);
+  --panel-bg-solid:      #0b1a0e;
+  --panel-border:        rgba(0, 190, 90, .25);
+  --panel-border-active: rgba(0, 212, 176, .88);
+  --panel-border-dim:    rgba(0, 170, 80, .1);
+}
+
+/* ── Keyframes ──────────────────────────────────────────────── */
+@keyframes status-blink {
+  0%, 49% { opacity: 1;  }
+  50%, to  { opacity: .1; }
+}
+
+/* Phase interference bands — brightness only (neutral white), no colour tint.
+   Real CRT magnetic/capacitor interference modulates luminance, not hue. */
+@keyframes ts-phase-a {
+  0%   { transform: translateY(-100%); opacity: 0;    }
+  8%   {                               opacity: 0.08; }
+  45%  {                               opacity: 0.05; }
+  92%  {                               opacity: 0.08; }
+  100% { transform: translateY(110%);  opacity: 0;    }
+}
+@keyframes ts-phase-b {
+  0%   { transform: translateY(-100%); opacity: 0;    }
+  12%  {                               opacity: 0.06; }
+  55%  {                               opacity: 0.03; }
+  88%  {                               opacity: 0.06; }
+  100% { transform: translateY(110%);  opacity: 0;    }
+}
+/* Phase-c: sudden banding flash (sync transient) — steps(1) keeps it sharp */
+@keyframes ts-phase-c {
+  0%,  89%  { opacity: 0;    transform: translateY(30%);  }
+  90%       { opacity: 0.18; transform: translateY(28%);  }
+  91%       { opacity: 0.09; transform: translateY(32%);  }
+  92%       { opacity: 0.22; transform: translateY(27%);  }
+  93%       { opacity: 0;    transform: translateY(35%);  }
+  100%      { opacity: 0;    transform: translateY(35%);  }
+}
+
+
+/* Voltage sag — mains-frequency power dip dims the screen for ~2 s,
+   then recovers. Modelled as a black overlay: 0 opacity most of the time,
+   peaking mid-event. 88 s total cycle so it never feels predictable. */
+@keyframes ts-sag {
+  0%    { opacity: 0;    }
+  1.3%  { opacity: 0.18; }
+  2.2%  { opacity: 0.11; }
+  2.9%  { opacity: 0.20; }
+  3.8%  { opacity: 0;    }
+  100%  { opacity: 0;    }
+}
+
+/* Sync rollbar — vertical sync loss: a dark blanking band (retrace period)
+   sweeps top-to-bottom. Leading edge has a brief bright phosphor flash.
+   No blend-mode so the dark region genuinely darkens content beneath it. */
+@keyframes ts-rollbar {
+  0%,    0.44% { top: -32px; opacity: 0;   }
+  0.45%        { top: -32px; opacity: 1;   }
+  1.85%        { top: 103%;  opacity: 1;   }
+  2.0%         { top: 103%;  opacity: 0;   }
+  100%         { top: -32px; opacity: 0;   }
+}
+
+/* ── Settings panel (#rr-panel) ─────────────────────────────── */
+#rr-panel {
+  display: none;
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: max-content;
+  min-width: 280px;
+  background: rgba(5, 14, 7, 0.97);
+  border-left: 1px solid var(--panel-border-active);
+  z-index: 200;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--neon-cyan);
+  padding: 8px 10px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border-active) transparent;
+}
+#rr-panel.rr-visible { display: block; }
+
+#rr-panel .rr-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--panel-border-active);
+  padding-bottom: 6px; margin-bottom: 8px;
+}
+#rr-panel .rr-hdr-title {
+  font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--neon-cyan); text-shadow: 0 0 8px var(--neon-cyan);
+}
+#rr-panel .rr-sec {
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--panel-border-active); margin: 10px 0 4px;
+  border-bottom: 1px solid var(--panel-border-dim);
+  padding-bottom: 2px;
+}
+#rr-panel label {
+  display: flex; align-items: center; gap: 5px;
+  margin: 3px 0; line-height: 1.6;
+}
+#rr-panel .ln { flex: 0 0 108px; color: var(--text-secondary); font-size: 10px; }
+#rr-panel input[type=range] {
+  flex: 1; min-width: 100px; accent-color: var(--neon-cyan); cursor: pointer; height: 14px;
+}
+#rr-panel .val { flex: 0 0 40px; text-align: right; color: var(--neon-green); font-size: 10px; }
+#rr-panel input[type=checkbox] { accent-color: var(--neon-cyan); cursor: pointer; }
+
+/* Collapsible sections */
+#rr-panel .rr-sec.rr-collapsible { cursor: pointer; user-select: none; }
+#rr-panel .rr-sec.rr-collapsible::after {
+  content: ' ▸'; color: var(--panel-border-active); font-size: 9px;
+}
+#rr-panel .rr-sec.rr-collapsible.rr-open::after { content: ' ▾'; }
+#rr-panel .rr-collapse-body       { display: none; }
+#rr-panel .rr-collapse-body.rr-open { display: block; }
+
+/* Preset bar — import / export buttons */
+#rr-panel .rr-preset-bar {
+  display: flex; gap: 6px;
+  margin-bottom: 8px;
+}
+#rr-panel .rr-preset-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--panel-border-active);
+  color: var(--neon-cyan);
+  font-family: var(--font-terminal);
+  font-size: 10px;
+  letter-spacing: .06em;
+  padding: 3px 6px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+#rr-panel .rr-preset-btn:hover {
+  background: rgba(0, 212, 176, .08);
+}
+
+/* Editable value labels */
+#rr-panel .val { cursor: pointer; }
+#rr-panel .val:hover { color: var(--neon-cyan); }
+#rr-panel .val-edit {
+  width: 40px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--neon-green);
+  color: var(--neon-green);
+  font-family: var(--font-terminal);
+  font-size: 10px;
+  text-align: right;
+  padding: 0;
+  outline: none;
+}
+
+/* ── Telescreen container ────────────────────────────────────── */
+.s9-telescreen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  isolation: isolate;
+}
+
+/* Base canvas — desaturate + slight contrast boost for CRT base */
+.s9-telescreen__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  filter: grayscale(0.7) contrast(1.2) brightness(0.75);
+  display: block;
+}
+
+/* Theme-color tint overlay via mix-blend-mode */
+.s9-telescreen__tint {
+  position: absolute;
+  inset: 0;
+  background: var(--neon-cyan);
+  mix-blend-mode: color;
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Scanlines — slow drift downward with subtle opacity pulse */
+.s9-telescreen__scanlines {
+  position: absolute;
+  inset: -4px 0 0 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.55) 2px,
+    rgba(0, 0, 0, 0.55) 4px
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 2;
+  display: none;
+}
+
+/* Vignette */
+.s9-telescreen__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 45%,
+    rgba(0, 0, 0, 0.75) 100%
+  );
+  pointer-events: none;
+  z-index: 3;
+}
+
+
+.s9-telescreen__bloom {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 40px 8px rgba(180, 120, 60, 0.12);
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* Phase interference bands — white/neutral: luminance modulation only */
+.s9-telescreen__phase-a {
+  position: absolute;
+  left: 0; right: 0;
+  height: 55px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255, 255, 255, 0.09) 40%,
+    rgba(255, 255, 255, 0.04) 70%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 5;
+  animation: ts-phase-a 9.3s ease-in-out infinite;
+  animation-delay: -1.7s;
+}
+.s9-telescreen__phase-b {
+  position: absolute;
+  left: 0; right: 0;
+  height: 30px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 5;
+  animation: ts-phase-b 13.7s ease-in-out infinite;
+  animation-delay: -5.4s;
+}
+/* Phase-c: sharp sync transient flash — no blend-mode, pure overlay */
+.s9-telescreen__phase-c {
+  position: absolute;
+  left: 0; right: 0;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  z-index: 5;
+  animation: ts-phase-c 17s steps(1) infinite;
+  animation-delay: -3.1s;
+}
+
+
+/* Voltage sag — black overlay dims the image during a power fluctuation */
+.s9-telescreen__sag {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 8;
+  animation: ts-sag 88s linear infinite;
+  animation-delay: -17s;
+}
+
+/* Sync rollbar — dark blanking band (electron beam retrace) sweeps
+   top-to-bottom. Bright flash at the leading edge is the phosphor afterglow
+   of the previous frame's bottom scan line. No blend-mode: must genuinely
+   darken content to look like a real sync loss. */
+.s9-telescreen__rollbar {
+  position: absolute;
+  left: 0; right: 0;
+  top: -32px;
+  height: 32px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.06) 8%,
+    rgba(0,   0,   0,   0.88) 15%,
+    rgba(0,   0,   0,   0.88) 100%
+  );
+  pointer-events: none;
+  z-index: 9;
+  opacity: 0;
+  animation: ts-rollbar 113s linear infinite;
+  animation-delay: -43s;
+}
+
+/* Feed ID label bottom-left */
+.s9-telescreen__feed-id {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  font-family: var(--font-terminal);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: rgba(0, 212, 176, 0.70);
+  color: color-mix(in srgb, var(--neon-cyan) 70%, transparent);
+  text-shadow: 0 0 6px var(--neon-cyan);
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* ── Accessibility: reduced motion ─────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .s9-telescreen__phase-a,
+  .s9-telescreen__phase-b,
+  .s9-telescreen__phase-c,
+  .s9-telescreen__sag,
+  .s9-telescreen__rollbar,
+  .s9-telescreen__scanlines,
+  .s9-telescreen__rec::before {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+
+/* REC indicator top-right */
+.s9-telescreen__rec {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-family: var(--font-terminal);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--neon-alert);
+  text-shadow: 0 0 6px var(--neon-alert);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+  z-index: 6;
+}
+.s9-telescreen__rec::before {
+  content: '●';
+  animation: status-blink 1.2s ease-in-out infinite;
+}
