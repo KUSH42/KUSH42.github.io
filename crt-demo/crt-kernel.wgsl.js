@@ -216,8 +216,9 @@ fn phosphorDecayRGB(pos_y: f32, src_y: f32, t: f32, flickerRate: f32,
 // crt-royale and Guest Advanced CRT compute horizontal reconstruction).
 // After TriG() the result is decoded back to linear for the rest of the pipeline.
 // P3-C: kernelGamma is user-configurable (default 2.5). 1/kernelGamma encodes to gamma space.
-fn FetchConvGamma(tex: texture_2d<f32>, pos: vec2f, off: vec2f, res: vec2f, scale: vec2f, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32) -> vec3f {
-  return pow(max(FetchConv(tex, pos, off, res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect), vec3f(0.0)), vec3f(1.0 / kernelGamma));
+fn FetchConvGamma(tex: texture_2d<f32>, pos: vec2f, off: vec2f, res: vec2f, scale: vec2f, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, gammaFast: f32) -> vec3f {
+  let c = max(FetchConv(tex, pos, off, res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect), vec3f(0.0));
+  return select(pow(c, vec3f(1.0 / kernelGamma)), sqrt(c), gammaFast > 0.5);
 }
 
 // P1-C + P3-B: dx is precomputed once in TriG and passed in -- eliminates 4 redundant Dist().x
@@ -228,22 +229,22 @@ fn FetchConvGamma(tex: texture_2d<f32>, pos: vec2f, off: vec2f, res: vec2f, scal
 // are no longer needed in the Horz signatures -- all callers compute and own those values.
 // ErfGausSR2 integrates the Gaussian beam over the physical aperture width for each tap weight,
 // matching crt-royale BEAM_SHAPE_MODE=2. The normaliser (wb+wc+wd) handles total energy.
-fn Horz3G(tex: texture_2d<f32>, pos: vec2f, off: f32, scale: vec2f, res: vec2f, sigmaR2: f32, halfAper: f32, dx: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32) -> vec3f {
-  let b = FetchConvGamma(tex, pos, vec2f(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let c = FetchConvGamma(tex, pos, vec2f( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let d = FetchConvGamma(tex, pos, vec2f( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
+fn Horz3G(tex: texture_2d<f32>, pos: vec2f, off: f32, scale: vec2f, res: vec2f, sigmaR2: f32, halfAper: f32, dx: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, gammaFast: f32) -> vec3f {
+  let b = FetchConvGamma(tex, pos, vec2f(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let c = FetchConvGamma(tex, pos, vec2f( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let d = FetchConvGamma(tex, pos, vec2f( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
   let wb = ErfGausSR2(dx - 1.0, sigmaR2, halfAper);
   let wc = ErfGausSR2(dx + 0.0, sigmaR2, halfAper);
   let wd = ErfGausSR2(dx + 1.0, sigmaR2, halfAper);
   return (b * wb + c * wc + d * wd) / (wb + wc + wd);
 }
 
-fn Horz5G(tex: texture_2d<f32>, pos: vec2f, off: f32, scale: vec2f, res: vec2f, sigmaR2: f32, halfAper: f32, dx: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32) -> vec3f {
-  let a = FetchConvGamma(tex, pos, vec2f(-2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let b = FetchConvGamma(tex, pos, vec2f(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let c = FetchConvGamma(tex, pos, vec2f( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let d = FetchConvGamma(tex, pos, vec2f( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let e = FetchConvGamma(tex, pos, vec2f( 2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
+fn Horz5G(tex: texture_2d<f32>, pos: vec2f, off: f32, scale: vec2f, res: vec2f, sigmaR2: f32, halfAper: f32, dx: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, gammaFast: f32) -> vec3f {
+  let a = FetchConvGamma(tex, pos, vec2f(-2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let b = FetchConvGamma(tex, pos, vec2f(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let c = FetchConvGamma(tex, pos, vec2f( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let d = FetchConvGamma(tex, pos, vec2f( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let e = FetchConvGamma(tex, pos, vec2f( 2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
   let wa = ErfGausSR2(dx - 2.0, sigmaR2, halfAper);
   let wb = ErfGausSR2(dx - 1.0, sigmaR2, halfAper);
   let wc = ErfGausSR2(dx + 0.0, sigmaR2, halfAper);
@@ -257,7 +258,7 @@ fn Horz5G(tex: texture_2d<f32>, pos: vec2f, off: f32, scale: vec2f, res: vec2f, 
 // decodes back to linear light for the rest of the pipeline.
 // P1-C: Dist() is computed ONCE here and dx/dy passed to all Horz calls,
 // eliminating 4 redundant Dist().x evaluations (saves ~32 ALU ops/px).
-fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, hardPix: f32, hardScan: f32, scrollPhase: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, apertureW: f32) -> vec3f {
+fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, hardPix: f32, hardScan: f32, scrollPhase: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, apertureW: f32, apertureH: f32, gammaFast: f32) -> vec3f {
   // P1-C: compute Dist() once -- both dx and dy -- before any Horz calls.
   let dist_val   = Dist(pos, src, scrollPhase);
   let dx         = dist_val.x;
@@ -267,10 +268,10 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
   // Keeps the center-row 1-tap approach for sigmaR2/halfAper which must be known before the Horz calls.
   let centerGamma  = FetchConvGamma(tex, pos, vec2f(0.0, 0.0), res, scale,
                                     conv, convStaticX, convStaticY, convBX, convBY,
-                                    convAspect, kernelGamma);
+                                    convAspect, kernelGamma, gammaFast);
   // DR-6 P1-A: decode to linear before computing luma (BT.709 coefficients require linear light).
   // Gamma-encoded luma overestimates mid-tone values by ~52% at gamma=2.5, causing over-wide beams.
-  let centerLinear = pow(max(centerGamma, vec3f(0.0)), vec3f(kernelGamma));
+  let centerLinear = select(pow(max(centerGamma, vec3f(0.0)), vec3f(kernelGamma)), centerGamma * centerGamma, gammaFast > 0.5);
   let luma         = clamp(Luma(centerLinear), 0.0, 1.0);
   // Power-law beam softening: dynHardPix broadens with luminance via sqrt(luma).
   // Physical motivation: at high beam current, electrostatic and aberration effects
@@ -290,29 +291,35 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
   let halfAper = apertureW * 0.5;
 
   // Horizontal reconstruction in gamma domain with precomputed dx (P1-C).
-  let a_g = Horz3G(tex, pos, -1.0, scale, res, sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let b_g = Horz5G(tex, pos,  0.0, scale, res, sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-  let c_g = Horz3G(tex, pos,  1.0, scale, res, sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
+  let a_g = Horz3G(tex, pos, -1.0, scale, res, sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let b_g = Horz5G(tex, pos,  0.0, scale, res, sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  let c_g = Horz3G(tex, pos,  1.0, scale, res, sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
 
   // P2-B: per-row luma for vertical Gaussian weights.
   // Each source row may have different luminance; outer-row dynScan must use its own luma,
   // not the center row's, to correctly model vertical beam width at luma transitions.
   // (centerGamma/beamW are still used above for dynHardPix horizontal broadening -- correct.)
-  let aLinear = pow(max(a_g, vec3f(0.0)), vec3f(kernelGamma));
-  let bLinear = pow(max(b_g, vec3f(0.0)), vec3f(kernelGamma));
-  let cLinear = pow(max(c_g, vec3f(0.0)), vec3f(kernelGamma));
+  let aLinear = select(pow(max(a_g, vec3f(0.0)), vec3f(kernelGamma)), a_g * a_g, gammaFast > 0.5);
+  let bLinear = select(pow(max(b_g, vec3f(0.0)), vec3f(kernelGamma)), b_g * b_g, gammaFast > 0.5);
+  let cLinear = select(pow(max(c_g, vec3f(0.0)), vec3f(kernelGamma)), c_g * c_g, gammaFast > 0.5);
   let dynScanA = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
   let dynScanB = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
   let dynScanC = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
 
-  // Vertical blend is intentionally un-normalised: the sum of Gaussian weights is < 1
-  // in the inter-scanline gap, producing the dark gaps that characterise CRT scanlines.
-  let out_g  = a_g * Gaus(dy + (-1.0), dynScanA)
-             + b_g * Gaus(dy +   0.0,  dynScanB)
-             + c_g * Gaus(dy +   1.0,  dynScanC);
+  // Vertical blend: aperture-integrated ErfGausSR2 replaces point-sampled Gaus.
+  // Fixes ~11% peak brightness overestimate at hardScan=-8 (SPEC-21 P3-F).
+  // Vertical is intentionally un-normalised (preserves dark scanline gaps).
+  let halfApertureH = apertureH * 0.5;
+  let sigmaVR2_A = sqrt(-1.0 / (2.0 * min(dynScanA, -0.1) * 0.693147)) * 1.41421356;
+  let sigmaVR2_B = sqrt(-1.0 / (2.0 * min(dynScanB, -0.1) * 0.693147)) * 1.41421356;
+  let sigmaVR2_C = sqrt(-1.0 / (2.0 * min(dynScanC, -0.1) * 0.693147)) * 1.41421356;
+
+  let out_g  = a_g * ErfGausSR2(dy + (-1.0), sigmaVR2_A, halfApertureH)
+             + b_g * ErfGausSR2(dy +   0.0,  sigmaVR2_B, halfApertureH)
+             + c_g * ErfGausSR2(dy +   1.0,  sigmaVR2_C, halfApertureH);
 
   // Decode back to linear light.
-  return pow(max(out_g, vec3f(0.0)), vec3f(kernelGamma));
+  return select(pow(max(out_g, vec3f(0.0)), vec3f(kernelGamma)), out_g * out_g, gammaFast > 0.5);
 }
 
 // Shared UV distortion chain: sag -> rollbar -> H-sync hook/flagging -> H-swim.
@@ -411,7 +418,9 @@ fn crtKernel(
   sourceSizeY: f32,
   interlace: f32,
   interlaceField: f32,
-  apertureW: f32
+  apertureW: f32,
+  apertureH: f32,
+  gammaFast: f32
 ) -> vec3f {
   // Resolve source resolution: 0 -> use output resolution (backward-compatible).
   // src is the virtual CRT pixel grid (e.g. 320x240 for a lo-res source).
@@ -438,7 +447,7 @@ fn crtKernel(
 
   // Gamma-domain scanline reconstruction: horizontal Gaussian blending in
   // voltage domain matches real CRT electron-optics; decoded back to linear after.
-  var col = TriG(tex, p, src, scale, res, dynHardPix, dynHardScan, scrollPhase, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, apertureW);
+  var col = TriG(tex, p, src, scale, res, dynHardPix, dynHardScan, scrollPhase, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, apertureW, apertureH, gammaFast);
 
   // RGB split: re-sample shifted R and B channels in gamma domain for consistency.
   if (rgbSplitPx > 0.001) {
@@ -456,10 +465,10 @@ fn crtKernel(
     let dynHardPixBroadened = min(dynHardPix + mix(0.0, 1.5, splitBeamW), -0.1);
     let sigmaR2Split        = sqrt(-1.0 / (2.0 * dynHardPixBroadened * 0.693147)) * 1.41421356;
     let halfAperSplit        = apertureW * 0.5;
-    let r_g = Horz5G(tex, pR, 0.0, scale, res, sigmaR2Split, halfAperSplit, dxR, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-    let b_g = Horz5G(tex, pB, 0.0, scale, res, sigmaR2Split, halfAperSplit, dxB, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
-    col.r = pow(max(r_g.r, 0.0), kernelGamma);
-    col.b = pow(max(b_g.b, 0.0), kernelGamma);
+    let r_g = Horz5G(tex, pR, 0.0, scale, res, sigmaR2Split, halfAperSplit, dxR, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+    let b_g = Horz5G(tex, pB, 0.0, scale, res, sigmaR2Split, halfAperSplit, dxB, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+    col.r = select(pow(max(r_g.r, 0.0), kernelGamma), r_g.r * r_g.r, gammaFast > 0.5);
+    col.b = select(pow(max(b_g.b, 0.0), kernelGamma), b_g.b * b_g.b, gammaFast > 0.5);
   }
 
   // Interlace field identification is handled by the TSL layer (buildCRTEffect), which
@@ -509,7 +518,8 @@ fn crtHorzPass(
   defocusAmt: f32,
   defocusAniso: f32,
   apertureW: f32,
-  outputSizeY: f32
+  outputSizeY: f32,
+  gammaFast: f32
 ) -> vec3f {
   // Apply UV distortions at source resolution (sag -> rollbar -> hook -> swim).
   // tWrapped (not t) used for H-swim: consistent with the time wrapping in renderFrame.
@@ -535,8 +545,8 @@ fn crtHorzPass(
   // scale = vec2f(1.0) at source resolution -- FetchConvGamma args match crtHorzPass context.
   let cGamma  = FetchConvGamma(tex, p, vec2f(0.0, 0.0), vec2f(1.0), srcRes,
                                conv, convStaticX, convStaticY, convBX, convBY,
-                               convAspect, kernelGamma);
-  let cLinear = pow(max(cGamma, vec3f(0.0)), vec3f(kernelGamma));
+                               convAspect, kernelGamma, gammaFast);
+  let cLinear = select(pow(max(cGamma, vec3f(0.0)), vec3f(kernelGamma)), cGamma * cGamma, gammaFast > 0.5);
   let luma    = clamp(Luma(cLinear), 0.0, 1.0);
   let beamW   = sqrt(luma);
   // Clamp to -0.1: defocusFac=0 at corners makes dynHardPixBase=0, then beam
@@ -552,7 +562,7 @@ fn crtHorzPass(
   let sigmaR2  = sqrt(-1.0 / (2.0 * dynHardPix * 0.693147)) * 1.41421356;
   let halfAper = apertureW * 0.5;
   let out_g = Horz5G(tex, p, 0.0, vec2f(1.0), srcRes,
-                     sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma);
+                     sigmaR2, halfAper, dx, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
   return max(out_g, vec3f(0.0));
 }
 `, [crtKernelFn]);
@@ -594,7 +604,9 @@ fn crtVertPass(
   kernelSrcW: f32,
   kernelSrcH: f32,
   interlace: f32,
-  interlaceField: f32
+  interlaceField: f32,
+  apertureH: f32,
+  gammaFast: f32
 ) -> vec3f {
   // kernelSrcW/H are the actual kernel RT dimensions set by renderFrame.
   // These always match kernelRT (e.g. 640x360) so textureLoad coordinates
@@ -641,19 +653,25 @@ fn crtVertPass(
   // dynScan must use its own luma, not the center row's, to correctly model vertical
   // beam width at luma transitions (bright-to-dark adjacent scanlines).
   // bLinear is also used below for RGB split's dynHardPix (horizontal uses center row -- correct).
-  let aLinear  = pow(max(a, vec3f(0.0)), vec3f(kernelGamma));
-  let bLinear  = pow(max(b, vec3f(0.0)), vec3f(kernelGamma));
-  let cLinear  = pow(max(c, vec3f(0.0)), vec3f(kernelGamma));
+  let aLinear  = select(pow(max(a, vec3f(0.0)), vec3f(kernelGamma)), a * a, gammaFast > 0.5);
+  let bLinear  = select(pow(max(b, vec3f(0.0)), vec3f(kernelGamma)), b * b, gammaFast > 0.5);
+  let cLinear  = select(pow(max(c, vec3f(0.0)), vec3f(kernelGamma)), c * c, gammaFast > 0.5);
   let dynScanA = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
   let dynScanB = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
   let dynScanC = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
 
-  let blended = a * Gaus(dy + (-1.0), dynScanA)
-              + b * Gaus(dy +   0.0,  dynScanB)
-              + c * Gaus(dy +   1.0,  dynScanC);
+  // Vertical blend: aperture-integrated ErfGausSR2 replaces point-sampled Gaus (SPEC-21 P3-F).
+  let halfApertureH = apertureH * 0.5;
+  let sigmaVR2_A = sqrt(-1.0 / (2.0 * min(dynScanA, -0.1) * 0.693147)) * 1.41421356;
+  let sigmaVR2_B = sqrt(-1.0 / (2.0 * min(dynScanB, -0.1) * 0.693147)) * 1.41421356;
+  let sigmaVR2_C = sqrt(-1.0 / (2.0 * min(dynScanC, -0.1) * 0.693147)) * 1.41421356;
+
+  let blended = a * ErfGausSR2(dy + (-1.0), sigmaVR2_A, halfApertureH)
+              + b * ErfGausSR2(dy +   0.0,  sigmaVR2_B, halfApertureH)
+              + c * ErfGausSR2(dy +   1.0,  sigmaVR2_C, halfApertureH);
 
   // Decode gamma -> linear (same final step as TriG in single-pass path).
-  var col = pow(max(blended, vec3f(0.0)), vec3f(kernelGamma));
+  var col = select(pow(max(blended, vec3f(0.0)), vec3f(kernelGamma)), blended * blended, gammaFast > 0.5);
 
   // RGB split: glitch-driven output-space channel offset.
   // Shift R and B horizontally when reading from the intermediate RT.
@@ -664,14 +682,14 @@ fn crtVertPass(
     let ar = textureLoad(kernelTex, clamp(ipos + vec2i( splitSrc, -1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let br = textureLoad(kernelTex, clamp(ipos + vec2i( splitSrc,  0), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let cr = textureLoad(kernelTex, clamp(ipos + vec2i( splitSrc,  1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
-    let blendR = ar * Gaus(dy + (-1.0), dynScanA) + br * Gaus(dy + 0.0, dynScanB) + cr * Gaus(dy + 1.0, dynScanC);
-    col.r = pow(max(blendR.r, 0.0), kernelGamma);
+    let blendR = ar * ErfGausSR2(dy + (-1.0), sigmaVR2_A, halfApertureH) + br * ErfGausSR2(dy + 0.0, sigmaVR2_B, halfApertureH) + cr * ErfGausSR2(dy + 1.0, sigmaVR2_C, halfApertureH);
+    col.r = select(pow(max(blendR.r, 0.0), kernelGamma), blendR.r * blendR.r, gammaFast > 0.5);
     // B: shifted -splitSrc source pixels
     let ab = textureLoad(kernelTex, clamp(ipos + vec2i(-splitSrc, -1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let bb = textureLoad(kernelTex, clamp(ipos + vec2i(-splitSrc,  0), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let cb = textureLoad(kernelTex, clamp(ipos + vec2i(-splitSrc,  1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
-    let blendB = ab * Gaus(dy + (-1.0), dynScanA) + bb * Gaus(dy + 0.0, dynScanB) + cb * Gaus(dy + 1.0, dynScanC);
-    col.b = pow(max(blendB.b, 0.0), kernelGamma);
+    let blendB = ab * ErfGausSR2(dy + (-1.0), sigmaVR2_A, halfApertureH) + bb * ErfGausSR2(dy + 0.0, sigmaVR2_B, halfApertureH) + cb * ErfGausSR2(dy + 1.0, sigmaVR2_C, halfApertureH);
+    col.b = select(pow(max(blendB.b, 0.0), kernelGamma), blendB.b * blendB.b, gammaFast > 0.5);
   }
 
   // Interlace field identification is handled by the TSL layer (buildCRTEffect).

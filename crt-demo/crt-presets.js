@@ -384,7 +384,7 @@ export const SIGNAL_PRESETS = {
   offAirPal: {
     snowEnabled: true,  snowAmt: 0.06,
     humAmt: 0.025, humBars: 1.0, humRate: 0.05,
-    ghostOffset: 8.0,  ghostStr: 0.06,
+    ghostOffset: 8.0,  ghostStr: 0.132,
     ghostTintR: 1.0,   ghostTintG: 0.97, ghostTintB: 0.97,
     dotCrawlAmt: 0.03,
     glitchBurstLoss: 0.50,

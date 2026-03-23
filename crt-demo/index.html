@@ -512,6 +512,11 @@
         <span class="val" id="ts-vKernelGamma">2.50</span>
       </label>
       <label>
+        <span class="ln">Aperture H (scanline heights)</span>
+        <input type="range" id="ts-apertureH" min="10" max="200" step="1" value="100">
+        <span class="val" id="ts-vApertureH">1.00</span>
+      </label>
+      <label>
         <span class="ln">H-swim</span>
         <input type="range" id="ts-swim" min="0" max="100" value="10">
         <span class="val" id="ts-vSwim">0.20</span>
@@ -1532,7 +1537,7 @@
         // signalPreset / sourceW / sourceH: auto-applied on entry, restored on exit
         { name: 'TELETEXT', liveSource: teletextSrc, planeW: 4 / 3, label: 'CH-03 // CEEFAX // LIVE',
           signalPreset: 'offAirPal', sourceW: 720, sourceH: 576 },
-        { name: 'DEMO',     videoUrl: './telescreen_demo.webm',      label: 'CH-02 // DEMO // LIVE' },
+        { name: 'DEMO',     videoUrl: './data/telescreen_demo.webm', label: 'CH-02 // DEMO // LIVE' },
       ];
       let patternIdx = 0;
 
@@ -1817,7 +1822,7 @@
       // Auto-apply default presets for GitHub Pages demo
       const crtPreset    = document.getElementById('ts-preset');
       const signalPreset = document.getElementById('ts-signalPreset');
-      if (crtPreset)    { crtPreset.value    = 'pvm14';      crtPreset.dispatchEvent(new Event('change')); }
+      if (crtPreset)    { crtPreset.value    = 'necMultisync'; crtPreset.dispatchEvent(new Event('change')); }
       if (signalPreset) { signalPreset.value  = 'offAirPal'; signalPreset.dispatchEvent(new Event('change')); }
       const srcX = document.getElementById('ts-sourceSizeX');
       const srcY = document.getElementById('ts-sourceSizeY');
@@ -1825,7 +1830,7 @@
       if (srcY) { srcY.value = 600; srcY.dispatchEvent(new Event('change')); }
       // Auto-load video
       const _raw  = new URLSearchParams(location.search).get('video');
-      const url   = new URL(_raw || './telescreen_demo.webm', location.href).href;
+      const url   = new URL(_raw || './data/telescreen_demo.webm', location.href).href;
       const input = document.getElementById('url-input');
       const btn   = document.getElementById('btn-load-url');
       input.value = url;

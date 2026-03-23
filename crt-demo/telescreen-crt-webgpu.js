@@ -214,6 +214,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   let _ghostRttNode = null;           // DR-14 P1-B: pre-kernel ghost RTT (null when ghostStr <= 0.001)
   let _lastGhostActive = false;       // DR-14 P1-B: ghost active flag at last buildPostProcessing
   let _accurateHalationRtt = null;    // P1-A: post-kernel RTT for accurate outer halation taps
+  let _haloSrcRttNode = null;         // PERF-A: source-res halation RTT (two-pass only)
   // DR-14 P1-A: mask LUT dirty-flag — skip re-render when governing params unchanged.
   let _maskLutNeedsRender = true;
   let _maskLutCachedType   = -1;
@@ -320,7 +321,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     scrollPhase:    uniform(0.0),    // pre-computed JS-side scroll phase = (t * scrollRate) % srcY.
                                      // Passed to WGSL Dist() and phosphorDecay() instead of t*scrollRate
                                      // to avoid the tWrapped-boundary discontinuity (once per 3600 s).
-    brightBoost:    uniform(0.55),    // controls-calibrated: matches state.brightBoost = 0.55
+    brightBoost:    uniform(0.614),   // controls-calibrated: tuned against ErfGausSR2 vertical integral (SPEC-21 P3-F)
     cornerFade:     uniform(0.022),  // bezel edge fade radius (UV fraction); heavier presets use larger values
     // Realism pass uniforms
     swimAmt:        uniform(0.12),   // H-deflection jitter amplitude (0=off, 1=full, 2=strong)
@@ -339,6 +340,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     // DR-5 P2-A: phosphor aperture width in source pixels for ErfGaus beam-profile integration.
     // 1.0 = aperture grille (one stripe per source pixel). 0.67 = shadow mask (2/3 px per channel).
     apertureW:      uniform(1.0),
+    apertureH:      uniform(1.0),    // vertical aperture in scanline heights (1.0 = one full scanline; ErfGausSR2 vertical integral)
     // P2-C: Auto mask energy compensation — 1/avg_aperture_efficiency to maintain perceptual brightness.
     maskBoostFactor: uniform(1.0),   // auto-computed in updateMaskBoost(); not user-settable directly
     // NOTE: scalar boost normalises mean aperture transmittance but not per-channel balance.
@@ -419,6 +421,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     vbiLines:       uniform(8.0),    // P2-C NTSC visible VBI ≈ 6–10 lines at typical overscan; 8 = centre [1,21]
     frameCount:     uniform(0.0),    // P2-C frame counter (incremented each frame, mod 1e7)
     osdEnabled:     uniform(0.0),    // OSD mode: 0 = signal mode, 1 = OSD mode (O key in demo)
+    gammaFast:      uniform(0.0),    // 0 = exact pow(x, 1/kernelGamma); 1 = fast sqrt(x) approx (γ=2, ~10× faster)
   };
 
   // P3-C: CPU-side scalar state — not GPU uniforms, just JS bookkeeping.
@@ -437,6 +440,9 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   // updateFlickerCompensation() is declared as a function statement below and is
   // therefore hoisted within initTelescreenCRTWebGPU — this call is safe here.
   updateFlickerCompensation();   // prime flickerBoost from initial uniform values
+
+  // PERF-B: fast gamma approximation (sqrt instead of pow). Off by default.
+  if (opts?.fastKernelGamma) uniforms.gammaFast.value = 1.0;
 
   // ── Glitch burst scheduler state ─────────────────────────────────────────
   // cfg mirrors the original telescreen-crt.js cfg object
@@ -689,6 +695,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.kernelSrcH,
           uniforms.interlace,
           uniforms.interlaceField,
+          uniforms.apertureH,
+          uniforms.gammaFast,
         );
       } else {
         col = crtKernelFn(
@@ -722,6 +730,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.interlace,
           uniforms.interlaceField,
           uniforms.apertureW,
+          uniforms.apertureH,
+          uniforms.gammaFast,
         );
       }
 
@@ -852,46 +862,41 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       //                                   → warp + glitch + sag + rollbar + hook + swim
       // glitchedPos does NOT include swim; swim is applied inside applyUVDistortions.
       // Kernel and halation sample identical final UV positions — no double-distortion.
-      let halationTex = inputNode;  // default: raw scene / kernelRT
-      if (_accurateHalation) {
-        // P0-A fix: outer taps must read post-mask signal to match center tap (scannedColor).
-        // CRT halation / near-field scatter originates from phosphor emission, which is
-        // attenuated by the aperture mask. Using pre-mask col makes inter-stripe dark gaps
-        // contribute the same halo energy as lit stripes — physically wrong.
-        // Using masked ensures all 7 H-taps read the same mask-modulated, post-kernel signal.
-        _accurateHalationRtt = convertToTexture(
-          maskedWithOSD.max(vec3(0.0)).pow(vec3(float(1.0).div(uniforms.kernelGamma)))
-        );
-        halationTex = _accurateHalationRtt;
-      }
-      const halo = crtHalationFn(
-        halationTex,  // P1-A: post-kernel RTT when _accurateHalation; else raw scene / kernelRT
-        maskedWithOSD, glitchedPos, outputSizeVec, uniforms.scrollPhase, uniforms.tWrapped,
-        uniforms.swimAmt, uniforms.rollbarPhase, uniforms.sagPhase,
-        uniforms.sourceSizeX, uniforms.sourceSizeY,
-        uniforms.halationSharp,
-        uniforms.hardScan,
-        uniforms.kernelGamma,
-        float(_accurateHalation ? 1.0 : 0.0),  // P1-A: accurateHalation flag
-      );
-      // halationWarm tint: 0 = neutral/achromatic (default — matches crt-royale, Guest Advanced,
-      // crt-aperture, all of which apply no color tint to halation).
-      // 1 = Trinitron neodymium glass (very slightly cool/purple): Nd³⁺ dopant selectively
-      // absorbs yellow-green (~570–590 nm) and transmits red+blue, producing a faint cool bias.
-      // Previous warm amber (0.18,0.12,0.08) was a film-emulsion mechanism (not applicable to
-      // CRT glass) and is physically incorrect for CRT halation simulation.
-      // DR-5 P2-D: Nd³⁺ absorbs yellow-green (~580 nm) and transmits red+blue → purple/cool R=B>G.
-      // Previous warm (0.14,0.12,0.10) was amber/film-emulsion, not CRT Trinitron glass.
+      // 6. Halation — reads from phosphor-emitted signal (post-mask).
+      // PERF-A two-pass: bilinear upscale of source-res halation RTT (9× cheaper than per-output-pixel).
+      // Single-pass: per-pixel crtHalationFn at output resolution.
       const haloTint = mix(vec3(0.12, 0.12, 0.12), vec3(0.13, 0.10, 0.13), uniforms.halationWarm);
-      // P1-A: Soft threshold: halo fades to zero for dark content.
-      // Physically: near-field phosphor scatter is negligible below ~8% of nominal white.
-      // haloLow=0.04, haloHigh=0.12 -- same order as the haloTint scaling (×0.12×3 = ×0.36).
-      // smoothstep avoids the hard-cutoff artifact that triggered the removal of the previous
-      // 0.35 threshold (SPEC-critical-review-fixes Issue 3 / P1-B).
-      // halo.w (horizontal gradient) is reserved for future anisotropic 2D halo weighting.
-      const haloLuma = halo.rgb.dot(vec3(0.2126, 0.7152, 0.0722));
+      let halo_rgb;
+      if (_haloSrcRttNode) {
+        // PERF-A: bilinear sample of source-res halation RTT. glitchedPos maps output
+        // pixel to correct source neighborhood. Tint/gate/strength applied below.
+        halo_rgb = texture(_haloSrcRttNode, glitchedPos).rgb;
+      } else {
+        // Standard per-pixel halation path.
+        let halationTex = inputNode;
+        if (_accurateHalation) {
+          // P0-A: outer taps read post-mask signal (gamma-encoded) to match scannedColor.
+          _accurateHalationRtt = convertToTexture(
+            maskedWithOSD.max(vec3(0.0)).pow(vec3(float(1.0).div(uniforms.kernelGamma)))
+          );
+          halationTex = _accurateHalationRtt;
+        }
+        halo_rgb = crtHalationFn(
+          halationTex,
+          maskedWithOSD, glitchedPos, outputSizeVec, uniforms.scrollPhase, uniforms.tWrapped,
+          uniforms.swimAmt, uniforms.rollbarPhase, uniforms.sagPhase,
+          uniforms.sourceSizeX, uniforms.sourceSizeY,
+          uniforms.halationSharp,
+          uniforms.hardScan,
+          uniforms.kernelGamma,
+          float(_accurateHalation ? 1.0 : 0.0),
+        ).rgb;
+      }
+      // halationWarm tint: 0 = neutral/achromatic. 1 = Trinitron Nd³⁺ glass (cool/purple).
+      // P1-A: soft threshold gate — halation fades to zero for dark content.
+      const haloLuma = halo_rgb.dot(vec3(0.2126, 0.7152, 0.0722));
       const haloGate = smoothstep(float(0.04), float(0.12), haloLuma);
-      const halation = halo.rgb
+      const halation = halo_rgb
         .mul(haloTint)
         .mul(uniforms.halationStr)
         .mul(haloGate);
@@ -1092,11 +1097,33 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         uniforms.kernelGamma, uniforms.swimAmt, uniforms.rollbarPhase,
         uniforms.sagPhase, uniforms.defocusAmt, uniforms.defocusAniso, uniforms.apertureW,
         uniforms.outputSizeY,
+        uniforms.gammaFast,
       );
       horzRttNode = rtt(vec4(horzResult, 1.0), srcW, srcH);
       inputNode   = horzRttNode;
     } else {
       inputNode = kernelInputScene;
+    }
+
+    // PERF-A: source-res halation RTT (two-pass only)
+    _haloSrcRttNode = null;
+    if (useTwoPass) {
+      // PERF-A: compute halation at source resolution; bilinear upscale at composite.
+      // Center tap: H-pass decoded to linear (vertical Gaussian = 1.0 at source-row centers).
+      // accurateHalation=1.0 suppresses vw correction (Gaus(0)=1.0 at source-row centers).
+      const srcLinear = horzRttNode.pow(vec3(uniforms.kernelGamma));
+      const haloSrcVec4 = crtHalationFn(
+        horzRttNode,
+        srcLinear.rgb,
+        screenUV,
+        vec2(float(srcW), float(srcH)),
+        uniforms.scrollPhase, uniforms.tWrapped,
+        uniforms.swimAmt, uniforms.rollbarPhase, uniforms.sagPhase,
+        float(srcW), float(srcH),
+        uniforms.halationSharp, uniforms.hardScan, uniforms.kernelGamma,
+        float(1.0),
+      );
+      _haloSrcRttNode = rtt(haloSrcVec4, srcW, srcH);
     }
 
     // Post-processing composite order (physical signal chain):
@@ -1308,7 +1335,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       pp.outputNode  = vec4(finalComposite, 1.0);
       pp._rttBlend   = null;
     }
-    pp._horzRttNode = horzRttNode;  // null = single-pass, non-null = two-pass (mode detection)
+    pp._horzRttNode     = horzRttNode;      // null = single-pass, non-null = two-pass (mode detection)
+    pp._haloSrcRttNode  = _haloSrcRttNode;  // PERF-A: source-res halation RTT (null in single-pass)
 
     return pp;
   }
@@ -1393,6 +1421,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (_accurateHalationRtt?.renderTarget) {
       try { _accurateHalationRtt.renderTarget.dispose(); } catch (_) {}
       _accurateHalationRtt = null;
+    }
+    // PERF-A: source-res halation RTT
+    if (postProcessing._haloSrcRttNode?.renderTarget) {
+      try { postProcessing._haloSrcRttNode.renderTarget.dispose(); } catch (_) {}
+      _haloSrcRttNode = null;
     }
     // Ghost pre-kernel RTT (DR-14 P1-B)
     if (_ghostRttNode?.renderTarget) {
@@ -2030,7 +2063,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     halationWarm,
     convStaticX, convStaticY,
     convBX, convBY,
-    convAspect, kernelGamma, apertureW,
+    convAspect, kernelGamma, apertureW, apertureH,
     glassBlurStr, glassBlurRadius,
     haloRadius, haloStr,
     // Interference pass params (SPEC-glitch-interference-v2)
@@ -2041,6 +2074,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     vbiStr, vbiLines,
     agcAmt, agcRate,
     cornerFade,
+    gammaFast,
   } = {}) {
     if (hardPix       !== undefined) uniforms.hardPix.value       = hardPix;
     if (hardScan      !== undefined) uniforms.hardScan.value      = hardScan;
@@ -2126,6 +2160,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (convAspect    !== undefined) uniforms.convAspect.value    = convAspect;
     if (kernelGamma   !== undefined) uniforms.kernelGamma.value   = kernelGamma;
     if (apertureW     !== undefined) uniforms.apertureW.value     = Math.max(0.1, apertureW);
+    if (apertureH     !== undefined) uniforms.apertureH.value     = Math.max(0.1, apertureH);
+    if (gammaFast     !== undefined) uniforms.gammaFast.value     = gammaFast ? 1.0 : 0.0;
     if (blackLevel    !== undefined) uniforms.blackLevel.value    = blackLevel;
     if (persistence   !== undefined) uniforms.persistence.value  = persistence;
     if (persistenceTau !== undefined) {

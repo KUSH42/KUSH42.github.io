@@ -61,7 +61,7 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     hardPix:     2.5, // stored positive; negated on send
     hardScan:    8.0,   // stored positive; negated on send
     scrollRate:  0.05,
-    brightBoost: 0.55,
+    brightBoost: 0.614,
     maskStr:     0.85,
     maskType:    0,     // integer: 0=aperture grille, 1=shadow mask, 2=slot mask
     grainAmt:    0.010,
@@ -74,6 +74,7 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     convBY: 0.0,        // P1-A: independent B static V offset
     convAspect: 1.0,    // P1-B: 0=radial convergence, 1=H-only (gun anisotropic)
     kernelGamma: 2.5,   // P3-C: kernel encode/decode gamma (CRT phosphor gamma)
+    apertureH:   1.0,   // P3-F: vertical aperture in scanline heights for ErfGausSR2 integration
     // GPU bloom (optional — controls use crt.setBloom?.() so they work
     // whether or not bloom was initialised with opts.bloom)
     bloomEnabled:   true,
@@ -108,8 +109,8 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     glassBlurStr:       0.08,  // faceplate scatter strength (pipeline rebuild on 0↔nonzero)
     glassBlurRadius:    0.002, // scatter radius — 3×3 grid tap spacing as UV fraction of width
     // Private state — underscore prefix; excluded from JSON export
-    _preset:            'trinitron',  // currently selected CRT archetype key
-    _signalPreset:      'compositeNtsc', // currently selected signal source key
+    _preset:            'necMultisync', // currently selected CRT archetype key
+    _signalPreset:      'offAirPal',    // currently selected signal source key
     // Accuracy pass
     sourceSizeX:        0,     // 0 = use output resolution (backward-compatible)
     sourceSizeY:        0,
@@ -355,6 +356,10 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
       set: v => crt.setShader({ kernelGamma: v }) },
+    { id: 'ts-apertureH', valId: 'ts-vApertureH', key: 'apertureH',
+      toSlider: v => Math.round(v * 100), fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => crt.setShader({ apertureH: v }) },
 
     // ── GPU Bloom (optional — safe via ?. if bloom not initialised) ──
     { type: 'checkbox', id: 'ts-bloomEnabled', key: 'bloomEnabled',
