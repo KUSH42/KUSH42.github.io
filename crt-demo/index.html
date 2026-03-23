@@ -232,7 +232,7 @@
     <div id="source-row">
       <label class="pick-btn" for="file-input">Load file</label>
       <input type="file" id="file-input" accept="video/*">
-      <input type="text" id="url-input" value="https://kush42.github.io/crt-demo/telescreen_demo.webm" autocomplete="off" spellcheck="false">
+      <input type="text" id="url-input" placeholder="Direct video URL…" autocomplete="off" spellcheck="false">
       <button id="btn-load-url">Load</button>
       <span id="video-status">No video loaded</span>
       <button id="btn-clear">Clear</button>
@@ -1410,6 +1410,11 @@
       urlInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') btnLoadUrl.click();
       });
+
+      // Auto-load from ?video= URL parameter, defaulting to bundled demo clip
+      const autoUrl = new URLSearchParams(location.search).get('video') || './telescreen_demo.webm';
+      urlInput.value = autoUrl;
+      btnLoadUrl.click();
 
       btnClear.addEventListener('click', clearSource);
 
