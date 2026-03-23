@@ -28,18 +28,12 @@
 /* Phase interference bands — brightness only (neutral white), no colour tint.
    Real CRT magnetic/capacitor interference modulates luminance, not hue. */
 @keyframes ts-phase-a {
-  0%   { transform: translateY(-100%); opacity: 0;    }
-  8%   {                               opacity: 0.08; }
-  45%  {                               opacity: 0.05; }
-  92%  {                               opacity: 0.08; }
-  100% { transform: translateY(110%);  opacity: 0;    }
+  0%   { transform: translateY(-100%); opacity: 0.08; }
+  100% { transform: translateY(110%);  opacity: 0.06; }
 }
 @keyframes ts-phase-b {
-  0%   { transform: translateY(-100%); opacity: 0;    }
-  12%  {                               opacity: 0.06; }
-  55%  {                               opacity: 0.03; }
-  88%  {                               opacity: 0.06; }
-  100% { transform: translateY(110%);  opacity: 0;    }
+  0%   { transform: translateY(-100%); opacity: 0.06; }
+  100% { transform: translateY(110%);  opacity: 0.04; }
 }
 /* Phase-c: sudden banding flash (sync transient) — steps(1) keeps it sharp */
 @keyframes ts-phase-c {
@@ -55,11 +49,12 @@
 /* Voltage sag — mains-frequency power dip dims the screen for ~2 s,
    then recovers. Modelled as a black overlay: 0 opacity most of the time,
    peaking mid-event. 88 s total cycle so it never feels predictable. */
+/* Voltage sag: fast onset (capacitor discharge), slow exponential-ish recovery */
 @keyframes ts-sag {
   0%    { opacity: 0;    }
-  1.3%  { opacity: 0.18; }
-  2.2%  { opacity: 0.11; }
-  2.9%  { opacity: 0.20; }
+  0.4%  { opacity: 0.22; }
+  1.2%  { opacity: 0.14; }
+  2.4%  { opacity: 0.06; }
   3.8%  { opacity: 0;    }
   100%  { opacity: 0;    }
 }
@@ -255,7 +250,7 @@
   mix-blend-mode: screen;
   pointer-events: none;
   z-index: 5;
-  animation: ts-phase-a 9.3s ease-in-out infinite;
+  animation: ts-phase-a 9.3s linear infinite;
   animation-delay: -1.7s;
 }
 .s9-telescreen__phase-b {
@@ -271,7 +266,7 @@
   mix-blend-mode: screen;
   pointer-events: none;
   z-index: 5;
-  animation: ts-phase-b 13.7s ease-in-out infinite;
+  animation: ts-phase-b 13.7s linear infinite;
   animation-delay: -5.4s;
 }
 /* Phase-c: sharp sync transient flash — no blend-mode, pure overlay */
