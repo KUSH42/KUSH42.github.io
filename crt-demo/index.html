@@ -1797,6 +1797,10 @@
       const signalPreset = document.getElementById('ts-signalPreset');
       if (crtPreset)    { crtPreset.value    = 'pvm14';      crtPreset.dispatchEvent(new Event('change')); }
       if (signalPreset) { signalPreset.value  = 'offAirPal'; signalPreset.dispatchEvent(new Event('change')); }
+      const srcX = document.getElementById('ts-sourceSizeX');
+      const srcY = document.getElementById('ts-sourceSizeY');
+      if (srcX) { srcX.value = 800; srcX.dispatchEvent(new Event('change')); }
+      if (srcY) { srcY.value = 600; srcY.dispatchEvent(new Event('change')); }
       // Auto-load video
       const _raw  = new URLSearchParams(location.search).get('video');
       const url   = new URL(_raw || './telescreen_demo.webm', location.href).href;
