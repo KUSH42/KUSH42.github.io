@@ -605,13 +605,17 @@
         <span class="ln">Source preset</span>
         <select id="ts-sourcePreset">
           <option value="">— pick —</option>
-          <option value="0,0">Output res (0×0)</option>
-          <option value="240,240">VHS / composite (240×240)</option>
+          <option value="0,0">Auto (0×0)</option>
+          <option value="256,224">NES / Famicom (256×224)</option>
           <option value="320,200">CGA / EGA (320×200)</option>
-          <option value="320,240">SD / PSX / N64 (320×240)</option>
-          <option value="320,480">NTSC interlaced (320×480)</option>
-          <option value="384,288">PAL broadcast (384×288)</option>
-          <option value="640,480">SVGA / early 3D (640×480)</option>
+          <option value="320,240">SD console / PSX (320×240)</option>
+          <option value="512,224">SNES / Mega Drive (512×224)</option>
+          <option value="320,480">NTSC interlaced (320×480i)</option>
+          <option value="384,288">PAL SD broadcast (384×288)</option>
+          <option value="640,480">VGA / early 3D (640×480)</option>
+          <option value="720,480">D1 NTSC broadcast (720×480)</option>
+          <option value="720,576">D1 PAL broadcast (720×576)</option>
+          <option value="800,600">SVGA (800×600)</option>
         </select>
       </label>
       <label>
@@ -1235,21 +1239,24 @@
       let overlayLabel = 'CH-01 // SMPTE-TEST // LIVE';
       let _statsInfo = null;
 
-      // OSD canvas — sits in the DOM after the CRT pipeline, unaffected by signal quality.
+      // OSD canvas — used as a CanvasTexture source for in-kernel OSD mode (SPEC-osd-overlay).
       // Toggle with O key. Default: signal mode (overlayPlane in scene).
+      // In OSD mode the overlay is injected after the phosphor mask, receiving scanlines,
+      // mask, halation, grain, and scratch — but NOT signal-chain artifacts (glitch, ghost, etc).
+      // Fixed 1920×1080 so the CanvasTexture remains valid across window resizes (Option A).
       let overlayOSD = false;
       const osdCanvas = document.createElement('canvas');
-      osdCanvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:100;display:none;';
-      document.body.appendChild(osdCanvas);
+      osdCanvas.width  = 1920;
+      osdCanvas.height = 1080;
+      // Not appended to DOM — used only as a GPU texture source.
       function resizeOsdCanvas() {
-        osdCanvas.width  = window.innerWidth;
-        osdCanvas.height = window.innerHeight;
+        // Fixed resolution: no-op. Kept for call-site compatibility (resize handler).
       }
-      resizeOsdCanvas();
 
       function redrawOverlay() {
         if (overlayOSD) {
           drawOverlay(osdCanvas.getContext('2d'), osdCanvas.width, osdCanvas.height, recDot, overlayLabel, _statsInfo);
+          osdCanvasTex.needsUpdate = true;
         } else {
           drawOverlay(overlayCtx, overlayCanvas.width, overlayCanvas.height, recDot, overlayLabel, _statsInfo);
           overlayTex.needsUpdate = true;
@@ -1292,6 +1299,26 @@
       // Replace the blank VideoTexture (no src → invalid GPU texture view) with a
       // valid 1×1 black DataTexture until the user actually loads a video file.
       crt.setVideoSource(null);
+
+      // Reflect auto-computed effective source size in the UI inputs.
+      // Only updates when value changes and the user hasn't typed into the fields.
+      const srcXEl = document.getElementById('ts-sourceSizeX');
+      const srcYEl = document.getElementById('ts-sourceSizeY');
+      let _lastShownSrcW = -1, _lastShownSrcH = -1;
+      setInterval(() => {
+        const w = crt.effectiveSourceW, h = crt.effectiveSourceH;
+        if (w !== _lastShownSrcW || h !== _lastShownSrcH) {
+          _lastShownSrcW = w; _lastShownSrcH = h;
+          if (document.activeElement !== srcXEl) srcXEl.value = w;
+          if (document.activeElement !== srcYEl) srcYEl.value = h;
+        }
+      }, 300);
+
+      // OSD mode: register CanvasTexture backed by osdCanvas. Mode starts off (signal mode).
+      // osdCanvasTex must be created after crt so the TSL graph is already built.
+      const osdCanvasTex = new THREE.CanvasTexture(osdCanvas);
+      osdCanvasTex.colorSpace = THREE.SRGBColorSpace;
+      crt.setOSD(false, osdCanvasTex);
 
       videoEl.addEventListener('loadedmetadata', () => {
         if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
@@ -1651,8 +1678,8 @@
         }
         if (e.key === 'o' || e.key === 'O') {
           overlayOSD = !overlayOSD;
-          overlayPlane.visible   = !overlayOSD;
-          osdCanvas.style.display = overlayOSD ? 'block' : 'none';
+          overlayPlane.visible = !overlayOSD;   // hide signal-mode mesh in OSD mode
+          crt.setOSD(overlayOSD, osdCanvasTex);
           redrawOverlay();
         }
         if (e.key === 't' || e.key === 'T') {

@@ -418,6 +418,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     vbiStr:         uniform(0.07),   // P2-C VBI bleed amplitude: 0=off, 0.3=subtle
     vbiLines:       uniform(8.0),    // P2-C NTSC visible VBI ≈ 6–10 lines at typical overscan; 8 = centre [1,21]
     frameCount:     uniform(0.0),    // P2-C frame counter (incremented each frame, mod 1e7)
+    osdEnabled:     uniform(0.0),    // OSD mode: 0 = signal mode, 1 = OSD mode (O key in demo)
   };
 
   // P3-C: CPU-side scalar state — not GPU uniforms, just JS bookkeeping.
@@ -501,6 +502,15 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   const scratchTileX = screenSize.x.div(screenSize.y).mul(1.0 / SCRATCH_TEX_ASPECT);
   const scratchUV    = screenUV.mul(vec2(scratchTileX, 1.0));
   let scratchTexNode = texture(scratchTexture, scratchUV);
+
+  // OSD texture node — 1×1 transparent placeholder. Hot-swap via osdTexNode.value = canvasTexture.
+  // Must use RGBAFormat so .a reads 0 when OSD is disabled, preventing a spurious blend.
+  // screenUV (not the Fn-local outputUV) is used so the node can be constructed outside the Fn
+  // body — same pattern as prevTexNode and scratchTexNode.
+  const osdPlaceholderData = new Uint8Array([0, 0, 0, 0]);
+  const osdPlaceholderTex  = new THREE.DataTexture(osdPlaceholderData, 1, 1, THREE.RGBAFormat);
+  osdPlaceholderTex.needsUpdate = true;
+  let osdTexNode = texture(osdPlaceholderTex, screenUV);
 
   const texLoader = new THREE.TextureLoader();
   texLoader.load(
@@ -804,6 +814,20 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // P2-C: maskBoostFactor compensates for aperture transmittance loss (auto-computed in JS).
       const masked = col.mul(mix(vec3(1.0), maskPattern, uniforms.maskStr)).mul(uniforms.maskBoostFactor);
 
+      // OSD overlay blend — after mask, before halation (SPEC-osd-overlay).
+      // osdTexNode is sampled at screenUV (straight, unglitched UV) — not affected by glitchedPos.
+      // maskMultiplier: reuses maskPattern (above) — applies phosphor stripe modulation to OSD.
+      // vWeight: vertical Gaussian beam profile mirroring kernel Gaus(v, hardScan).
+      //   srcYNode (above) = effective source height (sourceSizeY or outputSizeY).
+      //   vPhase = fractional position within source row, centred at 0.
+      //   At beam centre vPhase=0: vWeight=1. Between scanlines |vPhase|→0.5: vWeight→0.
+      // When osdEnabled=0, osdTexNode.a=0 → maskedWithOSD == masked (zero-cost blend).
+      const maskMultiplier = mix(vec3(1.0), maskPattern, uniforms.maskStr).mul(uniforms.maskBoostFactor);
+      const vPhase         = fract(screenUV.y.mul(srcYNode)).sub(0.5);
+      const vWeight        = float(2.0).pow(vPhase.mul(vPhase).mul(uniforms.hardScan));
+      const osdModulated   = osdTexNode.rgb.mul(maskMultiplier).mul(vWeight);
+      const maskedWithOSD  = mix(masked, osdModulated, osdTexNode.a.mul(uniforms.osdEnabled));
+
       // 6. Halation — reads from post-mask 'masked' (physically correct: the phosphor
       // halo radiates from emitted light, which already has the mask structure).
       // UV distortion params mirrored so dy tracks the same scanline rows as the kernel.
@@ -836,13 +860,13 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         // contribute the same halo energy as lit stripes — physically wrong.
         // Using masked ensures all 7 H-taps read the same mask-modulated, post-kernel signal.
         _accurateHalationRtt = convertToTexture(
-          masked.max(vec3(0.0)).pow(vec3(float(1.0).div(uniforms.kernelGamma)))
+          maskedWithOSD.max(vec3(0.0)).pow(vec3(float(1.0).div(uniforms.kernelGamma)))
         );
         halationTex = _accurateHalationRtt;
       }
       const halo = crtHalationFn(
         halationTex,  // P1-A: post-kernel RTT when _accurateHalation; else raw scene / kernelRT
-        masked, glitchedPos, outputSizeVec, uniforms.scrollPhase, uniforms.tWrapped,
+        maskedWithOSD, glitchedPos, outputSizeVec, uniforms.scrollPhase, uniforms.tWrapped,
         uniforms.swimAmt, uniforms.rollbarPhase, uniforms.sagPhase,
         uniforms.sourceSizeX, uniforms.sourceSizeY,
         uniforms.halationSharp,
@@ -871,7 +895,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         .mul(haloTint)
         .mul(uniforms.halationStr)
         .mul(haloGate);
-      const withHalo = masked.add(halation);
+      const withHalo = maskedWithOSD.add(halation);
 
       // 7. Corner mask (bezel/overscan fade) — applied to warped pos.
       // Pass outputSizeVec for aspect so the fade radius is always correct (canvas space).
@@ -1841,6 +1865,23 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   }
 
   /**
+   * Enable/disable OSD mode and optionally update the OSD texture (SPEC-osd-overlay).
+   * In OSD mode the overlay bypasses signal-chain artifacts (glitch, ghost, dot crawl,
+   * hum bar, rollbar, snow) but is subject to display-physical effects (scanlines,
+   * phosphor mask, halation, corner, gamma, bloom, scratch, grain).
+   * @param {boolean} enabled  true = OSD mode, false = signal mode (default)
+   * @param {THREE.Texture} [canvasTexture]  CanvasTexture to use as OSD source. Hot-swapped
+   *   without a pipeline rebuild. Caller must set canvasTexture.needsUpdate = true each frame
+   *   the canvas content changes.
+   */
+  function setOSD(enabled, canvasTexture) {
+    uniforms.osdEnabled.value = enabled ? 1.0 : 0.0;
+    if (canvasTexture) {
+      osdTexNode.value = canvasTexture;
+    }
+  }
+
+  /**
    * Tune CRT shader constants. Pass only the keys you want to change.
    * @param {Object} p
    * @param {number} [p.hardPix]     pixel sharpness (negative): -0.5 (soft) to -3.0 (sharp)
@@ -2299,6 +2340,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     // Null internal refs to aid GC and prevent accidental use after destroy
     scratchTexture   = null;
     scratchTexNode   = null;
+    osdTexNode       = null;
   }
 
   return {
@@ -2308,8 +2350,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     setGlitch,
     setShader,
     setBloom,
+    setOSD,
     setVideoSource,
     renderFrame,
     destroy,
+    get effectiveSourceW() { return uniforms.sourceSizeX.value; },
+    get effectiveSourceH() { return uniforms.sourceSizeY.value; },
   };
 }
