@@ -157,6 +157,8 @@
       pointer-events: none;
       z-index: 100;
       letter-spacing: .08em;
+      line-height: 1.7;
+      white-space: pre;
     }
 
     #no-webgpu {
@@ -737,7 +739,11 @@
     </div>
   </div>
 
-  <div id="key-hint">[ H ] settings</div>
+  <div id="key-hint">[ H ] settings panel
+[ T ] test pattern
+[ O ] channel overlay
+[ P ] performance stats
+[◄ ►] teletext pages</div>
 
   <script type="module">
     import * as THREE                                    from 'three/webgpu';
@@ -1412,6 +1418,12 @@
         if (e.key === 'Enter') btnLoadUrl.click();
       });
 
+      // Auto-load from ?video= URL parameter
+      const autoUrl = new URLSearchParams(location.search).get('video');
+      if (autoUrl) {
+        urlInput.value = autoUrl;
+        btnLoadUrl.click();
+      }
 
       btnClear.addEventListener('click', clearSource);
 
@@ -1637,7 +1649,7 @@
         if (e.target === urlInput) return; // don't steal 'h' while typing
         if (e.key === 'h' || e.key === 'H') {
           panel.classList.toggle('rr-visible');
-          hint.textContent = panel.classList.contains('rr-visible') ? '' : '[ H ] settings';
+          hint.textContent = panel.classList.contains('rr-visible') ? '' : '[ H ] settings panel\n[ T ] test pattern\n[ O ] channel overlay\n[ P ] performance stats\n[◄ ►] teletext pages';
         }
         if (e.key === 'p' || e.key === 'P') {
           _statsMode = (_statsMode + 1) % 3;
@@ -1758,15 +1770,7 @@
       setTimeout(dismiss, 8000);
     }
 
-    boot().then(() => {
-      const _raw  = new URLSearchParams(location.search).get('video');
-      const url   = new URL(_raw || './telescreen_demo.webm', location.href).href;
-      const input = document.getElementById('url-input');
-      const btn   = document.getElementById('btn-load-url');
-      input.value = url;
-      btn.click();
-      input.value = url;
-    }).catch(e => {
+    boot().catch(e => {
       document.getElementById('no-webgpu').classList.remove('hidden');
       console.error('telescreen-crt-webgpu boot error:', e);
     });
