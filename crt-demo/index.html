@@ -1732,26 +1732,15 @@
       kbMesh.renderOrder = 10;
       scene.add(kbMesh);
 
-      let dismissed = false, fadeIv = null, revealIv, clockIv, flashIv = null;
-      function fade(from, to, dur, done) {
-        if (fadeIv) clearInterval(fadeIv);
-        const t0 = performance.now();
-        fadeIv = setInterval(() => {
-          const p = Math.min(1, (performance.now() - t0) / dur);
-          kbMat.opacity = from + (to - from) * p;
-          if (p >= 1) { clearInterval(fadeIv); fadeIv = null; if (done) done(); }
-        }, 16);
-      }
+      let dismissed = false, revealIv, clockIv, flashIv;
 
       function dismiss() {
         if (dismissed) return; dismissed = true;
         clearInterval(revealIv); clearInterval(clockIv); clearInterval(flashIv);
         window.removeEventListener('keydown', onKey);
         document.removeEventListener('click', onClick);
-        fade(kbMat.opacity, 0, 300, () => {
-          scene.remove(kbMesh);
-          kbGeo.dispose(); kbMat.dispose(); kbTex.dispose();
-        });
+        scene.remove(kbMesh);
+        kbGeo.dispose(); kbMat.dispose(); kbTex.dispose();
       }
 
       // Staggered row reveal every 55 ms
@@ -1760,12 +1749,11 @@
         else clearInterval(revealIv);
       }, 55);
 
-      // Fade in, then flash at ~3 Hz once fully revealed
-      fade(0, 1, 180, () => {
-        flashIv = setInterval(() => {
-          kbMat.opacity = 0.55 + 0.45 * Math.abs(Math.sin(Date.now() / 170));
-        }, 16);
-      });
+      // Hard blink: toggle opacity 1/0 every 750 ms
+      kbMat.opacity = 1;
+      flashIv = setInterval(() => {
+        kbMat.opacity = kbMat.opacity === 1 ? 0 : 1;
+      }, 750);
       clockIv = setInterval(() => { drawRows(revealedRows); kbTex.needsUpdate = true; }, 500);
 
       function onKey(e) { if (e.target !== document.getElementById('url-input')) dismiss(); }
