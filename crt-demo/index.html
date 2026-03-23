@@ -1634,7 +1634,6 @@
         // Fire change events so the controls module picks them up
         xEl.dispatchEvent(new Event('change'));
         yEl.dispatchEvent(new Event('change'));
-        e.target.value = ''; // reset to placeholder so re-selecting same value still fires
       });
 
       // ── Stats.js (P key toggle) ─────────────────────────────────────────────
