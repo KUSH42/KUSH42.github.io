@@ -1382,12 +1382,10 @@
           crt.setVideoSource(videoEl);
         };
         videoEl.addEventListener('canplay', canPlayHandler, { once: true });
-        // Try with audio; fall back to muted if autoplay policy blocks it.
+        // Try with audio; fall back to muted autoplay without updating UI so
+        // the volume control keeps showing the intended level.
         videoEl.play().catch(() => {
           videoEl.muted = true;
-          isMuted = true;
-          btnMute.textContent = '🔇';
-          volBar.value = 0;
           videoEl.play().catch(() => {});
         });
         statusEl.textContent = label;
@@ -1413,6 +1411,13 @@
       urlInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') btnLoadUrl.click();
       });
+
+      // Auto-load from ?video= URL parameter
+      const autoUrl = new URLSearchParams(location.search).get('video');
+      if (autoUrl) {
+        urlInput.value = autoUrl;
+        btnLoadUrl.click();
+      }
 
       btnClear.addEventListener('click', clearSource);
 
@@ -1760,17 +1765,7 @@
       setTimeout(dismiss, 8000);
     }
 
-    boot().then(() => {
-      // Auto-load after pipeline is fully running — ?video= param or bundled demo clip.
-      // Uses getElementById since urlInput/btnLoadUrl are local to boot().
-      const _raw   = new URLSearchParams(location.search).get('video');
-      const url    = new URL(_raw || './telescreen_demo.webm', location.href).href;
-      const input  = document.getElementById('url-input');
-      const btn    = document.getElementById('btn-load-url');
-      input.value  = url;
-      btn.click();
-      input.value  = url; // restore — click handler clears it
-    }).catch(e => {
+    boot().catch(e => {
       document.getElementById('no-webgpu').classList.remove('hidden');
       console.error('telescreen-crt-webgpu boot error:', e);
     });
