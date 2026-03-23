@@ -1656,10 +1656,9 @@
           redrawOverlay();
         }
         if (e.key === 't' || e.key === 'T') {
-          if (mode === 'none') {
-            patternIdx = (patternIdx + 1) % PATTERNS.length;
-            applyPattern(patternIdx);
-          }
+          clearSource();
+          patternIdx = (patternIdx + 1) % PATTERNS.length;
+          applyPattern(patternIdx);
         }
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           if (PATTERNS[patternIdx]?.liveSource) {
