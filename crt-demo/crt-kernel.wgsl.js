@@ -188,11 +188,14 @@ fn phosphorDecay(pos_y: f32, src_y: f32, t: f32, flickerRate: f32, tau: f32, scr
 }
 
 // Per-channel phosphor decay (P1-A): P22 CRT phosphor taus at broadcast luminance loading.
-// P22 red (Y2O2S:Eu^3+): tau ~= 1-3 ms (JEDEC JEP-133; 150 us is low-excitation emission lifetime, not TV-loading persistence);
-// P22 blue (ZnS:Ag,Cl): tau physical ~= 57 ns; any value < 2 ms gives identical output at 60 Hz;
-// P22 green (rare-earth oxysulphide, CRT era): tau ~= 100-300 uss.
-// NOTE: Zn2SiO4:Mn^2+ (P1 willemite) has tau ~= 10-15 ms but is an oscilloscope
-// phosphor -- NOT the green used in P22 colour television picture tubes.
+// P22 red (Y2O2S:Eu^3+): tau ~= 0.3-1 ms at broadcast luminance (JEDEC JEP-133).
+//   Default 1.5 ms is slightly conservative (above physical max) but gives
+//   identical output at 60 Hz -- chanMu(1.5ms, 60Hz) ~= chanMu(1ms, 60Hz) < 0.2%.
+// P22 green (rare-earth oxysulphide): tau ~= 100-300 us.
+// P22 blue (ZnS:Ag,Cl): tau physical < 100 us (some sources cite 57 ns at low drive;
+//   at broadcast loading, persistence to 10% is ~50-100 us).
+//   Any tau < 2 ms gives identical output at 60 Hz (full decay within one frame).
+// NOTE: P1 willemite (Zn2SiO4:Mn^2+): tau ~= 10-15 ms -- NOT a P22 colour TV phosphor.
 // Returns vec3f decay factors (one per channel) for use with mix(vec3f(1.0), decay, flickerAmt).
 fn phosphorDecayRGB(pos_y: f32, src_y: f32, t: f32, flickerRate: f32,
                     tauR: f32, tauG: f32, tauB: f32, scrollPhase: f32) -> vec3f {
@@ -269,11 +272,14 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
   // Gamma-encoded luma overestimates mid-tone values by ~52% at gamma=2.5, causing over-wide beams.
   let centerLinear = pow(max(centerGamma, vec3f(0.0)), vec3f(kernelGamma));
   let luma         = clamp(Luma(centerLinear), 0.0, 1.0);
-  // DR-8 P1-A: power-law beam softening -- sigma prop. I^0.5 (space-charge / Coulomb repulsion).
-  // At high beam current, mutual electrostatic repulsion broadens the electron spot.
-  // CRT-Royale beam_shape_power=2.0 corresponds exactly to alpha=0.5 (sqrt of beam current).
-  // At luma=0.5: linear gives mix(0,4,0.5)=2.0; sqrt gives mix(0,4,0.707)=2.83 -- 42% more.
-  let beamW      = sqrt(luma);  // luma already in linear light (correct domain for space-charge)
+  // Power-law beam softening: dynHardPix broadens with luminance via sqrt(luma).
+  // Physical motivation: at high beam current, electrostatic and aberration effects
+  // increase spot size. The exact power law is not cleanly derivable from CRT electron
+  // optics; luma^0.5 is an empirically tuned approximation that produces natural-looking
+  // scanline edges (CRT-Royale uses luma^0.33; both are empirical).
+  // Using linear luma (decoded from gamma) is correct: beam current is proportional to
+  // display light output in linear domain, not gamma-encoded voltage.
+  let beamW      = sqrt(luma);  // empirical sigma broadening: sigma ~ luma^0.5
   // Clamp to -0.1 so beam-broadening at corners (defocusFac=0 -> hardPix->0) cannot
   // make dynHardPix zero or positive, which would produce NaN in sigmaR2.
   let dynHardPix = min(hardPix + mix(0.0, 1.5, beamW), -0.1);
@@ -525,7 +531,7 @@ fn crtHorzPass(
   // Without this, two-pass mode produces systematically crisper horizontals than single-pass
   // at the same settings: bright horizontal lines are too narrow because Pass A ran at the
   // minimum beam width (no broadening) while Pass B correctly broadens the vertical.
-  // Physical basis: sigma prop. I^0.5 (Coulomb repulsion; same beam-physics as TriG / crtVertPassFn).
+  // Power-law beam softening: sigma ~ luma^0.5 (empirical, matches TriG / crtVertPassFn).
   // scale = vec2f(1.0) at source resolution -- FetchConvGamma args match crtHorzPass context.
   let cGamma  = FetchConvGamma(tex, p, vec2f(0.0, 0.0), vec2f(1.0), srcRes,
                                conv, convStaticX, convStaticY, convBX, convBY,
@@ -624,22 +630,27 @@ fn crtVertPass(
   // dy: fractional scanline position for vertical Gaussian blend.
   // Use pos.y (not rollbar-wrapped) -- rollbar is already baked in the RT.
   let dy      = Dist(vec2f(pos.x, pos.y), src, scrollPhase).y;
-  // DR-6 P1-A / DR-7 P2-C: decode center row b to linear ONLY for luma computation.
-  // BT.709 coefficients require linear-light inputs, so b must be decoded before Luma().
+  // DR-6 P1-A / DR-7 P2-C: decode rows to linear for luma computation.
+  // BT.709 coefficients require linear-light inputs, so rows must be decoded before Luma().
   // The vertical blend below (a*Gaus + b*Gaus + c*Gaus) intentionally remains in
   // gamma domain -- this matches the single-pass TriG path where a_g/b_g/c_g are all
   // FetchConvGamma outputs (gamma-encoded) and the decode happens once after the sum.
   // Gamma-domain vertical blend is the physical model: CRT beam spreads in voltage
-  // (gamma) domain. Do NOT decode a and c here -- they are already correct for blending.
-  let bLinear = pow(max(b, vec3f(0.0)), vec3f(kernelGamma));
-  let luma    = clamp(Luma(bLinear), 0.0, 1.0);
-  // DR-8 P1-A: power-law beam softening -- sigma prop. I^0.5 (space-charge physics, matches TriG).
-  let beamW   = sqrt(luma);
-  let dynScan = dynHardScan + mix(0.0, 4.0, beamW);
+  // (gamma) domain. Do NOT decode a and c -- they are already correct for blending.
+  // P2-A: per-row dynScan -- each source row may have different luminance; outer-row
+  // dynScan must use its own luma, not the center row's, to correctly model vertical
+  // beam width at luma transitions (bright-to-dark adjacent scanlines).
+  // bLinear is also used below for RGB split's dynHardPix (horizontal uses center row -- correct).
+  let aLinear  = pow(max(a, vec3f(0.0)), vec3f(kernelGamma));
+  let bLinear  = pow(max(b, vec3f(0.0)), vec3f(kernelGamma));
+  let cLinear  = pow(max(c, vec3f(0.0)), vec3f(kernelGamma));
+  let dynScanA = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
+  let dynScanB = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
+  let dynScanC = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
 
-  let blended = a * Gaus(dy + (-1.0), dynScan)
-              + b * Gaus(dy +   0.0,  dynScan)
-              + c * Gaus(dy +   1.0,  dynScan);
+  let blended = a * Gaus(dy + (-1.0), dynScanA)
+              + b * Gaus(dy +   0.0,  dynScanB)
+              + c * Gaus(dy +   1.0,  dynScanC);
 
   // Decode gamma -> linear (same final step as TriG in single-pass path).
   var col = pow(max(blended, vec3f(0.0)), vec3f(kernelGamma));
@@ -653,13 +664,13 @@ fn crtVertPass(
     let ar = textureLoad(kernelTex, clamp(ipos + vec2i( splitSrc, -1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let br = textureLoad(kernelTex, clamp(ipos + vec2i( splitSrc,  0), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let cr = textureLoad(kernelTex, clamp(ipos + vec2i( splitSrc,  1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
-    let blendR = ar * Gaus(dy + (-1.0), dynScan) + br * Gaus(dy + 0.0, dynScan) + cr * Gaus(dy + 1.0, dynScan);
+    let blendR = ar * Gaus(dy + (-1.0), dynScanA) + br * Gaus(dy + 0.0, dynScanB) + cr * Gaus(dy + 1.0, dynScanC);
     col.r = pow(max(blendR.r, 0.0), kernelGamma);
     // B: shifted -splitSrc source pixels
     let ab = textureLoad(kernelTex, clamp(ipos + vec2i(-splitSrc, -1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let bb = textureLoad(kernelTex, clamp(ipos + vec2i(-splitSrc,  0), vec2i(0), srcDims - vec2i(1)), 0).rgb;
     let cb = textureLoad(kernelTex, clamp(ipos + vec2i(-splitSrc,  1), vec2i(0), srcDims - vec2i(1)), 0).rgb;
-    let blendB = ab * Gaus(dy + (-1.0), dynScan) + bb * Gaus(dy + 0.0, dynScan) + cb * Gaus(dy + 1.0, dynScan);
+    let blendB = ab * Gaus(dy + (-1.0), dynScanA) + bb * Gaus(dy + 0.0, dynScanB) + cb * Gaus(dy + 1.0, dynScanC);
     col.b = pow(max(blendB.b, 0.0), kernelGamma);
   }
 
@@ -681,10 +692,18 @@ fn crtVertPass(
 // crtHalationFn
 // Isotropic 2D halation via separable 7-tap H convolution x vertical Gaussian.
 //
-// Physical mechanism: forward scattering through the CRT faceplate glass bulk
-// (Mie/Rayleigh scattering from impurities, bubbles, and micro-inclusions).
-// Light emitted by the phosphor layer enters the glass and scatters laterally
-// before exiting the front surface, producing a diffuse halo around bright features.
+// Physical mechanism: near-field phosphor-layer scatter and electron backscatter.
+// Secondary electrons reflected off the aluminium backing layer land on adjacent
+// phosphors (~1–3 src-px spread, Gaussian profile), and the phosphor layer itself
+// forward-scatters a small fraction of emitted light laterally.
+// This is distinct from wide glass-bulk scatter (Mie/Rayleigh from glass impurities),
+// which is modeled separately by glassBlurStr (typical 1/e radius >> 5 output px).
+// CRT-Royale: halation_weight = near-field electron scatter;
+//             diffusion_weight = glass-bulk scatter.
+// 1/e radius = sqrt(-1 / (ln2 × halationSharp)) -- consistent with CLAUDE.md convention.
+// halationSharp: -0.85 (default) → 1/e radius ≈ 1.30 src-px (near-field / electron backscatter);
+//                -0.4            → 1/e radius ≈ 1.90 src-px (approaching phosphor scatter);
+//                -2.5            → 1/e radius ≈ 0.76 src-px (tight inter-scanline bleed).
 //
 // P0-A fix: previously only applied Gaus(dy) -- zero horizontal spread, causing
 // vertical comb striping at halationStr=3 without bloom. Now performs a 7-tap

@@ -399,6 +399,21 @@ export function buildP22MatrixNode(colNode, p22StrNode) {
   // sRGB -> P22 chromaticity matrix, derived from CIE 1931 xy primaries:
   //   P22: R(0.626,0.344)  G(0.285,0.604)  B(0.151,0.067)  white D65
   //   sRGB: R(0.640,0.330) G(0.300,0.600)  B(0.150,0.060)  white D65
+  //
+  // Consumer CRT (Poynton 2012 "typical P22"): R(0.626,0.344) G(0.285,0.604) B(0.151,0.067)
+  //   Suitable for: home CRTs, consumer TV sets (Trinitron consumer, Mitsubishi Diamondtron).
+  //   Matrix below is derived from these primaries.
+  //
+  // Broadcast CRT (SMPTE 170M / SMPTE C): R(0.630,0.340) G(0.310,0.595) B(0.155,0.070)
+  //   Suitable for: studio monitors (Sony BVM-series, Ikegami HL-series, JVC production).
+  //   SMPTE C green (G_x=0.310) is significantly less cyan than Poynton (G_x=0.285).
+  //   SMPTE C matrix (for reference, not implemented by default):
+  //   Maps linear BT.709/sRGB input → linear SMPTE C output (same direction as P22 matrix).
+  //     R' =  0.9406*R + 0.0581*G + 0.0013*B
+  //     G' = -0.0172*R + 1.0346*G - 0.0174*B
+  //     B' =  0.0020*R - 0.0078*G + 1.0058*B
+  //   To use SMPTE C: replace the three matrix coefficient lines below.
+  //
   // P22 chromaticity source: Poynton (2012), "Digital Video and HDTV: Algorithms and
   // Interfaces", 2nd ed., Chapter 8, Table 8-2 p.165 -- "Typical P22 phosphor chromaticities".
   // The "corrected" note refers to the 1st-edition (2003) typo: P22G y was listed as 0.610;
@@ -505,8 +520,16 @@ fn snowFn(pixelCoord: vec2f, t: f32, snowAmt: f32, fieldRate: f32) -> vec3f {
   hg ^= hg >> 16u; hg *= 0x85ebca6bu; hg ^= hg >> 13u; hg *= 0xc2b2ae35u; hg ^= hg >> 16u;
   hb ^= hb >> 16u; hb *= 0x85ebca6bu; hb ^= hb >> 13u; hb *= 0xc2b2ae35u; hb ^= hb >> 16u;
   // DR-14 P2-C: partial horizontal correlation models RF bandwidth limiting.
-  // Real NTSC/PAL thermal noise has correlation length ~1 source pixel.
-  // One left-neighbor tap at 0.25 weight approximates fc ~= 0.25 Nyquist.
+  // One left-neighbor tap at weight 0.25 gives a 1-tap FIR: y[n] = 0.75x[n] + 0.25x[n-1].
+  // Transfer function H(z) = 0.75 + 0.25z^-1.
+  // |H(0)| = 1.0 (DC pass); |H(Nyquist)| = 0.5 (-6 dB at Nyquist).
+  // -3 dB at w = arccos(-1/3) ~= 109.5 deg ~= 0.61 Nyquist.
+  // This is nearly an all-pass with mild HF roll-off, not a low-pass; it adds
+  // slight correlation between adjacent noise samples without heavy smoothing.
+  // Real NTSC IF-stage noise bandwidth (~4.2 MHz / ~13.7 MHz source-px rate ~= 0.61 Nyquist)
+  // happens to match the FIR -3 dB point; PAL (~5.5 MHz / ~13.8 MHz ~= 0.80 Nyquist) is
+  // slightly less correlated than the FIR. Overall the FIR is a reasonable practical
+  // approximation for a subtle aesthetic effect.
   let base_l = (ix - 1u) * 1664525u + iy * 1013904223u + tSlot * 22695477u;
   var hrl = base_l;
   var hgl = base_l + 0x9e3779b9u;

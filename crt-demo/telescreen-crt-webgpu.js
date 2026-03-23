@@ -109,8 +109,11 @@ export async function loadBloomDependencies() {
  * @param {boolean} [opts.autoRender=true]  Start the internal render loop.
  *                  Pass false to drive manually via crt.renderFrame(timestamp).
  * @param {boolean|Object} [opts.bloom]  Enable GPU bloom. Pass true for defaults or an object:
- *                  { enabled: true, strength: 0.8, radius: 1.5, threshold: 0.3 }
+ *                  { enabled: true, strength: 0.8, radius: 1.5, threshold: 0.75 }
  *                  Call loadBloomDependencies() before init for full Gaussian blur support.
+ *                  { threshold: 0.75 }  Brightpass threshold in linear light (default 0.75 = 75% white).
+ *                  CRT-Royale reference: bloom_underestimate_levels = 0.8.
+ *                  Values below 0.3 apply bloom to mid-tones, producing a non-physical low-level veil.
  * @param {Function} [opts.onError]  Optional error callback invoked with an Error when a
  *                  recoverable init failure occurs (e.g. scratch texture load failure).
  *                  Does not fire for device-loss — that triggers automatic recovery.
@@ -182,7 +185,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   const _accurateHalation = !!accurateHalation;
 
   // ── Bloom setup ───────────────────────────────────────────────────────────
-  const BLOOM_DEFAULTS = { enabled: true, strength: 0.25, radius: 1.8, threshold: 0.05, coreRadius: 0.35, coreStrength: 0.6 };
+  const BLOOM_DEFAULTS = { enabled: true, strength: 0.25, radius: 1.8, threshold: 0.75, coreRadius: 0.35, coreStrength: 0.6 };
   const resolvedBloom  = bloomOpt
     ? (bloomOpt === true ? BLOOM_DEFAULTS : { ...BLOOM_DEFAULTS, ...bloomOpt })
     : null;
@@ -805,16 +808,18 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // halo radiates from emitted light, which already has the mask structure).
       // UV distortion params mirrored so dy tracks the same scanline rows as the kernel.
       // Horizontal spread is handled by GPU bloom (threshold=0). Vertical spread is
-      // controlled by halationSharp: -0.4 (default) = diffuse glass scatter (~4 src-px σ),
-      // -2.5 = tight inter-scanline bleed (~0.65 src-px σ).
+      // controlled by halationSharp: -0.85 (default) = near-field electron backscatter
+      // (~1.30 src-px σ), -0.4 = phosphor-layer scatter (~1.90 src-px σ),
+      // -2.5 = inter-scanline bleed (~0.76 src-px σ).
       // DR-7 P3-B: inputNode is the halation H-tap source. Single-pass: raw sceneOutput
       // (pre-kernel, full bandwidth); two-pass: horzRttNode (H-kernel RT, more accurate).
       // Outer taps sample pre-reconstruction — slightly overestimates halo width on fine
       // detail in single-pass. Full fix requires a post-kernel RTT (accepted trade-off).
       //
-      // P1-A: accurateHalation — post-scanline col as outer tap source, encoded to gamma
-      // space to match scannedColor domain. Gaps are already dark → no vw correction needed.
-      // col is linear light; encode to gamma before RTT.
+      // P0-A: accurateHalation — post-mask 'masked' as outer tap source, encoded to gamma
+      // space to match scannedColor domain. Both center tap and outer taps then read the
+      // same mask-modulated signal (dark inter-stripe gaps correctly attenuate the halo).
+      // masked is linear light; encode to gamma before RTT.
       //
       // DR-9 P3-F: UV distortion chain — both kernel and halation receive the same glitchedPos:
       //   1. buildWarpNode(outputUV)                → barrel warp
@@ -825,11 +830,13 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // Kernel and halation sample identical final UV positions — no double-distortion.
       let halationTex = inputNode;  // default: raw scene / kernelRT
       if (_accurateHalation) {
-        // Gamma-encode col (linear) to match scannedColor domain inside crtHalationFn.
-        // Outer taps and scannedColor must share the same encoding so Fetch() values
-        // are comparable to scannedColor without a separate decode step.
+        // P0-A fix: outer taps must read post-mask signal to match center tap (scannedColor).
+        // CRT halation / near-field scatter originates from phosphor emission, which is
+        // attenuated by the aperture mask. Using pre-mask col makes inter-stripe dark gaps
+        // contribute the same halo energy as lit stripes — physically wrong.
+        // Using masked ensures all 7 H-taps read the same mask-modulated, post-kernel signal.
         _accurateHalationRtt = convertToTexture(
-          col.max(vec3(0.0)).pow(vec3(float(1.0).div(uniforms.kernelGamma)))
+          masked.max(vec3(0.0)).pow(vec3(float(1.0).div(uniforms.kernelGamma)))
         );
         halationTex = _accurateHalationRtt;
       }
@@ -852,12 +859,18 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // DR-5 P2-D: Nd³⁺ absorbs yellow-green (~580 nm) and transmits red+blue → purple/cool R=B>G.
       // Previous warm (0.14,0.12,0.10) was amber/film-emulsion, not CRT Trinitron glass.
       const haloTint = mix(vec3(0.12, 0.12, 0.12), vec3(0.13, 0.10, 0.13), uniforms.halationWarm);
-      // P1-B: hard 0.35 threshold removed. halationStr already provides effective
-      // range-gating; the threshold was causing dark-content halation to vanish entirely.
+      // P1-A: Soft threshold: halo fades to zero for dark content.
+      // Physically: near-field phosphor scatter is negligible below ~8% of nominal white.
+      // haloLow=0.04, haloHigh=0.12 -- same order as the haloTint scaling (×0.12×3 = ×0.36).
+      // smoothstep avoids the hard-cutoff artifact that triggered the removal of the previous
+      // 0.35 threshold (SPEC-critical-review-fixes Issue 3 / P1-B).
       // halo.w (horizontal gradient) is reserved for future anisotropic 2D halo weighting.
+      const haloLuma = halo.rgb.dot(vec3(0.2126, 0.7152, 0.0722));
+      const haloGate = smoothstep(float(0.04), float(0.12), haloLuma);
       const halation = halo.rgb
         .mul(haloTint)
-        .mul(uniforms.halationStr);
+        .mul(uniforms.halationStr)
+        .mul(haloGate);
       const withHalo = masked.add(halation);
 
       // 7. Corner mask (bezel/overscan fade) — applied to warped pos.
@@ -2120,7 +2133,14 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (agcAmt        !== undefined) cfg.agcAmt                   = agcAmt;
     if (agcRate       !== undefined) cfg.agcRate                  = agcRate;
     if (glassBlurStr    !== undefined) uniforms.glassBlurStr.value    = glassBlurStr;
-    if (glassBlurRadius !== undefined) uniforms.glassBlurRadius.value = glassBlurRadius;
+    if (glassBlurRadius !== undefined) {
+      const v = glassBlurRadius;
+      if (v > 0.004) console.warn(
+        `telescreen-crt-webgpu: glassBlurRadius=${v} exceeds the physical CRT glass ` +
+        `scatter range of 0.001–0.003. Values above 0.004 produce non-physical diffusion.`
+      );
+      uniforms.glassBlurRadius.value = v;
+    }
     if (haloRadius !== undefined) uniforms.haloRadius.value = haloRadius;
     if (haloStr    !== undefined) uniforms.haloStr.value    = haloStr;
     // P0-A: warn once when haloRadius/haloStr are set but GaussianBlurNode is unavailable.
