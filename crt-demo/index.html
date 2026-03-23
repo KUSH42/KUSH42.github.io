@@ -1724,7 +1724,7 @@
       drawRows(1);
       const kbTex  = new THREE.CanvasTexture(kbCanvas);
       kbTex.colorSpace = THREE.SRGBColorSpace;
-      const planeH = 0.30, planeW = planeH * (CW / CH);
+      const planeH = 0.60, planeW = planeH * (CW / CH);
       const kbMat  = new THREE.MeshBasicMaterial({ map: kbTex, transparent: true, opacity: 0, depthTest: false });
       const kbGeo  = new THREE.PlaneGeometry(planeW, planeH);
       const kbMesh = new THREE.Mesh(kbGeo, kbMat);
@@ -1732,7 +1732,7 @@
       kbMesh.renderOrder = 10;
       scene.add(kbMesh);
 
-      let dismissed = false, fadeIv = null, revealIv, clockIv;
+      let dismissed = false, fadeIv = null, revealIv, clockIv, flashIv = null;
       function fade(from, to, dur, done) {
         if (fadeIv) clearInterval(fadeIv);
         const t0 = performance.now();
@@ -1745,7 +1745,7 @@
 
       function dismiss() {
         if (dismissed) return; dismissed = true;
-        clearInterval(revealIv); clearInterval(clockIv);
+        clearInterval(revealIv); clearInterval(clockIv); clearInterval(flashIv);
         window.removeEventListener('keydown', onKey);
         document.removeEventListener('click', onClick);
         fade(kbMat.opacity, 0, 300, () => {
@@ -1760,8 +1760,12 @@
         else clearInterval(revealIv);
       }, 55);
 
-      // Fade in & clock tick
-      fade(0, 1, 180, null);
+      // Fade in, then flash at ~3 Hz once fully revealed
+      fade(0, 1, 180, () => {
+        flashIv = setInterval(() => {
+          kbMat.opacity = 0.55 + 0.45 * Math.abs(Math.sin(Date.now() / 170));
+        }, 16);
+      });
       clockIv = setInterval(() => { drawRows(revealedRows); kbTex.needsUpdate = true; }, 500);
 
       function onKey(e) { if (e.target !== document.getElementById('url-input')) dismiss(); }
