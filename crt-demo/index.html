@@ -1732,11 +1732,11 @@
       kbMesh.renderOrder = 10;
       scene.add(kbMesh);
 
-      let dismissed = false, revealIv, clockIv, flashIv;
+      let dismissed = false, revealIv, clockIv, flashTo;
 
       function dismiss() {
         if (dismissed) return; dismissed = true;
-        clearInterval(revealIv); clearInterval(clockIv); clearInterval(flashIv);
+        clearInterval(revealIv); clearInterval(clockIv); clearTimeout(flashTo);
         window.removeEventListener('keydown', onKey);
         document.removeEventListener('click', onClick);
         scene.remove(kbMesh);
@@ -1749,11 +1749,15 @@
         else clearInterval(revealIv);
       }, 55);
 
-      // Hard blink: toggle opacity 1/0 every 750 ms
+      // Asymmetric blink: 2200 ms on, 180 ms off — broadcast "STAND BY" rhythm
       kbMat.opacity = 1;
-      flashIv = setInterval(() => {
-        kbMat.opacity = kbMat.opacity === 1 ? 0 : 1;
-      }, 1500);
+      (function blink() {
+        flashTo = setTimeout(() => {
+          if (dismissed) return;
+          kbMat.opacity = 0;
+          flashTo = setTimeout(() => { if (!dismissed) { kbMat.opacity = 1; blink(); } }, 180);
+        }, 2200);
+      })();
       clockIv = setInterval(() => { drawRows(revealedRows); kbTex.needsUpdate = true; }, 500);
 
       function onKey(e) { if (e.target !== document.getElementById('url-input')) dismiss(); }
