@@ -1765,6 +1765,12 @@
     }
 
     boot().then(() => {
+      // Auto-apply default presets for GitHub Pages demo
+      const crtPreset    = document.getElementById('ts-preset');
+      const signalPreset = document.getElementById('ts-signalPreset');
+      if (crtPreset)    { crtPreset.value    = 'pvm14';      crtPreset.dispatchEvent(new Event('change')); }
+      if (signalPreset) { signalPreset.value  = 'offAirPal'; signalPreset.dispatchEvent(new Event('change')); }
+      // Auto-load video
       const _raw  = new URLSearchParams(location.search).get('video');
       const url   = new URL(_raw || './telescreen_demo.webm', location.href).href;
       const input = document.getElementById('url-input');
