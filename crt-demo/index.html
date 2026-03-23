@@ -1241,8 +1241,8 @@
 
       // OSD canvas — used as a CanvasTexture source for in-kernel OSD mode (SPEC-osd-overlay).
       // Toggle with O key. Default: signal mode (overlayPlane in scene).
-      // In OSD mode the overlay is injected after the phosphor mask, receiving scanlines,
-      // mask, halation, grain, and scratch — but NOT signal-chain artifacts (glitch, ghost, etc).
+      // In OSD mode the overlay is blended at the mask stage: phosphor mask, scanlines,
+      // halation, grain, and scratch all apply — but NOT signal-chain artifacts (glitch, ghost, etc).
       // Fixed 1920×1080 so the CanvasTexture remains valid across window resizes (Option A).
       let overlayOSD = false;
       const osdCanvas = document.createElement('canvas');
