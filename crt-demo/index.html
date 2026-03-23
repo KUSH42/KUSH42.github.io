@@ -1414,16 +1414,6 @@
         if (e.key === 'Enter') btnLoadUrl.click();
       });
 
-      // Auto-load: ?video= param (relative paths resolved against page URL),
-      // falling back to the bundled demo clip.
-      const _rawParam = new URLSearchParams(location.search).get('video');
-      const autoUrl   = _rawParam
-        ? new URL(_rawParam, location.href).href
-        : new URL('./telescreen_demo.webm', location.href).href;
-      urlInput.value = autoUrl;
-      btnLoadUrl.click();
-      urlInput.value = autoUrl; // restore — click handler clears it
-
       btnClear.addEventListener('click', clearSource);
 
       btnPlayPause.addEventListener('click', () => {
@@ -1770,7 +1760,17 @@
       setTimeout(dismiss, 8000);
     }
 
-    boot().catch(e => {
+    boot().then(() => {
+      // Auto-load after pipeline is fully running — ?video= param or bundled demo clip.
+      // Uses getElementById since urlInput/btnLoadUrl are local to boot().
+      const _raw   = new URLSearchParams(location.search).get('video');
+      const url    = new URL(_raw || './telescreen_demo.webm', location.href).href;
+      const input  = document.getElementById('url-input');
+      const btn    = document.getElementById('btn-load-url');
+      input.value  = url;
+      btn.click();
+      input.value  = url; // restore — click handler clears it
+    }).catch(e => {
       document.getElementById('no-webgpu').classList.remove('hidden');
       console.error('telescreen-crt-webgpu boot error:', e);
     });
