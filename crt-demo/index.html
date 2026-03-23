@@ -188,6 +188,7 @@
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }
+
   </style>
 
   <script type="importmap">
@@ -1275,6 +1276,8 @@
         redrawOverlay();
       }, 600);
 
+      initKeybindPlane(scene);
+
       const crt = initTelescreenCRTWebGPU(renderer, scene, camera, {
         scratchUrl:  './data/scratches.png',
         autoRender:  true,
@@ -1411,10 +1414,12 @@
         if (e.key === 'Enter') btnLoadUrl.click();
       });
 
-      // Auto-load from ?video= URL parameter, defaulting to bundled demo clip
-      const autoUrl = new URLSearchParams(location.search).get('video') || './telescreen_demo.webm';
-      urlInput.value = autoUrl;
-      btnLoadUrl.click();
+      // Auto-load from ?video= URL parameter
+      const autoUrl = new URLSearchParams(location.search).get('video');
+      if (autoUrl) {
+        urlInput.value = autoUrl;
+        btnLoadUrl.click();
+      }
 
       btnClear.addEventListener('click', clearSource);
 
@@ -1666,6 +1671,104 @@
           }
         }
       });
+    }
+
+    function initKeybindPlane(scene) {
+      const ROW_H = 26, CW = 480, ROWS = 9;
+      const CH = ROW_H * ROWS; // 234
+      const kbCanvas = document.createElement('canvas');
+      kbCanvas.width = CW; kbCanvas.height = CH;
+      const kbCtx = kbCanvas.getContext('2d');
+      kbCtx.font = 'bold 13px "Courier New", Courier, monospace';
+      kbCtx.textBaseline = 'middle';
+
+      const CARD_ROWS = [
+        { bg: '#00F',    type: 'header' },
+        { bg: '#000',    type: 'sep' },
+        { bg: '#000',    type: 'key', key: '[ H ]',    desc: 'SETTINGS PANEL' },
+        { bg: '#000',    type: 'key', key: '[ T ]',    desc: 'CYCLE TEST PATTERN' },
+        { bg: '#000',    type: 'key', key: '[ O ]',    desc: 'CHANNEL OVERLAY' },
+        { bg: '#000',    type: 'key', key: '[ P ]',    desc: 'PERFORMANCE STATS' },
+        { bg: '#000',    type: 'key', key: '[\u25c4 \u25ba]', desc: 'BROWSE TELETEXT PAGES' },
+        { bg: '#000',    type: 'sep' },
+        { bg: '#000080', type: 'footer' },
+      ];
+
+      let revealedRows = 0;
+      function drawRows(count) {
+        const clk = new Date().toISOString().slice(11, 19);
+        CARD_ROWS.slice(0, count).forEach((row, i) => {
+          const y = i * ROW_H, cy = y + ROW_H / 2;
+          kbCtx.fillStyle = row.bg;
+          kbCtx.fillRect(0, y, CW, ROW_H);
+          if (row.type === 'header') {
+            kbCtx.fillStyle = '#FFF'; kbCtx.textAlign = 'left';
+            kbCtx.fillText('  P888  KEYBOARD GUIDE', 8, cy);
+            kbCtx.fillStyle = '#FF0'; kbCtx.textAlign = 'right';
+            kbCtx.fillText(clk + '  ', CW, cy);
+          } else if (row.type === 'sep') {
+            kbCtx.fillStyle = '#0FF'; kbCtx.textAlign = 'left';
+            kbCtx.fillText('\u2500'.repeat(60), 4, cy);
+          } else if (row.type === 'key') {
+            kbCtx.fillStyle = '#FF0'; kbCtx.textAlign = 'left';
+            kbCtx.fillText('  ' + row.key, 8, cy);
+            kbCtx.fillStyle = '#FFF';
+            kbCtx.fillText(row.desc, 102, cy);
+          } else if (row.type === 'footer') {
+            kbCtx.fillStyle = '#0FF'; kbCtx.textAlign = 'center';
+            kbCtx.fillText('PRESS ANY KEY OR CLICK \u00b7 DISMISS', CW / 2, cy);
+          }
+        });
+      }
+
+      drawRows(1);
+      const kbTex  = new THREE.CanvasTexture(kbCanvas);
+      kbTex.colorSpace = THREE.SRGBColorSpace;
+      const planeH = 0.30, planeW = planeH * (CW / CH);
+      const kbMat  = new THREE.MeshBasicMaterial({ map: kbTex, transparent: true, opacity: 0, depthTest: false });
+      const kbGeo  = new THREE.PlaneGeometry(planeW, planeH);
+      const kbMesh = new THREE.Mesh(kbGeo, kbMat);
+      kbMesh.position.z = 0.02;
+      kbMesh.renderOrder = 10;
+      scene.add(kbMesh);
+
+      let dismissed = false, fadeIv = null, revealIv, clockIv;
+      function fade(from, to, dur, done) {
+        if (fadeIv) clearInterval(fadeIv);
+        const t0 = performance.now();
+        fadeIv = setInterval(() => {
+          const p = Math.min(1, (performance.now() - t0) / dur);
+          kbMat.opacity = from + (to - from) * p;
+          if (p >= 1) { clearInterval(fadeIv); fadeIv = null; if (done) done(); }
+        }, 16);
+      }
+
+      function dismiss() {
+        if (dismissed) return; dismissed = true;
+        clearInterval(revealIv); clearInterval(clockIv);
+        window.removeEventListener('keydown', onKey);
+        document.removeEventListener('click', onClick);
+        fade(kbMat.opacity, 0, 300, () => {
+          scene.remove(kbMesh);
+          kbGeo.dispose(); kbMat.dispose(); kbTex.dispose();
+        });
+      }
+
+      // Staggered row reveal every 55 ms
+      revealIv = setInterval(() => {
+        if (revealedRows < ROWS) { revealedRows++; drawRows(revealedRows); kbTex.needsUpdate = true; }
+        else clearInterval(revealIv);
+      }, 55);
+
+      // Fade in & clock tick
+      fade(0, 1, 180, null);
+      clockIv = setInterval(() => { drawRows(revealedRows); kbTex.needsUpdate = true; }, 500);
+
+      function onKey(e) { if (e.target !== document.getElementById('url-input')) dismiss(); }
+      function onClick() { dismiss(); }
+      window.addEventListener('keydown', onKey);
+      setTimeout(() => document.addEventListener('click', onClick), 500); // delay to ignore boot clicks
+      setTimeout(dismiss, 8000);
     }
 
     boot().catch(e => {
