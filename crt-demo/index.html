@@ -1415,10 +1415,11 @@
           crt.setVideoSource(videoEl);
         };
         videoEl.addEventListener('canplay', canPlayHandler, { once: true });
-        // Try with audio; fall back to muted autoplay without updating UI so
-        // the volume control keeps showing the intended level.
+        // Try with audio; fall back to muted autoplay and sync UI state.
         videoEl.play().catch(() => {
+          isMuted = true;
           videoEl.muted = true;
+          btnMute.textContent = '🔇';
           videoEl.play().catch(() => {});
         });
         statusEl.textContent = label;
@@ -1594,7 +1595,12 @@
           if (canPlayHandler) { videoEl.removeEventListener('canplay', canPlayHandler); }
           canPlayHandler = () => { canPlayHandler = null; crt.setVideoSource(videoEl); };
           videoEl.addEventListener('canplay', canPlayHandler, { once: true });
-          videoEl.play().catch(() => { videoEl.muted = true; videoEl.play().catch(() => {}); });
+          videoEl.play().catch(() => {
+            isMuted = true;
+            videoEl.muted = true;
+            btnMute.textContent = '🔇';
+            videoEl.play().catch(() => {});
+          });
           statusEl.textContent = p.label;
           startPoll();
           // Fall through to geometry/overlay setup below
