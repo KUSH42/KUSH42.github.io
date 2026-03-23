@@ -1412,12 +1412,6 @@
         if (e.key === 'Enter') btnLoadUrl.click();
       });
 
-      // Auto-load from ?video= URL parameter
-      const autoUrl = new URLSearchParams(location.search).get('video');
-      if (autoUrl) {
-        urlInput.value = autoUrl;
-        btnLoadUrl.click();
-      }
 
       btnClear.addEventListener('click', clearSource);
 
@@ -1764,7 +1758,15 @@
       setTimeout(dismiss, 8000);
     }
 
-    boot().catch(e => {
+    boot().then(() => {
+      const _raw  = new URLSearchParams(location.search).get('video');
+      const url   = new URL(_raw || './telescreen_demo.webm', location.href).href;
+      const input = document.getElementById('url-input');
+      const btn   = document.getElementById('btn-load-url');
+      input.value = url;
+      btn.click();
+      input.value = url;
+    }).catch(e => {
       document.getElementById('no-webgpu').classList.remove('hidden');
       console.error('telescreen-crt-webgpu boot error:', e);
     });
