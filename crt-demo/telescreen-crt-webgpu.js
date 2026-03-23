@@ -20,7 +20,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, vec2, vec3, vec4,
   float,
-  mix, max, pow,
+  mix, max, pow, fract,
   rtt,
   uniform,
   smoothstep,
