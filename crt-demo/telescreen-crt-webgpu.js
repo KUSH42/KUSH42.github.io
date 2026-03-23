@@ -20,7 +20,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, vec2, vec3, vec4,
   float,
-  mix, max, pow, fract,
+  mix, max, pow,
   rtt,
   uniform,
   smoothstep,
@@ -823,7 +823,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       //   At beam centre vPhase=0: vWeight=1. Between scanlines |vPhase|→0.5: vWeight→0.
       // When osdEnabled=0, osdTexNode.a=0 → maskedWithOSD == masked (zero-cost blend).
       const maskMultiplier = mix(vec3(1.0), maskPattern, uniforms.maskStr).mul(uniforms.maskBoostFactor);
-      const vPhase         = fract(screenUV.y.mul(srcYNode)).sub(0.5);
+      const vPhase         = screenUV.y.mul(srcYNode).fract().sub(0.5);
       const vWeight        = float(2.0).pow(vPhase.mul(vPhase).mul(uniforms.hardScan));
       const osdModulated   = osdTexNode.rgb.mul(maskMultiplier).mul(vWeight);
       const maskedWithOSD  = mix(masked, osdModulated, osdTexNode.a.mul(uniforms.osdEnabled));
