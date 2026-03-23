@@ -1531,6 +1531,7 @@
         // signalPreset / sourceW / sourceH: auto-applied on entry, restored on exit
         { name: 'TELETEXT', liveSource: teletextSrc, planeW: 4 / 3, label: 'CH-03 // CEEFAX // LIVE',
           signalPreset: 'offAirPal', sourceW: 720, sourceH: 576 },
+        { name: 'DEMO',     videoUrl: './telescreen_demo.webm',      label: 'CH-02 // DEMO // LIVE' },
       ];
       let patternIdx = 0;
 
@@ -1581,7 +1582,23 @@
           srcYEl.dispatchEvent(new Event('change'));
         }
 
-        if (p.liveSource) {
+        if (p.videoUrl) {
+          // Load video directly — do NOT call loadLocalVideo (it calls clearSource which calls
+          // applyPattern again → infinite loop). Inline only what's needed.
+          smpteMesh.visible = false;
+          mode = 'local';
+          videoEl.volume = currentVolume / 100;
+          videoEl.muted  = isMuted;
+          videoEl.src    = p.videoUrl;
+          videoEl.load();
+          if (canPlayHandler) { videoEl.removeEventListener('canplay', canPlayHandler); }
+          canPlayHandler = () => { canPlayHandler = null; crt.setVideoSource(videoEl); };
+          videoEl.addEventListener('canplay', canPlayHandler, { once: true });
+          videoEl.play().catch(() => { videoEl.muted = true; videoEl.play().catch(() => {}); });
+          statusEl.textContent = p.label;
+          startPoll();
+          // Fall through to geometry/overlay setup below
+        } else if (p.liveSource) {
           smpteMesh.material.map?.dispose();
           smpteMesh.material.map = p.liveSource.texture;
           smpteMesh.material.needsUpdate = true;
