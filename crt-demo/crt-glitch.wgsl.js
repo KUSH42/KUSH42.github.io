@@ -3,7 +3,7 @@
  * WGSL glitch displacement pass. Faithfully ported from the original GLSL
  * applyGlitch() function in telescreen-crt.js.
  *
- * Active path: crtGlitchFallbackFn (vec3f packing — always used in r171).
+ * Active path: crtGlitchFallbackFn (vec3f packing -- always used in r171).
  * See STRUCT_RETURN_MIN_REV in telescreen-crt-webgpu.js.
  *
  * Struct return path was removed (DR-5 P3-A): Three.js r171 WGSLNodeFunction does not
@@ -11,11 +11,11 @@
  * re-introduce a crtGlitchFn with struct output and lower STRUCT_RETURN_MIN_REV.
  *
  * Glitch types (per-band, selected by continuous hash thresholds):
- *   Type 1 — thin band horizontal shift     (~20% of bands, h1 > 0.80)
- *   Type 2 — large tear                     (~4% of bands,  h1 < 0.04)
- *   Type 3 — chroma burst error             (~6% of bands, strong windows only)
- *   Type 4 — block chunk displacement       (one large rect per time window, ~35-70%)
- *   Type 5 — burst loss sentinel (-999)     (~1% of frames, strong windows only)
+ *   Type 1 -- thin band horizontal shift     (~20% of bands, h1 > 0.80)
+ *   Type 2 -- large tear                     (~4% of bands,  h1 < 0.04)
+ *   Type 3 -- chroma burst error             (~6% of bands, strong windows only)
+ *   Type 4 -- block chunk displacement       (one large rect per time window, ~35-70%)
+ *   Type 5 -- burst loss sentinel (-999)     (~1% of frames, strong windows only)
  *
  * The JS-side burst scheduler gates glitchActive; when inactive the function
  * returns the input pos unchanged with rgbSplitPx = 0.
@@ -23,7 +23,7 @@
 
 import { wgslFn } from 'three/tsl';
 
-// Active path — encodes output as vec3f(pos.x, pos.y, rgbSplitPx).
+// Active path -- encodes output as vec3f(pos.x, pos.y, rgbSplitPx).
 // Used when the runtime Three.js build does not support wgslFn struct return
 // via .element(). TSL caller uses .xy (pos) and .z (rgbSplitPx).
 export const crtGlitchFallbackFn = wgslFn(/* wgsl */`
@@ -56,25 +56,25 @@ fn applyGlitchFb(
   let h2   = glitchHashFb(band *  91.7 + tSlot + 1.0);
 
   if (h1 > 0.80) {
-    // Type 1 — thin horizontal shift: clamp (not fract) so edge pixels smear rather than teleport.
+    // Type 1 -- thin horizontal shift: clamp (not fract) so edge pixels smear rather than teleport.
     pos.x = clamp(pos.x + (h2 * 2.0 - 1.0) * str, 0.0, 1.0);
   } else if (h1 < 0.04) {
-    pos.x = fract(pos.x + (glitchHashFb(band + tSlot * 7.3) - 0.5) * str * 3.5);
+    pos.x = clamp(pos.x + (glitchHashFb(band + tSlot * 7.3) - 0.5) * str * 3.5, 0.0, 1.0);
   } else if (h1 > 0.72 && h1 < 0.78 && intensity > 0.5) {
-    // Type 3 — chroma burst error (replaces spatial mirror): composite video burst phase glitch.
-    // No positional shift — pos stays at uv.
+    // Type 3 -- chroma burst error (replaces spatial mirror): composite video burst phase glitch.
+    // No positional shift -- pos stays at uv.
     // Set a large rgbSplitPx so the call site shifts R and B in opposite horizontal directions,
     // creating brief desaturated/over-saturated colour banding that models a burst phase error.
-    // Factor: strength * 80 gives ~0.8–8 px split at typical strength values (0.01–0.10).
+    // Factor: strength * 80 gives ~0.8-8 px split at typical strength values (0.01-0.10).
     // Sign is randomised per-window: real burst phase errors alternate polarity with each field.
     rgbSplitPx = strength * 80.0;
     // Derive sign from a hash bit: glitchHashFb returns [0,1); scale to integer range and test LSB.
     let splitSign = select(-1.0, 1.0, (u32(glitchHashFb(band * 137.3 + tSlot * 7.0 + 3.0) * 65536.0) & 1u) == 0u);
     rgbSplitPx = rgbSplitPx * splitSign;
   } else if (intensity > 0.5 && h1 > 0.62 && h1 < 0.68) {
-    // Type 5 — burst loss: NTSC color burst signal completely absent.
-    // h1 range 0.62..0.68 (6% of bands) in strong windows only (~15%) → ~1% overall rate.
-    // No positional shift — set sentinel value -999.0 so the kernel caller can detect
+    // Type 5 -- burst loss: NTSC color burst signal completely absent.
+    // h1 range 0.62..0.68 (6% of bands) in strong windows only (~15%) -> ~1% overall rate.
+    // No positional shift -- set sentinel value -999.0 so the kernel caller can detect
     // burst-loss and apply full-frame desaturation (color decoder PLL lost lock).
     // Real burst loss causes immediate grayscale; -999 is unambiguous (real split is never < -100).
     rgbSplitPx = -999.0;
@@ -96,6 +96,9 @@ fn applyGlitchFb(
 }
 
 fn glitchHashFb(n: f32) -> f32 {
-  return fract(sin((n % 9973.0)) * 43758.5453123);
+  // DR-15 P1-A: removed n % 9973.0 modulo. f32 has 24 mantissa bits; sin() aliasing
+  // starts at n > 2^24 / 137.3 > 122000 s -- well beyond any realistic session.
+  // The old modulo caused visible pattern repetition every ~997 s (~16.6 min) at speed=10.
+  return fract(sin(n) * 43758.5453123);
 }
 `);

@@ -193,13 +193,14 @@
   <script type="importmap">
   {
     "imports": {
-      "three":          "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.webgpu.js",
-      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.webgpu.js",
-      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.171.0/build/three.tsl.js",
-      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.171.0/examples/jsm/"
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.webgpu.js",
+      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.webgpu.js",
+      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.tsl.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/"
     }
   }
   </script>
+  <script src="https://unpkg.com/stats.js@0.17.0/build/stats.min.js"></script>
 </head>
 <body>
 
@@ -231,7 +232,7 @@
     <div id="source-row">
       <label class="pick-btn" for="file-input">Load file</label>
       <input type="file" id="file-input" accept="video/*">
-      <input type="text" id="url-input" placeholder="Direct video URL…" autocomplete="off" spellcheck="false">
+      <input type="text" id="url-input" value="https://kush42.github.io/crt-demo/telescreen_demo.webm" autocomplete="off" spellcheck="false">
       <button id="btn-load-url">Load</button>
       <span id="video-status">No video loaded</span>
       <button id="btn-clear">Clear</button>
@@ -263,6 +264,20 @@
           <option value="pvm14">Sony PVM-14L2 (1991 broadcast)</option>
           <option value="arcade240p">Wells-Gardner U3000 (1982 arcade)</option>
           <option value="palTv">Grundig ST 63-751 (1992 PAL)</option>
+          <option value="rca1975">RCA XL-100 CTC-74 (1975 early color)</option>
+          <option value="emerson88">Emerson 13&quot; portable (1988 budget)</option>
+          <option value="necMultisync">NEC MultiSync XP17 (1997 SVGA)</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <span class="ln" style="min-width:0;flex:1">Signal source</span>
+        <select id="ts-signalPreset" style="flex:1;font-size:10px;">
+          <option value="cleanRgb">Clean RGB / S-Video</option>
+          <option value="compositeNtsc">Composite NTSC</option>
+          <option value="compositeVhs">VHS LP</option>
+          <option value="offAirNtsc">Off-air NTSC (antenna)</option>
+          <option value="offAirPal">Off-air PAL (antenna)</option>
+          <option value="betacam">Betacam SP</option>
         </select>
       </label>
     </div>
@@ -372,7 +387,7 @@
       </label>
       <label>
         <span class="ln">Flicker amount</span>
-        <input type="range" id="ts-flickerAmt" min="0" max="100" step="1" value="100">
+        <input type="range" id="ts-flickerAmt" min="0" max="5" step="1" value="0">
         <span class="val" id="ts-vFlickerAmt">1.00</span>
       </label>
     </div>
@@ -383,6 +398,16 @@
         <span class="ln">Warp</span>
         <input type="range" id="ts-warp" min="0" max="300" value="25">
         <span class="val" id="ts-vWarp">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Warp anisotropy (0=iso, 1=V-only)</span>
+        <input type="range" id="ts-warpAniso" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vWarpAniso">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Corner fade</span>
+        <input type="range" id="ts-cornerFade" min="0" max="80" value="22">
+        <span class="val" id="ts-vCornerFade">0.022</span>
       </label>
       <label>
         <span class="ln">Pixel sharpness</span>
@@ -504,6 +529,11 @@
         <span class="val" id="ts-vDefocus">0.66</span>
       </label>
       <label>
+        <span class="ln">Defocus anisotropy (0=iso, 1=V-only)</span>
+        <input type="range" id="ts-defocusAniso" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vDefocusAniso">0.00</span>
+      </label>
+      <label>
         <span class="ln">P22 primaries</span>
         <input type="range" id="ts-p22" min="0" max="100" step="1" value="0">
         <span class="val" id="ts-vP22">0.00</span>
@@ -559,6 +589,11 @@
         <input type="range" id="ts-persistence" min="0" max="70" step="1" value="50">
         <span class="val" id="ts-vPersistence">0.50</span>
       </label>
+      <label>
+        <span class="ln">Decay τ (0=use amount)</span>
+        <input type="range" id="ts-persistenceTau" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vPersistenceTau">off</span>
+      </label>
     </div>
 
     <div class="rr-sec rr-collapsible rr-open" data-target="ts-accuracy-body">Accuracy</div>
@@ -592,6 +627,32 @@
         <span class="ln">Halo warmth</span>
         <input type="range" id="ts-halationWarm" min="0" max="100" step="1" value="0">
         <span class="val" id="ts-vHalationWarm">0.00</span>
+      </label>
+      <!-- 2D isotropic halation (TIR scatter in glass faceplate). Requires loadBloomDependencies(). -->
+      <label>
+        <span class="ln">2D halo radius (px)</span>
+        <input type="range" id="ts-halo-radius" min="0" max="20" step="1" value="0">
+        <span class="val" id="ts-vHaloRadius">0 px</span>
+      </label>
+      <label>
+        <span class="ln">2D halo strength</span>
+        <input type="range" id="ts-halo-str" min="0" max="200" step="1" value="0">
+        <span class="val" id="ts-vHaloStr">0.00</span>
+      </label>
+      <!-- Glass faceplate bulk scatter. Triggers pipeline rebuild on enable/disable. -->
+      <label>
+        <span class="ln">Glass scatter</span>
+        <input type="checkbox" id="ts-glassBlurEnabled">
+      </label>
+      <label>
+        <span class="ln">Scatter strength</span>
+        <input type="range" id="ts-glassBlurStr" min="0" max="15" step="1" value="8">
+        <span class="val" id="ts-vGlassBlurStr">0.08</span>
+      </label>
+      <label>
+        <span class="ln">Scatter radius</span>
+        <input type="range" id="ts-glassBlurRadius" min="0" max="4" step="1" value="2">
+        <span class="val" id="ts-vGlassBlurRadius">0.020</span>
       </label>
     </div>
 
@@ -636,8 +697,8 @@
       </label>
       <label>
         <span class="ln">Ghost tint B</span>
-        <input type="range" id="ts-ghostTintB" min="50" max="150" step="1" value="104">
-        <span class="val" id="ts-vGhostTintB">1.04</span>
+        <input type="range" id="ts-ghostTintB" min="50" max="150" step="1" value="97">
+        <span class="val" id="ts-vGhostTintB">0.97</span>
       </label>
       <div class="rr-sub-hdr">AGC Hunting</div>
       <label>
@@ -682,7 +743,7 @@
     import { initTelescreenCRTWebGPU,
              loadBloomDependencies }                    from './telescreen-crt-webgpu.js';
     import { initTelescreenCRTControls }               from './telescreen-controls-webgpu.js';
-    import { PRESETS }                                  from './crt-presets.js';
+    import { PRESETS, SIGNAL_PRESETS }                  from './crt-presets.js';
 
     await loadBloomDependencies();
 
@@ -721,20 +782,53 @@
       return c;
     }
 
-    function drawOverlay(ctx, w, h, showDot, label) {
+    function drawOverlay(ctx, w, h, showDot, label, statsInfo) {
       ctx.clearRect(0, 0, w, h);
-      ctx.font = '13px "Share Tech Mono", monospace';
+      // Font and padding scale with height. Min 14px so text is never invisible.
+      const px  = Math.max(14, Math.round(h * 0.055)); // ~20px at h=360, ~59px at h=1080
+      const pad = Math.max(10, Math.round(h * 0.045)); // ~16px at h=360
+      ctx.font = `${px}px "Share Tech Mono", monospace`;
+      ctx.lineJoin  = 'round';
+      ctx.lineWidth = Math.max(2, Math.round(px * 0.22));
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
       ctx.textAlign = 'left';
+      // Channel label — bottom left
       ctx.fillStyle = 'rgba(0, 212, 176, 0.9)';
-      ctx.fillText(label, 14, h - 14);
+      ctx.strokeText(label, pad, h - pad);
+      ctx.fillText(label, pad, h - pad);
+      // REC indicator — top right (1.5× base size, broadcast-realistic prominence)
+      // Right-anchored so it never overflows the canvas at any aspect ratio.
+      const recPx   = Math.round(px * 1.5);
+      ctx.font      = `${recPx}px "Share Tech Mono", monospace`;
       ctx.fillStyle = 'rgba(255, 55, 55, 1.0)';
-      const recX = w - 90;
-      if (showDot) ctx.fillText('●', recX, 30);
-      ctx.fillText('REC', recX + 12, 32);
+      ctx.textAlign = 'right';
+      const recRight = w - Math.round(w * 0.02); // 2 % inset from right edge
+      const recY     = Math.round(h * 0.089);    // ~32px at h=360
+      const recStr   = showDot ? '● REC' : 'REC';
+      ctx.strokeText(recStr, recRight, recY);
+      ctx.fillText(recStr,   recRight, recY);
+      ctx.font      = `${px}px "Share Tech Mono", monospace`;
+      ctx.textAlign = 'left';
+      // Stats — pushed inward from the warp-safe margin (~13% from each edge covers
+      // warpMult up to 0.75). Decoupled from recY so it doesn't share the corner zone.
+      if (statsInfo) {
+        const fps = String(statsInfo.fps).padStart(3);
+        const ms  = String(statsInfo.ms).padStart(3);
+        const dc  = String(statsInfo.dc).padStart(6);
+        const statsText = `${fps} FPS  ${ms} MS  ${dc} DC`;
+        const sX  = Math.round(w * 0.13);           // safe inset from left warp edge
+        const sY  = Math.round(h * 0.13);           // safe inset from top warp edge
+        const bgPad = Math.round(px * 0.4);
+        const textW = ctx.measureText(statsText).width;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
+        ctx.fillRect(sX - bgPad, sY - px, textW + bgPad * 2, px + bgPad);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeText(statsText, sX, sY);
+        ctx.fillText(statsText,   sX, sY);
+      }
     }
 
-    function makeSMPTETexture() {
-      const w = 640, h = 480;
+    function makeSMPTETexture(w, h) {
       const c = document.createElement('canvas');
       c.width = w; c.height = h;
       const ctx = c.getContext('2d');
@@ -746,28 +840,326 @@
       });
       ctx.fillStyle = '#000';
       ctx.fillRect(0, h * 0.67, w, h * 0.33);
-      ctx.fillStyle = '#222';
-      ctx.fillRect(w * 0.10, h * 0.74, w * 0.12, h * 0.16);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(w * 0.34, h * 0.74, w * 0.32, h * 0.16);
-      ctx.fillStyle = '#111';
-      ctx.fillRect(w * 0.78, h * 0.74, w * 0.12, h * 0.16);
-      ctx.fillStyle = 'rgba(192,192,192,0.9)';
-      ctx.font = 'bold 26px monospace';
+      // Sub-black reference (~3.5 IRE — below-black; clips on most displays).
+      ctx.fillStyle = 'rgb(9,9,9)';
+      ctx.fillRect(0, h * 0.67, w * 0.15, h * 0.33);
+      // White reference (100 IRE, digital full-range peak = 235).
+      const refX0 = Math.round(w * 0.35), refX1 = Math.round(w * 0.65);
+      ctx.fillStyle = 'rgb(235,235,235)';
+      ctx.fillRect(refX0, h * 0.67, refX1 - refX0, h * 0.33);
+      // Near-black reference (~7.5 IRE — should be barely visible on a calibrated display).
+      ctx.fillStyle = 'rgb(19,19,19)';
+      ctx.fillRect(w * 0.85, h * 0.67, w * 0.15, h * 0.33);
+      // 8-step greyscale ramp within the white reference band.
+      const rampY0 = Math.round(h * 0.70), rampY1 = Math.round(h * 0.83);
+      const rampW  = refX1 - refX0;
+      for (let s = 0; s < 8; s++) {
+        const v  = Math.round((s / 7) * 235);
+        const sx = refX0 + Math.round(s * rampW / 8);
+        const ex = refX0 + Math.round((s + 1) * rampW / 8);
+        ctx.fillStyle = `rgb(${v},${v},${v})`;
+        ctx.fillRect(sx, rampY0, ex - sx, rampY1 - rampY0);
+      }
+      // Title: ~10.8% of height, minimum 32px. Both lines stay within the colour bars (0–67%).
+      const titlePx    = Math.max(32, Math.round(h * 0.108));
+      const titleLineH = titlePx * 1.15;
       ctx.textAlign = 'center';
-      ctx.fillText('TELESCREEN-CRT WEBGPU', w / 2, h * 0.56);
-      ctx.font = '14px monospace';
-      ctx.fillStyle = 'rgba(192,192,192,0.65)';
-      ctx.fillText('load a file or press H for settings', w / 2, h * 0.63);
+      ctx.lineJoin   = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.lineWidth   = Math.max(2, titlePx * 0.10);
+      ctx.font = `bold ${titlePx}px monospace`;
+      ctx.strokeText('TELESCREEN-CRT', w / 2, h * 0.33 - titleLineH * 0.5);
+      ctx.strokeText('WEBGPU',         w / 2, h * 0.33 + titleLineH * 0.5);
+      ctx.fillStyle = 'rgba(192,192,192,0.9)';
+      ctx.fillText('TELESCREEN-CRT', w / 2, h * 0.33 - titleLineH * 0.5);
+      ctx.fillText('WEBGPU',         w / 2, h * 0.33 + titleLineH * 0.5);
+      // Subtitle: ~7.0% of height. Both lines stay within the colour bars. Below 24px skip.
+      const subPx = Math.round(h * 0.070);
+      if (subPx >= 24) {
+        const subLineH = subPx * 1.15;
+        ctx.lineWidth   = Math.max(1, subPx * 0.10);
+        ctx.font = `${subPx}px monospace`;
+        ctx.strokeText('load a file',             w / 2, h * 0.56 - subLineH * 0.5);
+        ctx.strokeText('or press H for settings', w / 2, h * 0.56 + subLineH * 0.5);
+        ctx.fillStyle = 'rgba(192,192,192,0.65)';
+        ctx.fillText('load a file',             w / 2, h * 0.56 - subLineH * 0.5);
+        ctx.fillText('or press H for settings', w / 2, h * 0.56 + subLineH * 0.5);
+      }
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
+    }
+
+    function makePM5544Texture() {
+      const W = 768, H = 576;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const ctx = c.getContext('2d');
+
+      // Step 1 — Background
+      ctx.fillStyle = '#787878';
+      ctx.fillRect(0, 0, W, H);
+
+      // Step 2 — Inner sections (clipped to circle r=252)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(384, 288, 252, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 2a — White base
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, W, H);
+
+      // 2b — Colour bars  y=36..200  (six bars, 128 px each, 80% amplitude)
+      ['#CCCC00','#00CCCC','#00CC00','#CC00CC','#CC0000','#0000CC'].forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(i * 128, 36, 128, 164);
+      });
+
+      // 2c — Grey scale staircase  y=200..252
+      ['#000000','#343434','#666666','#999999','#CCCCCC','#FFFFFF'].forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(i * 128, 200, 128, 52);
+      });
+
+      // 2d — Multi-burst frequency blocks  y=252..368
+      // putImageData ignores clip — write to offscreen canvas then drawImage (which does respect clip)
+      const periods = [64, 32, 16, 8, 4];
+      const mbC = document.createElement('canvas');
+      mbC.width = 768; mbC.height = 116;
+      const mbCtx = mbC.getContext('2d');
+      const img = mbCtx.createImageData(768, 116);
+      const d = img.data;
+      for (let b = 0; b < 5; b++) {
+        const bx0 = Math.round(768 * b / 5);
+        const bx1 = Math.round(768 * (b + 1) / 5);
+        const T = periods[b];
+        for (let x = bx0; x < bx1; x++) {
+          const v = Math.round(127.5 + 127.5 * Math.cos(2 * Math.PI * (x - bx0) / T));
+          for (let y = 0; y < 116; y++) {
+            const i4 = (y * 768 + x) * 4;
+            d[i4] = d[i4 + 1] = d[i4 + 2] = v; d[i4 + 3] = 255;
+          }
+        }
+      }
+      mbCtx.putImageData(img, 0, 0);
+      ctx.drawImage(mbC, 0, 252);
+
+      // 2e — Reference / PLUGE bars  y=368..480
+      [['#090909', 0], ['#000000', 256], ['#1C1C1C', 512]].forEach(([col, x]) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(x, 368, 256, 112);
+      });
+
+      // 2f — Bottom white base  y=480..540  (explicit; already covered by 2a)
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 480, 768, 60);
+
+      // 2g — Top text box  y=36..80
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 36, 768, 44);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('TELESCREEN-CRT WEBGPU', 384, 68);
+
+      // 2h — Bottom text box  y=496..540
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 496, 768, 44);
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.font = '14px monospace';
+      ctx.fillText('press T · H for settings', 384, 518);
+
+      ctx.restore(); // end circle clip
+
+      // Step 3 — Crosshatch grid (full canvas, no clip)
+      ctx.fillStyle = '#FFFFFF';
+      for (let k = 0; k <= 18; k++) ctx.fillRect(Math.round(768 * k / 18), 0, 1, 576);
+      for (let k = 0; k <= 13; k++) ctx.fillRect(0, Math.round(576 * k / 13), 768, 1);
+
+      // Step 4 — Circle outline
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(384, 288, 252, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Step 5 — Centre crosshair
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 288, 768, 1);
+      ctx.fillRect(384, 0, 1, 576);
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    // ── Teletext renderer ────────────────────────────────────────────────
+    const TXT_COLORS = ['#000','#F00','#0F0','#FF0','#00F','#F0F','#0FF','#FFF'];
+    const TXT_CW = 18, TXT_CH = 23;
+
+    function renderTelextPage(ctx, page) {
+      const clk = new Date().toISOString().slice(11, 19);
+      ctx.font         = 'bold 18px "Courier New", Courier, monospace';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+
+      page.forEach((row, ri) => {
+        const y0 = ri * TXT_CH;
+        ctx.fillStyle = TXT_COLORS[row.bg ?? 0];
+        ctx.fillRect(0, y0, 720, TXT_CH);
+
+        const chars = [];
+        const fgs   = [];
+        if (row.segs) {
+          for (const seg of row.segs) {
+            for (const ch of seg.text) { chars.push(ch); fgs.push(seg.fg ?? 7); }
+          }
+        } else {
+          const txt = (row.text ?? '').replace('{CLK}', clk);
+          for (const ch of txt) { chars.push(ch); fgs.push(row.fg ?? 7); }
+        }
+
+        for (let ci = 0; ci < chars.length && ci < 40; ci++) {
+          if (chars[ci] === ' ') continue;
+          ctx.fillStyle = TXT_COLORS[fgs[ci]];
+          ctx.fillText(chars[ci], ci * TXT_CW + TXT_CW / 2, y0 + TXT_CH / 2);
+        }
+      });
+    }
+
+    // P100 — Index
+    const TXT_P100 = [
+      { bg: 4, fg: 7, text: 'P100  CEEFAX 1                  {CLK}' },
+      { bg: 4, fg: 3, text: '  THE TELETEXT SERVICE                  ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 2, fg: 0, text: '  NEWS & SPORT                  100+    ' },
+      { bg: 0, fg: 3, text: '  101 Headlines                         ' },
+      { bg: 0, fg: 3, text: '  102 Sport                             ' },
+      { bg: 0, fg: 3, text: '  103 Business                          ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 1, fg: 7, text: '  WEATHER & TRAVEL              300+    ' },
+      { bg: 0, fg: 3, text: '  301 Weather Forecast                  ' },
+      { bg: 0, fg: 3, text: '  302 Road Conditions                   ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 5, fg: 7, text: '  ENTERTAINMENT                 600+    ' },
+      { bg: 0, fg: 3, text: '  601 TV Listings                       ' },
+      { bg: 0, fg: 3, text: '  602 Radio                             ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  \u25c4 \u25ba arrow keys to browse pages        ' },
+      { bg: 4, fg: 7, text: '  100 INDEX    200 NEWS    300 WTHR     ' },
+    ];
+
+    // P200 — News
+    const TXT_P200 = [
+      { bg: 1, fg: 7, text: 'P200  BBC NEWS                  {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  HEADLINES  23 MARCH 2026              ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  PARLIAMENT                            ' },
+      { bg: 0, fg: 7, text: '  Commons debates digital broadcast     ' },
+      { bg: 0, fg: 7, text: '  reform package                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  WEATHER                               ' },
+      { bg: 0, fg: 7, text: '  Mild conditions across UK through     ' },
+      { bg: 0, fg: 7, text: '  the weekend                           ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  SPORT                                 ' },
+      { bg: 0, fg: 7, text: '  England cricket squad departs for     ' },
+      { bg: 0, fg: 7, text: '  Caribbean tour on Monday              ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  TECHNOLOGY                            ' },
+      { bg: 0, fg: 7, text: '  New broadcasting standards bill       ' },
+      { bg: 0, fg: 7, text: '  passes second reading                 ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 4, fg: 7, text: '  100 INDEX    200 NEWS    300 WTHR     ' },
+    ];
+
+    // P300 — Weather
+    const TXT_P300 = [
+      { bg: 4, fg: 3, text: 'P300  WEATHER FORECAST          {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 7, text: '   UK WEATHER OUTLOOK                   ' },
+      { bg: 0, fg: 3, text: '   23 MARCH 2026                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  REGION         TODAY      TONIGHT     ' },
+      { bg: 0, fg: 0, text: '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' },
+      { bg: 0, segs: [{ fg: 7, text: '  ENGLAND         ' }, { fg: 3, text: 'CLOUDY   ' }, { fg: 2, text: '17\u00b0C         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  WALES           ' }, { fg: 3, text: 'BREEZY   ' }, { fg: 2, text: '15\u00b0C         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  SCOTLAND        ' }, { fg: 6, text: 'RAIN     ' }, { fg: 2, text: '12\u00b0C         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  N.IRELAND       ' }, { fg: 3, text: 'OVERCAST ' }, { fg: 2, text: '14\u00b0C         ' }] },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  OUTLOOK FOR THE WEEKEND               ' },
+      { bg: 0, fg: 7, text: '  Improving in the south on Sunday      ' },
+      { bg: 0, fg: 7, text: '  Persistent rain in the north          ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 4, fg: 7, text: '  100 INDEX    200 NEWS    300 WTHR     ' },
+    ];
+
+    const TXT_PAGES = [TXT_P100, TXT_P200, TXT_P300];
+
+    function makeTeletextSource() {
+      const c   = document.createElement('canvas');
+      c.width   = 720;
+      c.height  = 576;
+      const ctx = c.getContext('2d');
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+
+      let pageIdx    = 0;
+      let clockTimer = null;
+
+      function redraw() {
+        renderTelextPage(ctx, TXT_PAGES[pageIdx]);
+        tex.needsUpdate = true;
+      }
+
+      function start() {
+        redraw();
+        clockTimer = setInterval(redraw, 500);
+      }
+
+      function stop() {
+        if (clockTimer !== null) { clearInterval(clockTimer); clockTimer = null; }
+      }
+
+      function setPage(idx) {
+        pageIdx = ((idx % TXT_PAGES.length) + TXT_PAGES.length) % TXT_PAGES.length;
+        redraw();
+      }
+
+      return {
+        texture: tex, start, stop, setPage,
+        get pageCount() { return TXT_PAGES.length; },
+        get currentPage() { return pageIdx; },
+      };
     }
 
     // Hidden <video> element for local video / direct URL playback.
     const videoEl       = document.createElement('video');
     videoEl.loop        = true;
     videoEl.playsInline = true;
+    videoEl.crossOrigin = 'anonymous';
 
     async function boot() {
       const wrapper = document.querySelector('.s9-telescreen');
@@ -779,7 +1171,7 @@
       const renderer = new THREE.WebGPURenderer({ canvas, antialias: false });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
       renderer.toneMapping = THREE.NoToneMapping;
 
       try {
@@ -798,7 +1190,8 @@
       const scene  = new THREE.Scene();
       scene.background = new THREE.Color(0x000000);
 
-      let videoAspect = 16 / 9;
+      // In SMPTE mode the pattern fills the full viewport, so start at the viewport aspect.
+      let videoAspect = window.innerWidth / window.innerHeight;
       const camera = new THREE.OrthographicCamera(
         -videoAspect / 2, videoAspect / 2,
         0.5, -0.5,
@@ -809,17 +1202,20 @@
       // SMPTE test pattern — default source, hidden when video is loaded.
       // z=0.005: sits in front of the video mesh (z=0) so the black DataTexture
       // placeholder doesn't bleed through in SMPTE mode.
+      // map: null on creation — regenerateSMPTETexture() sets it synchronously below.
       const smpteMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(videoAspect, 1.0),
-        new THREE.MeshBasicMaterial({ map: makeSMPTETexture() })
+        new THREE.MeshBasicMaterial({ map: null })
       );
       smpteMesh.position.z = 0.005;
       scene.add(smpteMesh);
 
-      const OW = 640, OH = 360;
-      const overlayCanvas = makeOverlayCanvas(OW, OH);
-      const overlayCtx    = overlayCanvas.getContext('2d');
-      const overlayTex    = new THREE.CanvasTexture(overlayCanvas);
+      // Canvas width is fixed at 1920; height tracks the current aspect so text is never
+      // stretched. rebuildOverlayTexture() swaps in a new CanvasTexture whenever the
+      // plane aspect changes, avoiding GPU-level distortion of the overlay glyphs.
+      let overlayCanvas = makeOverlayCanvas(1920, Math.round(1920 / videoAspect));
+      let overlayCtx    = overlayCanvas.getContext('2d');
+      let overlayTex    = new THREE.CanvasTexture(overlayCanvas);
       overlayTex.colorSpace = THREE.SRGBColorSpace;
       const overlayPlane  = new THREE.Mesh(
         new THREE.PlaneGeometry(videoAspect, 1.0),
@@ -830,19 +1226,59 @@
 
       let recDot = true;
       let overlayLabel = 'CH-01 // SMPTE-TEST // LIVE';
-      drawOverlay(overlayCtx, OW, OH, recDot, overlayLabel);
-      overlayTex.needsUpdate = true;
+      let _statsInfo = null;
+
+      // OSD canvas — sits in the DOM after the CRT pipeline, unaffected by signal quality.
+      // Toggle with O key. Default: signal mode (overlayPlane in scene).
+      let overlayOSD = false;
+      const osdCanvas = document.createElement('canvas');
+      osdCanvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:100;display:none;';
+      document.body.appendChild(osdCanvas);
+      function resizeOsdCanvas() {
+        osdCanvas.width  = window.innerWidth;
+        osdCanvas.height = window.innerHeight;
+      }
+      resizeOsdCanvas();
+
+      function redrawOverlay() {
+        if (overlayOSD) {
+          drawOverlay(osdCanvas.getContext('2d'), osdCanvas.width, osdCanvas.height, recDot, overlayLabel, _statsInfo);
+        } else {
+          drawOverlay(overlayCtx, overlayCanvas.width, overlayCanvas.height, recDot, overlayLabel, _statsInfo);
+          overlayTex.needsUpdate = true;
+        }
+      }
+
+      // Swap to a new canvas+texture sized to match the given aspect ratio.
+      // Creating a fresh CanvasTexture avoids WebGPU stale-texture artifacts that occur
+      // when canvas.width/height are mutated in place on an already-uploaded texture.
+      function rebuildOverlayTexture(aspect) {
+        const w = 1920;
+        const h = Math.round(1920 / aspect);
+        const newCanvas = makeOverlayCanvas(w, h);
+        const newCtx    = newCanvas.getContext('2d');
+        const newTex    = new THREE.CanvasTexture(newCanvas);
+        newTex.colorSpace = THREE.SRGBColorSpace;
+        const oldTex = overlayTex;
+        overlayCanvas = newCanvas;
+        overlayCtx    = newCtx;
+        overlayTex    = newTex;
+        overlayPlane.material.map = newTex;
+        overlayPlane.material.needsUpdate = true;
+        oldTex.dispose();
+        redrawOverlay();
+      }
+
+      redrawOverlay();
       const recInterval = setInterval(() => {
         recDot = !recDot;
-        drawOverlay(overlayCtx, OW, OH, recDot, overlayLabel);
-        overlayTex.needsUpdate = true;
+        redrawOverlay();
       }, 600);
 
       const crt = initTelescreenCRTWebGPU(renderer, scene, camera, {
-        scratchUrl:  './data/scratches.jpg',
+        scratchUrl:  './data/scratches.png',
         autoRender:  true,
         videoSource: videoEl,
-        bloom: { enabled: true, strength: 0.25, radius: 1.8, threshold: 0.0 },
       });
       // Replace the blank VideoTexture (no src → invalid GPU texture view) with a
       // valid 1×1 black DataTexture until the user actually loads a video file.
@@ -853,6 +1289,7 @@
           videoAspect = videoEl.videoWidth / videoEl.videoHeight;
           overlayPlane.geometry.dispose();
           overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          rebuildOverlayTexture(videoAspect);
           updateCamera();
         }
       });
@@ -860,7 +1297,7 @@
       // Pass PRESETS so the preset picker is populated. Do NOT call crt.setShader() here
       // with a preset's sourceSizeX/Y — fitPlane manages source size from the video element.
       // applyPreset() already strips sourceSizeX/Y, so the picker is safe to use at runtime.
-      initTelescreenCRTControls(crt, { presets: PRESETS });
+      initTelescreenCRTControls(crt, { presets: PRESETS, signalPresets: SIGNAL_PRESETS });
 
       // ── Camera fit — keeps content aspect ratio with letterbox/pillarbox ────
       function updateCamera() {
@@ -921,13 +1358,8 @@
         timeDisplay.textContent = '0:00 / 0:00';
         btnPlayPause.textContent = '⏵';
         statusEl.textContent = 'No video loaded';
-        // Restore SMPTE and reset camera to 16:9
         smpteMesh.visible = true;
-        videoAspect = 16 / 9;
-        overlayPlane.geometry.dispose();
-        overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
-        updateCamera();
-        overlayLabel = 'CH-01 // SMPTE-TEST // LIVE';
+        applyPattern(patternIdx);
       }
 
       function loadLocalVideo(src, label) {
@@ -1019,15 +1451,125 @@
       videoEl.addEventListener('ended', updatePlayPauseBtn);
 
       // ── Resize handling ───────────────────────────────────────────────────
+      let _smpteBounce = null;
+
+      // Regenerates the SMPTE canvas texture at the current viewport size (capped at
+      // 1920 px wide). Extracted so clearSource() and the resize handler share the
+      // same logic without duplication.
+      function regenerateSMPTETexture() {
+        const tw = Math.min(window.innerWidth, 1920);
+        const th = Math.round(tw * window.innerHeight / window.innerWidth);
+        const old = smpteMesh.material.map;
+        smpteMesh.material.map = makeSMPTETexture(tw, th);
+        smpteMesh.material.needsUpdate = true;
+        old?.dispose();
+      }
+
       function onResize() {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        renderer.setSize(w, h, false);
+        renderer.setSize(w, h); // also updates canvas.style.width/height inline styles
         renderer.setPixelRatio(window.devicePixelRatio);
+        // SMPTE fills the full viewport — update aspect + geometry immediately and
+        // debounce the canvas redraw. Fixed-aspect patterns (PM5544) only need
+        // updateCamera() since their plane geometry never changes on resize.
+        if (smpteMesh.visible && PATTERNS[patternIdx].planeW === null) {
+          videoAspect = w / h;
+          smpteMesh.geometry.dispose();
+          smpteMesh.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          overlayPlane.geometry.dispose();
+          overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          rebuildOverlayTexture(videoAspect);
+          clearTimeout(_smpteBounce);
+          _smpteBounce = setTimeout(regenerateSMPTETexture, 150);
+        }
+        resizeOsdCanvas();
         updateCamera();
       }
+      // ── Pattern sources (T key cycles) ───────────────────────────────────────
+      // planeW: fixed aspect ratio, or null for viewport-fill (SMPTE special case).
+      const teletextSrc = makeTeletextSource();
+
+      const PATTERNS = [
+        { name: 'SMPTE',    make: null,              planeW: null,   label: 'CH-01 // SMPTE-TEST // LIVE' },
+        { name: 'PM5544',   make: makePM5544Texture, planeW: 4 / 3, label: 'CH-01 // PM5544 // LIVE' },
+        // signalPreset / sourceW / sourceH: auto-applied on entry, restored on exit
+        { name: 'TELETEXT', liveSource: teletextSrc, planeW: 4 / 3, label: 'CH-03 // CEEFAX // LIVE',
+          signalPreset: 'offAirPal', sourceW: 720, sourceH: 576 },
+      ];
+      let patternIdx = 0;
+
+      // Saved values restored when leaving a pattern that has signalPreset / sourceW/H
+      let _prevSignalPreset = null;
+      let _prevSourceX      = null;
+      let _prevSourceY      = null;
+
+      function applyPattern(idx) {
+        teletextSrc.stop();
+        const p      = PATTERNS[idx];
+        const pw     = p.planeW ?? (window.innerWidth / window.innerHeight);
+        const sigEl  = document.getElementById('ts-signalPreset');
+        const srcXEl = document.getElementById('ts-sourceSizeX');
+        const srcYEl = document.getElementById('ts-sourceSizeY');
+
+        // Restore previously auto-applied signal preset when leaving a pattern that set one.
+        // Guard: only restore if the new pattern does NOT also set one (avoids double-restore
+        // when clearSource() re-applies the same pattern, or when chaining live sources).
+        if (_prevSignalPreset !== null && sigEl && !p.signalPreset) {
+          sigEl.value = _prevSignalPreset;
+          sigEl.dispatchEvent(new Event('change'));
+          _prevSignalPreset = null;
+        }
+        if (_prevSourceX !== null && srcXEl && p.sourceW === undefined) {
+          srcXEl.value = _prevSourceX;
+          srcXEl.dispatchEvent(new Event('change'));
+          srcYEl.value = _prevSourceY;
+          srcYEl.dispatchEvent(new Event('change'));
+          _prevSourceX = _prevSourceY = null;
+        }
+
+        // Auto-apply pattern-specific signal preset (save current value first, once).
+        if (p.signalPreset && sigEl) {
+          if (_prevSignalPreset === null) _prevSignalPreset = sigEl.value;
+          sigEl.value = p.signalPreset;
+          sigEl.dispatchEvent(new Event('change'));
+        }
+        // Auto-apply pattern-specific source resolution (save current values first, once).
+        if (p.sourceW !== undefined && srcXEl) {
+          if (_prevSourceX === null) {
+            _prevSourceX = parseInt(srcXEl.value, 10) || 0;
+            _prevSourceY = parseInt(srcYEl.value, 10) || 0;
+          }
+          srcXEl.value = p.sourceW;
+          srcXEl.dispatchEvent(new Event('change'));
+          srcYEl.value = p.sourceH ?? p.sourceW;
+          srcYEl.dispatchEvent(new Event('change'));
+        }
+
+        if (p.liveSource) {
+          smpteMesh.material.map?.dispose();
+          smpteMesh.material.map = p.liveSource.texture;
+          smpteMesh.material.needsUpdate = true;
+          p.liveSource.start();
+        } else if (p.make) {
+          smpteMesh.material.map?.dispose();
+          smpteMesh.material.map = p.make();
+          smpteMesh.material.needsUpdate = true;
+        } else {
+          regenerateSMPTETexture(); // SMPTE: handles dispose + assign internally
+        }
+        smpteMesh.geometry.dispose();
+        smpteMesh.geometry = new THREE.PlaneGeometry(pw, 1.0);
+        overlayPlane.geometry.dispose();
+        overlayPlane.geometry = new THREE.PlaneGeometry(pw, 1.0);
+        videoAspect  = pw;
+        overlayLabel = p.label;   // set before rebuildOverlayTexture → redrawOverlay()
+        rebuildOverlayTexture(pw);
+        updateCamera();
+      }
+
       window.addEventListener('resize', onResize);
-      onResize(); // apply on first frame
+      applyPattern(0); // PM5544 default — sets geometry, texture, aspect, overlay, camera
 
       // ── Source resolution preset ───────────────────────────────────────────
       document.getElementById('ts-sourcePreset').addEventListener('change', e => {
@@ -1043,6 +1585,49 @@
         e.target.value = ''; // reset to placeholder so re-selecting same value still fires
       });
 
+      // ── Stats.js (P key toggle) ─────────────────────────────────────────────
+      const stats = new Stats();
+      stats.dom.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;';
+      stats.dom.style.display = 'none';
+      document.body.appendChild(stats.dom);
+      const dcPanel = new Stats.Panel('DC', '#ff8', '#221');
+      stats.addPanel(dcPanel);
+      stats.showPanel(0);
+      // Drive stats from its own RAF — internalLoop calls the closure's renderFrame
+      // directly so patching crt.renderFrame wouldn't intercept it. A parallel RAF
+      // calling stats.update() measures the same wall-clock frame rate accurately.
+      // Also writes FPS/MS/DC into the in-scene overlay canvas so the stats are
+      // affected by the CRT post-processing pipeline.
+      let _sFpsFrames = 0, _sFpsWinStart = performance.now(), _sPrevTs = performance.now(), _sLastOverlay = 0;
+      let _statsMode = 0; // 0=crt (in-scene), 1=normal (stats.js dom), 2=hidden
+      _statsInfo = { fps: '--', ms: '--', dc: '--' };
+      (function statsLoop(ts) {
+        const now = performance.now();
+        const dc  = renderer.info.render.calls;
+        _sFpsFrames++;
+        const elapsed = now - _sFpsWinStart;
+        let fps = _statsInfo ? _statsInfo.fps : '--';
+        if (elapsed >= 500) {
+          fps = Math.round(_sFpsFrames * 1000 / elapsed);
+          _sFpsFrames = 0;
+          _sFpsWinStart = now;
+        }
+        const ms = Math.round(now - _sPrevTs);
+        _sPrevTs = now;
+        dcPanel.update(dc, 200);
+        stats.update();
+        if (_statsMode === 0) {
+          _statsInfo = { fps, ms, dc };
+        } else {
+          _statsInfo = null;
+        }
+        if (now - _sLastOverlay > 250) {
+          _sLastOverlay = now;
+          redrawOverlay();
+        }
+        requestAnimationFrame(statsLoop);
+      })();
+
       // ── H key panel toggle ─────────────────────────────────────────────────
       const panel = document.getElementById('rr-panel');
       const hint  = document.getElementById('key-hint');
@@ -1051,6 +1636,29 @@
         if (e.key === 'h' || e.key === 'H') {
           panel.classList.toggle('rr-visible');
           hint.textContent = panel.classList.contains('rr-visible') ? '' : '[ H ] settings';
+        }
+        if (e.key === 'p' || e.key === 'P') {
+          _statsMode = (_statsMode + 1) % 3;
+          stats.dom.style.display = _statsMode === 1 ? 'block' : 'none';
+        }
+        if (e.key === 'o' || e.key === 'O') {
+          overlayOSD = !overlayOSD;
+          overlayPlane.visible   = !overlayOSD;
+          osdCanvas.style.display = overlayOSD ? 'block' : 'none';
+          redrawOverlay();
+        }
+        if (e.key === 't' || e.key === 'T') {
+          if (mode === 'none') {
+            patternIdx = (patternIdx + 1) % PATTERNS.length;
+            applyPattern(patternIdx);
+          }
+        }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          if (PATTERNS[patternIdx]?.liveSource) {
+            const src   = PATTERNS[patternIdx].liveSource;
+            const delta = e.key === 'ArrowRight' ? 1 : -1;
+            src.setPage(src.currentPage + delta);
+          }
         }
       });
     }

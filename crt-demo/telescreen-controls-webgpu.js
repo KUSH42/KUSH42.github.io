@@ -9,7 +9,8 @@
  */
 
 export function initTelescreenCRTControls(crt, opts = {}) {
-  const PRESETS = opts.presets ?? {};
+  const PRESETS        = opts.presets        ?? {};
+  const SIGNAL_PRESETS = opts.signalPresets  ?? {};
   // Track all listeners so destroy() can remove them cleanly
   const _listeners = [];
   function on(el, event, handler) {
@@ -30,7 +31,6 @@ export function initTelescreenCRTControls(crt, opts = {}) {
   const tsVignetteEls  = [...document.querySelectorAll('.s9-telescreen__vignette')];
   const tsScanlinesEls = [...document.querySelectorAll('.s9-telescreen__scanlines')];
   const tsPhaseEls     = [...document.querySelectorAll('.s9-telescreen__phase-a, .s9-telescreen__phase-b, .s9-telescreen__phase-c')];
-  const tsStaticEls    = []; // CSS static removed; GPU snow (snowFn) is the sole noise layer
   const tsSagEls       = [...document.querySelectorAll('.s9-telescreen__sag')];
   const tsRollbarEls   = [...document.querySelectorAll('.s9-telescreen__rollbar')];
 
@@ -38,7 +38,7 @@ export function initTelescreenCRTControls(crt, opts = {}) {
   // Edit values here to change defaults; sliders initialise from this object.
   const state = {
     // Glitch
-    glitchEnabled:  true,
+    glitchEnabled:  false,
     glitchStrength: 0.01,
     glitchSpeed:    24.0,
     glitchCols:     50,
@@ -52,11 +52,12 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     vignetteOpacity: 0.25,
     scanlinesEnabled: true,
     phaseEnabled:    true,
-    staticEnabled:   true,
     sagEnabled:      true,
     rollbarEnabled:  true,
     // CRT shader
     warpMult:    0.20,
+    warpAniso:   0.0,
+    cornerFade:  0.022,
     hardPix:     2.5, // stored positive; negated on send
     hardScan:    8.0,   // stored positive; negated on send
     scrollRate:  0.05,
@@ -88,6 +89,7 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     maskScale:          3.91,
     maskSmooth:         0.12,
     defocusAmt:         0.35,
+    defocusAniso:       0.0,
     p22Str:             0.40,
     blackLevel:         0.0001,
     bloomCoreRadius:    0.35,
@@ -101,13 +103,20 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     flickerAmt:         0.0,   // off — fast phosphor (τ<1ms) shows no inter-field decay at 60 Hz
     persistenceEnabled: true,
     persistence:        0.50,
+    persistenceTau:     0.0,   // 0 = off (use raw persistence); >0 = physical decay constant (s)
+    glassBlurEnabled:   false,
+    glassBlurStr:       0.08,  // faceplate scatter strength (pipeline rebuild on 0↔nonzero)
+    glassBlurRadius:    0.002, // scatter radius — 3×3 grid tap spacing as UV fraction of width
     // Private state — underscore prefix; excluded from JSON export
-    _preset:            'trinitron', // currently selected preset key
+    _preset:            'trinitron',  // currently selected CRT archetype key
+    _signalPreset:      'compositeNtsc', // currently selected signal source key
     // Accuracy pass
     sourceSizeX:        0,     // 0 = use output resolution (backward-compatible)
     sourceSizeY:        0,
     interlace:          false,
     halationWarm:       0.0,
+    haloRadius:         0.0,
+    haloStr:            0.0,
     // Interference pass (SPEC-glitch-interference-v2)
     humAmt:         0.022,
     humBars:        1.0,
@@ -116,8 +125,8 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     ghostStr:       0.0,
     ghostTintR:     1.0,
     ghostTintG:     0.97,
-    ghostTintB:     1.04,
-    dotCrawlAmt:    0.09,
+    ghostTintB:     0.97,
+    dotCrawlAmt:    0.05,
     glitchBurstLoss: 0.70,
     vbiStr:         0.07,
     vbiLines:       3.0,
@@ -190,10 +199,27 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     refreshAllBindings();
 
     // Apply to shader — strip sourceSizeX/Y (content-specific, not archetype-specific).
+    // Strip glassBlurStr/Radius too: respect the glassBlurEnabled gate rather than
+    // bypassing it. The preset values are already in state via the merge above;
+    // if the gate is on they were sent by refreshAllBindings(); if off, explicitly
+    // zero the shader uniform to prevent the pipeline from rebuilding with scatter active.
     // Do not call applyGlitch(): presets carry no glitch keys; current glitch state
     // is unchanged and does not need to be re-sent.
-    const { sourceSizeX: _sx, sourceSizeY: _sy, ...shaderParams } = p;
+    const { sourceSizeX: _sx, sourceSizeY: _sy,
+            glassBlurStr: _gb, glassBlurRadius: _gbr, ...shaderParams } = p;
     crt.setShader(shaderParams);
+    crt.setShader({ glassBlurStr: state.glassBlurEnabled ? state.glassBlurStr : 0 });
+
+    // Re-apply the active signal preset on top. CRT presets zero all interference
+    // params; the signal preset restores the correct transmission characteristics.
+    // Uses the same applyBinding loop as JSON import to respect enable-flag gates
+    // (snowEnabled must precede snowAmt in BINDINGS — it does).
+    const activeSP = SIGNAL_PRESETS[state._signalPreset];
+    if (activeSP) {
+      for (const b of BINDINGS) {
+        if (activeSP[b.key] !== undefined) applyBinding(b, activeSP[b.key]);
+      }
+    }
   }
 
   // ── Binding table ─────────────────────────────────────────────
@@ -243,8 +269,6 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       set: v => { tsScanlinesEls.forEach(el => { el.style.display = v ? 'block' : 'none'; }); } },
     { type: 'checkbox', id: 'ts-phaseEnabled', key: 'phaseEnabled',
       set: v => { tsPhaseEls.forEach(el => { el.style.display = v ? '' : 'none'; }); } },
-    { type: 'checkbox', id: 'ts-staticEnabled', key: 'staticEnabled',
-      set: v => { tsStaticEls.forEach(el => { el.style.display = v ? '' : 'none'; }); } },
     { type: 'checkbox', id: 'ts-sagEnabled', key: 'sagEnabled',
       set: v => {
         tsSagEls.forEach(el => { el.style.display = v ? '' : 'none'; });
@@ -261,6 +285,14 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
       set: v => crt.setShader({ warpMult: v }) },
+    { id: 'ts-warpAniso', valId: 'ts-vWarpAniso', key: 'warpAniso',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => crt.setShader({ warpAniso: v }) },
+    { id: 'ts-cornerFade', valId: 'ts-vCornerFade', key: 'cornerFade',
+      toSlider: v => Math.round(v * 1000), fromSlider: v => v / 1000,
+      fmt: v => v.toFixed(3),
+      set: v => crt.setShader({ cornerFade: v }) },
     { id: 'ts-hardPix', valId: 'ts-vHardPix', key: 'hardPix',
       toSlider: v => v * 10, fromSlider: v => v / 10,
       fmt: v => v.toFixed(1),
@@ -397,6 +429,10 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
       set: v => crt.setShader({ defocusAmt: v }) },
+    { id: 'ts-defocusAniso', valId: 'ts-vDefocusAniso', key: 'defocusAniso',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => crt.setShader({ defocusAniso: v }) },
     { id: 'ts-p22', valId: 'ts-vP22', key: 'p22Str',
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
@@ -423,6 +459,25 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
       set: v => { if (state.persistenceEnabled) crt.setShader({ persistence: v }); } },
+    // persistenceTau: frame-rate-independent physical decay constant (s).
+    // When > 0, overrides the raw persistence blend each frame (recommended over raw persistence).
+    { id: 'ts-persistenceTau', valId: 'ts-vPersistenceTau', key: 'persistenceTau',
+      toSlider: v => Math.round(v * 1000), fromSlider: v => v / 1000,
+      fmt: v => v > 0 ? (v * 1000).toFixed(1) + ' ms' : 'off',
+      set: v => crt.setShader({ persistenceTau: v }) },
+
+    // ── Accuracy pass — Glass faceplate scatter ──
+    // Triggers a pipeline rebuild when crossing the 0/non-zero boundary.
+    { type: 'checkbox', id: 'ts-glassBlurEnabled', key: 'glassBlurEnabled',
+      set: v => crt.setShader({ glassBlurStr: v ? state.glassBlurStr : 0 }) },
+    { id: 'ts-glassBlurStr', valId: 'ts-vGlassBlurStr', key: 'glassBlurStr',
+      toSlider: v => Math.round(v * 100), fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => { if (state.glassBlurEnabled) crt.setShader({ glassBlurStr: v }); } },
+    { id: 'ts-glassBlurRadius', valId: 'ts-vGlassBlurRadius', key: 'glassBlurRadius',
+      toSlider: v => Math.round(v * 1000), fromSlider: v => v / 1000,
+      fmt: v => v.toFixed(3),
+      set: v => { if (state.glassBlurEnabled) crt.setShader({ glassBlurRadius: v }); } },
 
     // ── Accuracy pass ──
     { type: 'number', id: 'ts-sourceSizeX', key: 'sourceSizeX',
@@ -435,6 +490,15 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
       set: v => crt.setShader({ halationWarm: v }) },
+    // P0-A: 2D isotropic halation (requires loadBloomDependencies())
+    { id: 'ts-halo-radius', valId: 'ts-vHaloRadius', key: 'haloRadius',
+      toSlider: v => Math.round(v), fromSlider: v => +v,
+      fmt: v => v.toFixed(0) + ' px',
+      set: v => crt.setShader({ haloRadius: v }) },
+    { id: 'ts-halo-str', valId: 'ts-vHaloStr', key: 'haloStr',
+      toSlider: v => v * 100, fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => crt.setShader({ haloStr: v }) },
 
     // ── Interference pass (SPEC-glitch-interference-v2) ──
     // P0-B: Hum bar
@@ -442,8 +506,10 @@ export function initTelescreenCRTControls(crt, opts = {}) {
       toSlider: v => v * 1000, fromSlider: v => v / 1000,
       fmt: v => v.toFixed(3),
       set: v => crt.setShader({ humAmt: v }) },
+    // DR-14 P3-C: fromSlider rounds to integer — fract() in shader handles non-integer counts
+    // but integer values produce the cleanest tile-safe hum bars.
     { id: 'ts-humBars', valId: 'ts-vHumBars', key: 'humBars',
-      toSlider: v => v, fromSlider: v => +v,
+      toSlider: v => v, fromSlider: v => Math.round(+v),
       fmt: v => v.toFixed(0),
       set: v => crt.setShader({ humBars: v }) },
     { id: 'ts-humRate', valId: 'ts-vHumRate', key: 'humRate',
@@ -692,7 +758,22 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     });
   }
 
+  // ── Signal preset select — wired manually (same reason as CRT preset) ──
+  const signalEl = document.getElementById('ts-signalPreset');
+  if (signalEl) {
+    signalEl.value = state._signalPreset;
+    on(signalEl, 'change', e => {
+      state._signalPreset = e.target.value;
+      const sp = SIGNAL_PRESETS[e.target.value];
+      if (!sp) return;
+      for (const b of BINDINGS) {
+        if (sp[b.key] !== undefined) applyBinding(b, sp[b.key]);
+      }
+    });
+  }
+
   // Apply default preset if PRESETS were supplied.
+  // applyPreset() also re-applies the active signal preset (state._signalPreset).
   if (PRESETS[state._preset]) {
     applyPreset(state._preset);
   }
