@@ -1753,7 +1753,7 @@
       kbMat.opacity = 1;
       flashIv = setInterval(() => {
         kbMat.opacity = kbMat.opacity === 1 ? 0 : 1;
-      }, 750);
+      }, 1500);
       clockIv = setInterval(() => { drawRows(revealedRows); kbTex.needsUpdate = true; }, 500);
 
       function onKey(e) { if (e.target !== document.getElementById('url-input')) dismiss(); }
