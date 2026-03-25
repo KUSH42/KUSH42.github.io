@@ -1,121 +1,2810 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>LFO Animation Modulator (Ableton style)</title>
+  <title>Biblically Accurate WebGPU CRT-Shader — Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
+  <link rel="stylesheet" href="telescreen.css">
   <style>
-    body { margin:0; height:100vh; display:grid; place-items:center; background:#111; }
-    .box {
-      width: 200px; height: 200px;
-      background: #0ff;
-      box-shadow: 0 0 60px #0ff;
-      transition: filter 0.05s; /* optional */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
     }
+    #demo-screen { width: 100%; height: 100%; }
+
+    .s9-telescreen canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+
+    /* ── Controls overlay ───────────────────────────────────── */
+    #video-bar {
+      position: fixed;
+      bottom: 36px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 200;
+      font-family: var(--font-terminal);
+      font-size: 11px;
+      min-width: min(640px, 90vw);
+      max-width: 90vw;
+    }
+
+    /* Source row */
+    #source-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Player row */
+    #player-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #video-bar label.pick-btn,
+    #video-bar button {
+      background: rgba(0,0,0,0.80);
+      border: 1px solid var(--panel-border, #333);
+      color: var(--neon-cyan, #00d4b0);
+      padding: 4px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: inherit;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #video-bar label.pick-btn:hover,
+    #video-bar button:hover {
+      background: rgba(0, 212, 176, 0.12);
+    }
+    #video-bar input[type="file"] { display: none; }
+
+    #url-input {
+      flex: 1;
+      min-width: 0;
+      background: rgba(0,0,0,0.80);
+      border: 1px solid var(--panel-border, #333);
+      color: var(--neon-cyan, #00d4b0);
+      padding: 4px 8px;
+      font-family: var(--font-terminal);
+      font-size: 11px;
+      letter-spacing: .04em;
+      outline: none;
+    }
+    #url-input::placeholder { color: var(--text-dim, rgba(0,212,176,.35)); }
+    #url-input:focus { border-color: var(--panel-border-active, rgba(0,212,176,.88)); }
+
+    #video-status {
+      flex: 1;
+      font-size: 10px;
+      color: var(--text-dim, #555);
+      letter-spacing: .06em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    /* Play/Pause — square-ish */
+    #btn-playpause {
+      padding: 4px 8px;
+      min-width: 32px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    /* Time display */
+    #time-display {
+      font-family: var(--font-terminal);
+      font-size: 10px;
+      color: var(--text-secondary, rgba(0,212,176,.65));
+      letter-spacing: .04em;
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 72px;
+      text-align: center;
+    }
+
+    /* Seek bar */
+    #seek-bar {
+      flex: 1;
+      min-width: 0;
+      accent-color: var(--neon-cyan, #00d4b0);
+      cursor: pointer;
+      height: 14px;
+    }
+
+    /* Mute button */
+    #btn-mute {
+      padding: 4px 6px;
+      min-width: 28px;
+      text-align: center;
+    }
+
+    /* Volume slider */
+    #vol-bar {
+      width: 70px;
+      flex-shrink: 0;
+      accent-color: var(--neon-cyan, #00d4b0);
+      cursor: pointer;
+      height: 14px;
+    }
+
+    #key-hint {
+      position: fixed;
+      bottom: 8px;
+      left: 10px;
+      font-family: var(--font-terminal);
+      font-size: 10px;
+      color: var(--text-dim);
+      pointer-events: none;
+      z-index: 100;
+      letter-spacing: .08em;
+      line-height: 1.7;
+      white-space: pre;
+    }
+
+    #no-webgpu {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #c00;
+      font-family: monospace;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 9999;
+    }
+    #no-webgpu.hidden { display: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+    .rr-sub-hdr {
+      font-size: 0.7em;
+      opacity: 0.5;
+      padding: 6px 0 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
   </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.webgpu.js",
+      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.webgpu.js",
+      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.tsl.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="https://unpkg.com/stats.js@0.17.0/build/stats.min.js"></script>
 </head>
 <body>
 
-<div class="box" id="box"></div>
+  <div id="no-webgpu" class="hidden">
+    <span>GPU acceleration not available.</span>
+    <span style="font-size:12px;color:#888">This demo requires WebGPU or WebGL2. Try Chrome 113+ or Edge 113+ on a supported GPU.<br>
+    Brave: <code>brave://flags</code> → "Choose ANGLE graphics backend" → Vulkan → relaunch.</span>
+  </div>
 
-<script>
-// ====================== LFO CLASS (copy this) ======================
-class LFO {
-  constructor(config = {}) {
-    this.freq     = config.freq     ?? 1;     // Hz (like LFO Tool rate)
-    this.amplitude= config.amplitude?? 1;     // depth/amount
-    this.offset   = config.offset   ?? 0;     // center point
-    this.phase    = config.phase    ?? 0;     // 0–1
-    this.wave     = config.wave     ?? 'sine';
-    this._phase   = this.phase * Math.PI * 2;
-    this._last    = performance.now();
-  }
+  <!-- Fullscreen telescreen -->
+  <div id="demo-screen">
+    <div class="s9-telescreen">
+      <!-- Three.js canvas injected by script -->
+<div class="s9-telescreen__tint"></div>
+      <div class="s9-telescreen__scanlines"></div>
+      <div class="s9-telescreen__vignette"></div>
+      <div class="s9-telescreen__bloom"></div>
+      <div class="s9-telescreen__phase-a"></div>
+      <div class="s9-telescreen__phase-b"></div>
+      <div class="s9-telescreen__phase-c"></div>
+      <div class="s9-telescreen__sag" aria-hidden="true"></div>
+      <div class="s9-telescreen__rollbar" aria-hidden="true"></div>
+    </div>
+  </div>
 
-  get value() {
-    const now = performance.now();
-    const dt  = (now - this._last) / 1000;
-    this._last = now;
+  <!-- Controls overlay -->
+  <div id="video-bar">
+    <!-- Source row -->
+    <div id="source-row">
+      <label class="pick-btn" for="file-input">Load file</label>
+      <input type="file" id="file-input" accept="video/*">
+      <input type="text" id="url-input" placeholder="Direct video URL…" autocomplete="off" spellcheck="false">
+      <button id="btn-load-url">Load</button>
+      <span id="video-status">No video loaded</span>
+      <button id="btn-clear">Clear</button>
+    </div>
+    <!-- Player row -->
+    <div id="player-row">
+      <button id="btn-playpause" title="Play / Pause">⏵</button>
+      <span id="time-display">0:00 / 0:00</span>
+      <input type="range" id="seek-bar" min="0" max="100" step="0.05" value="0">
+      <button id="btn-mute" title="Mute / Unmute">🔊</button>
+      <input type="range" id="vol-bar" min="0" max="100" value="80" title="Volume">
+    </div>
+  </div>
 
-    this._phase += dt * this.freq * Math.PI * 2;
-    this._phase %= Math.PI * 2;
+  <!-- Settings panel — toggle with H key -->
+  <div id="rr-panel">
+    <div class="rr-hdr">
+      <span class="rr-hdr-title">CRT Settings</span>
+      <span style="font-size:9px;color:var(--text-dim)">[H] close</span>
+    </div>
 
-    let v;
-    switch (this.wave) {
-      case 'sine':     v = Math.sin(this._phase); break;
-      case 'triangle': v = 1 - Math.abs((this._phase / Math.PI) - 1) * 2; break;
-      case 'square':   v = this._phase < Math.PI ? 1 : -1; break;
-      case 'saw':      v = (this._phase / (Math.PI * 2)) * 2 - 1; break;
-      default:         v = Math.sin(this._phase);
+    <div class="rr-sec">CRT Preset</div>
+    <div style="padding: 6px 8px;">
+      <label style="display:flex;align-items:center;gap:8px;">
+        <span class="ln" style="min-width:0;flex:1">Archetype</span>
+        <select id="ts-preset" style="flex:1;font-size:10px;">
+          <option value="trinitron">Trinitron KV-27XBR (1996 NTSC)</option>
+          <option value="commodore1084">Commodore 1084S (1987)</option>
+          <option value="pvm14">Sony PVM-14L2 (1991 broadcast)</option>
+          <option value="arcade240p">Wells-Gardner U3000 (1982 arcade)</option>
+          <option value="palTv">Grundig ST 63-751 (1992 PAL)</option>
+          <option value="rca1975">RCA XL-100 CTC-74 (1975 early color)</option>
+          <option value="emerson88">Emerson 13&quot; portable (1988 budget)</option>
+          <option value="necMultisync">NEC MultiSync XP17 (1997 SVGA)</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <span class="ln" style="min-width:0;flex:1">Signal source</span>
+        <select id="ts-signalPreset" style="flex:1;font-size:10px;">
+          <option value="cleanRgb">Clean RGB / S-Video</option>
+          <option value="compositeNtsc">Composite NTSC</option>
+          <option value="compositeVhs">VHS LP</option>
+          <option value="offAirNtsc">Off-air NTSC (antenna)</option>
+          <option value="offAirPal">Off-air PAL (antenna)</option>
+          <option value="betacam">Betacam SP</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-glitch-body">Telescreen Glitch</div>
+    <div id="ts-glitch-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Enable</span>
+        <input type="checkbox" id="ts-glitchEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Strength</span>
+        <input type="range" id="ts-glitchStrength" min="0" max="100" value="10">
+        <span class="val" id="ts-vGlitchStrength">0.010</span>
+      </label>
+      <label>
+        <span class="ln">Speed</span>
+        <input type="range" id="ts-glitchSpeed" min="1" max="300" value="240">
+        <span class="val" id="ts-vGlitchSpeed">24.0</span>
+      </label>
+      <label>
+        <span class="ln">Bands</span>
+        <input type="range" id="ts-glitchCols" min="5" max="100" value="50">
+        <span class="val" id="ts-vGlitchCols">50</span>
+      </label>
+      <label>
+        <span class="ln">RGB split</span>
+        <input type="range" id="ts-glitchRgb" min="0" max="100" value="75">
+        <span class="val" id="ts-vGlitchRgb">0.75</span>
+      </label>
+      <label>
+        <span class="ln">Frequency</span>
+        <input type="range" id="ts-glitchFreq" min="1" max="100" value="50">
+        <span class="val" id="ts-vGlitchFreq">4.00s</span>
+      </label>
+      <label>
+        <span class="ln">Burst length</span>
+        <input type="range" id="ts-glitchBurst" min="1" max="100" value="1">
+        <span class="val" id="ts-vGlitchBurst">0.01s</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-surface-body">Telescreen Surface</div>
+    <div id="ts-surface-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Scratches</span>
+        <input type="checkbox" id="ts-scratchEnabled" checked>
+        <input type="range" id="ts-scratchOpacity" min="0" max="100" value="2">
+        <span class="val" id="ts-vScratchOpacity">0.015</span>
+      </label>
+      <label>
+        <span class="ln">Vignette</span>
+        <input type="checkbox" id="ts-vignetteEnabled" checked>
+        <input type="range" id="ts-vignetteOpacity" min="0" max="100" value="25">
+        <span class="val" id="ts-vVignetteOpacity">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Scanlines</span>
+        <input type="checkbox" id="ts-scanlinesEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Phase bands</span>
+        <input type="checkbox" id="ts-phaseEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Voltage sag</span>
+        <input type="checkbox" id="ts-sagEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Sync rollbar</span>
+        <input type="checkbox" id="ts-rollbarEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Snow</span>
+        <input type="checkbox" id="ts-snowEnabled" checked>
+        <input type="range" id="ts-snow" min="0" max="100" value="5">
+        <span class="val" id="ts-vSnow">0.05</span>
+      </label>
+      <label>
+        <span class="ln">Flicker (50 Hz = EU, 60 Hz = US)</span>
+        <input type="checkbox" id="ts-flickerEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Flicker rate</span>
+        <input type="range" id="ts-flickerRate" min="25" max="120" step="0.1" value="59.4">
+        <span class="val" id="ts-vFlickerRate">59.4 Hz</span>
+      </label>
+      <label>
+        <span class="ln">Flicker decay</span>
+        <input type="range" id="ts-flickerTau" min="1" max="2000" step="1" value="15">
+        <span class="val" id="ts-vFlickerTau">0.15 ms</span>
+      </label>
+      <label>
+        <span class="ln">Decay R (µs)</span>
+        <input type="range" id="ts-flickerTauR" min="5" max="100" step="1" value="15">
+        <span class="val" id="ts-vFlickerTauR">0.15 ms</span>
+      </label>
+      <label>
+        <span class="ln">Decay G (µs)</span>
+        <input type="range" id="ts-flickerTauG" min="1" max="3000" step="1" value="10">
+        <span class="val" id="ts-vFlickerTauG">0.10 ms</span>
+      </label>
+      <label>
+        <span class="ln">Decay B (µs)</span>
+        <input type="range" id="ts-flickerTauB" min="5" max="100" step="1" value="15">
+        <span class="val" id="ts-vFlickerTauB">0.15 ms</span>
+      </label>
+      <label>
+        <span class="ln">Flicker amount</span>
+        <input type="range" id="ts-flickerAmt" min="0" max="5" step="1" value="0">
+        <span class="val" id="ts-vFlickerAmt">1.00</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-shader-body">CRT Shader</div>
+    <div id="ts-shader-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Warp</span>
+        <input type="range" id="ts-warp" min="0" max="300" value="25">
+        <span class="val" id="ts-vWarp">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Warp anisotropy (0=iso, 1=V-only)</span>
+        <input type="range" id="ts-warpAniso" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vWarpAniso">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Corner fade</span>
+        <input type="range" id="ts-cornerFade" min="0" max="80" value="22">
+        <span class="val" id="ts-vCornerFade">0.022</span>
+      </label>
+      <label>
+        <span class="ln">Pixel sharpness</span>
+        <input type="range" id="ts-hardPix" min="5" max="30" value="30">
+        <span class="val" id="ts-vHardPix">3.0</span>
+      </label>
+      <label>
+        <span class="ln">Scan sharpness</span>
+        <input type="range" id="ts-hardScan" min="4" max="16" value="6">
+        <span class="val" id="ts-vHardScan">6.0</span>
+      </label>
+      <label>
+        <span class="ln">Scroll speed</span>
+        <input type="range" id="ts-scrollRate" min="0" max="200" value="5">
+        <span class="val" id="ts-vScrollRate">0.050</span>
+      </label>
+      <label>
+        <span class="ln">Brightness</span>
+        <input type="range" id="ts-brightBoost" min="50" max="200" value="60">
+        <span class="val" id="ts-vBrightBoost">0.60</span>
+      </label>
+      <label>
+        <span class="ln">Phosphor mask</span>
+        <input type="range" id="ts-maskStr" min="0" max="100" value="100">
+        <span class="val" id="ts-vMaskStr">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Mask type</span>
+        <select id="ts-maskType">
+          <option value="0">Aperture grille</option>
+          <option value="1">Shadow mask</option>
+          <option value="2">Slot mask</option>
+          <option value="3">Grille + damper</option>
+          <option value="4">Delta triad</option>
+          <option value="5">VGA grid</option>
+          <option value="6">Hi-res grille</option>
+          <option value="7">CGWG</option>
+        </select>
+      </label>
+      <!-- maskSmooth: 0 = binary hard stripes, 1 = raised-cosine soft edges.
+           Profiles reach the floor value at stripe boundaries (no cross-channel bleed). -->
+      <label>
+        <span class="ln">Mask smooth</span>
+        <input type="range" id="ts-maskSmooth" min="0" max="100" step="1" value="16">
+        <span class="val" id="ts-vMaskSmooth">0.16</span>
+      </label>
+      <label>
+        <span class="ln">Film grain</span>
+        <input type="range" id="ts-grain" min="0" max="150" value="12">
+        <span class="val" id="ts-vGrain">0.012</span>
+      </label>
+      <label>
+        <span class="ln">Halation</span>
+        <input type="range" id="ts-halation" min="0" max="300" value="200">
+        <span class="val" id="ts-vHalation">2.00</span>
+      </label>
+      <!-- halationSharp: controls vertical Gaussian scatter width.
+           Slider shows positive "softness" value (= -halationSharp).
+           Range: 10 (= -0.10, very wide diffuse scatter) to 250 (= -2.50, tight scanline bleed).
+           Default 40 (= -0.40, approximate crt-royale halation width). -->
+      <label>
+        <span class="ln">Halo softness</span>
+        <input type="range" id="ts-halationSharp" min="10" max="250" step="1" value="40">
+        <span class="val" id="ts-vHalationSharp">0.40</span>
+      </label>
+      <label>
+        <span class="ln">Halo tail sigma</span>
+        <input type="range" id="ts-halationTailSigma" min="30" max="100" step="1" value="80">
+        <span class="val" id="ts-vHalationTailSigma">0.80</span>
+      </label>
+      <label>
+        <span class="ln">Halo core blend</span>
+        <input type="range" id="ts-halationCoreBlend" min="20" max="100" step="1" value="70">
+        <span class="val" id="ts-vHalationCoreBlend">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Spectral scatter</span>
+        <input type="range" id="ts-halationSpectra" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vHalationSpectra">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Convergence</span>
+        <input type="range" id="ts-convergence" min="0" max="300" value="36">
+        <span class="val" id="ts-vConvergence">0.036</span>
+      </label>
+      <label>
+        <span class="ln">Conv Static X</span>
+        <input type="range" id="ts-convStaticX" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvStaticX">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv Static Y</span>
+        <input type="range" id="ts-convStaticY" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvStaticY">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv B X</span>
+        <input type="range" id="ts-convBX" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvBX">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv B Y</span>
+        <input type="range" id="ts-convBY" min="-200" max="200" value="0">
+        <span class="val" id="ts-vConvBY">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Conv aspect (0=radial, 1=H-only)</span>
+        <input type="range" id="ts-convAspect" min="0" max="100" step="1" value="100">
+        <span class="val" id="ts-vConvAspect">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Kernel gamma</span>
+        <input type="range" id="ts-kernelGamma" min="100" max="350" step="1" value="250">
+        <span class="val" id="ts-vKernelGamma">2.50</span>
+      </label>
+      <label>
+        <span class="ln">Aperture H (scanline heights)</span>
+        <input type="range" id="ts-apertureH" min="10" max="200" step="1" value="100">
+        <span class="val" id="ts-vApertureH">1.00</span>
+      </label>
+      <label>
+        <span class="ln">H-swim</span>
+        <input type="range" id="ts-swim" min="0" max="100" value="10">
+        <span class="val" id="ts-vSwim">0.20</span>
+      </label>
+      <label>
+        <span class="ln">Swim BW (Hz)</span>
+        <input type="range" id="ts-swimBW" min="1" max="200" step="1" value="5">
+        <span class="val" id="ts-vSwimBW">5 Hz</span>
+      </label>
+      <label>
+        <span class="ln">9300K temp</span>
+        <input type="range" id="ts-colorTemp" min="0" max="100" value="0">
+        <span class="val" id="ts-vColorTemp">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Mask pitch scale</span>
+        <input type="range" id="ts-maskScale" min="50" max="400" step="1" value="100">
+        <span class="val" id="ts-vMaskScale">1.00×</span>
+      </label>
+      <label>
+        <span class="ln">Edge defocus</span>
+        <input type="range" id="ts-defocus" min="0" max="45" step="1" value="35">
+        <span class="val" id="ts-vDefocus">0.66</span>
+      </label>
+      <label>
+        <span class="ln">Defocus anisotropy (0=iso, 1=V-only)</span>
+        <input type="range" id="ts-defocusAniso" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vDefocusAniso">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Beam defocus alpha</span>
+        <input type="range" id="ts-beamAlpha" min="0" max="1000" step="1" value="667">
+        <span class="val" id="ts-vBeamAlpha">0.667</span>
+      </label>
+      <label>
+        <span class="ln">P22 primaries</span>
+        <input type="range" id="ts-p22" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vP22">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Black level</span>
+        <input type="range" id="ts-blackLevel" min="0" max="2" step="1" value="0">
+        <span class="val" id="ts-vBlackLevel">0.000</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-bloom-body">GPU Bloom</div>
+    <div id="ts-bloom-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Enable GPU bloom</span>
+        <input type="checkbox" id="ts-bloomEnabled">
+      </label>
+      <label>
+        <span class="ln">Strength</span>
+        <input type="range" id="ts-bloomStrength" min="0" max="200" step="1" value="25">
+        <span class="val" id="ts-vBloomStrength">0.25</span>
+      </label>
+      <label>
+        <span class="ln">Radius</span>
+        <input type="range" id="ts-bloomRadius" min="10" max="400" step="1" value="180">
+        <span class="val" id="ts-vBloomRadius">1.80</span>
+      </label>
+      <label>
+        <span class="ln">Threshold</span>
+        <input type="range" id="ts-bloomThreshold" min="0" max="100" step="1" value="5">
+        <span class="val" id="ts-vBloomThreshold">0.05</span>
+      </label>
+      <label>
+        <span class="ln">Core radius</span>
+        <input type="range" id="ts-bloomCoreRadius" min="0" max="100" step="1" value="35">
+        <span class="val" id="ts-vBloomCoreRadius">0.35</span>
+      </label>
+      <label>
+        <span class="ln">Core strength</span>
+        <input type="range" id="ts-bloomCoreStrength" min="0" max="200" step="1" value="60">
+        <span class="val" id="ts-vBloomCoreStrength">0.60</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-perf-body">Performance</div>
+    <div id="ts-perf-body" class="rr-collapse-body">
+      <label>
+        <span class="ln">Phosphor persistence</span>
+        <input type="checkbox" id="ts-persistenceEnabled" checked>
+      </label>
+      <label>
+        <span class="ln">Persistence amount</span>
+        <input type="range" id="ts-persistence" min="0" max="70" step="1" value="50">
+        <span class="val" id="ts-vPersistence">0.50</span>
+      </label>
+      <label>
+        <span class="ln">Decay τ (0=use amount)</span>
+        <input type="range" id="ts-persistenceTau" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vPersistenceTau">off</span>
+      </label>
+      <div class="rr-sub-hdr">Feedback Loop</div>
+      <label>
+        <span class="ln">Feedback mix</span>
+        <input type="range" id="ts-feedbackMix" min="0" max="97" step="1" value="0">
+        <span class="val" id="ts-vFeedbackMix">0.00</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible rr-open" data-target="ts-accuracy-body">Accuracy</div>
+    <div id="ts-accuracy-body" class="rr-collapse-body rr-open">
+      <label>
+        <span class="ln">Source preset</span>
+        <select id="ts-sourcePreset">
+          <option value="">— pick —</option>
+          <option value="0,0">Auto (0×0)</option>
+          <option value="256,224">NES / Famicom (256×224)</option>
+          <option value="320,200">CGA / EGA (320×200)</option>
+          <option value="320,240">SD console / PSX (320×240)</option>
+          <option value="512,224">SNES / Mega Drive (512×224)</option>
+          <option value="320,480">NTSC interlaced (320×480i)</option>
+          <option value="384,288">PAL SD broadcast (384×288)</option>
+          <option value="640,480">VGA / early 3D (640×480)</option>
+          <option value="720,480">D1 NTSC broadcast (720×480)</option>
+          <option value="720,576">D1 PAL broadcast (720×576)</option>
+          <option value="800,600">SVGA (800×600)</option>
+        </select>
+      </label>
+      <label>
+        <span class="ln">Source width (0=output)</span>
+        <input type="number" id="ts-sourceSizeX" min="0" max="3840" step="1" value="0" style="width:5em">
+      </label>
+      <label>
+        <span class="ln">Source height (0=output)</span>
+        <input type="number" id="ts-sourceSizeY" min="0" max="2160" step="1" value="0" style="width:5em">
+      </label>
+      <label>
+        <span class="ln">Interlace</span>
+        <input type="checkbox" id="ts-interlace">
+      </label>
+      <label>
+        <span class="ln">Halo warmth</span>
+        <input type="range" id="ts-halationWarm" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vHalationWarm">0.00</span>
+      </label>
+      <!-- 2D isotropic halation (TIR scatter in glass faceplate). Requires loadBloomDependencies(). -->
+      <label>
+        <span class="ln">2D halo radius (px)</span>
+        <input type="range" id="ts-halo-radius" min="0" max="20" step="1" value="0">
+        <span class="val" id="ts-vHaloRadius">0 px</span>
+      </label>
+      <label>
+        <span class="ln">2D halo strength</span>
+        <input type="range" id="ts-halo-str" min="0" max="200" step="1" value="0">
+        <span class="val" id="ts-vHaloStr">0.00</span>
+      </label>
+      <!-- Glass faceplate bulk scatter. Triggers pipeline rebuild on enable/disable. -->
+      <label>
+        <span class="ln">Glass scatter</span>
+        <input type="checkbox" id="ts-glassBlurEnabled">
+      </label>
+      <label>
+        <span class="ln">Scatter strength</span>
+        <input type="range" id="ts-glassBlurStr" min="0" max="15" step="1" value="8">
+        <span class="val" id="ts-vGlassBlurStr">0.08</span>
+      </label>
+      <label>
+        <span class="ln">Scatter radius</span>
+        <input type="range" id="ts-glassBlurRadius" min="0" max="4" step="1" value="2">
+        <span class="val" id="ts-vGlassBlurRadius">0.020</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-interference-body">Interference</div>
+    <div id="ts-interference-body" class="rr-collapse-body">
+      <div class="rr-sub-hdr">Hum Bar</div>
+      <label>
+        <span class="ln">Hum bar amount</span>
+        <input type="range" id="ts-humAmt" min="0" max="400" step="1" value="22">
+        <span class="val" id="ts-vHumAmt">0.022</span>
+      </label>
+      <label>
+        <span class="ln">Hum bars (1=fundamental, 2=2nd harmonic)</span>
+        <input type="range" id="ts-humBars" min="1" max="3" step="1" value="1">
+        <span class="val" id="ts-vHumBars">1</span>
+      </label>
+      <label>
+        <span class="ln">Hum bar drift (Hz beat)</span>
+        <input type="range" id="ts-humRate" min="0" max="500" step="1" value="60">
+        <span class="val" id="ts-vHumRate">0.060 Hz</span>
+      </label>
+      <div class="rr-sub-hdr">Ghosting / Multipath</div>
+      <label>
+        <span class="ln">Ghost offset (px)</span>
+        <input type="range" id="ts-ghostOffset" min="-80" max="80" step="1" value="0">
+        <span class="val" id="ts-vGhostOffset">0 px</span>
+      </label>
+      <label>
+        <span class="ln">Ghost strength</span>
+        <input type="range" id="ts-ghostStr" min="-300" max="300" step="1" value="0">
+        <span class="val" id="ts-vGhostStr">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Ghost tint R</span>
+        <input type="range" id="ts-ghostTintR" min="50" max="150" step="1" value="100">
+        <span class="val" id="ts-vGhostTintR">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Ghost tint G</span>
+        <input type="range" id="ts-ghostTintG" min="50" max="150" step="1" value="97">
+        <span class="val" id="ts-vGhostTintG">0.97</span>
+      </label>
+      <label>
+        <span class="ln">Ghost tint B</span>
+        <input type="range" id="ts-ghostTintB" min="50" max="150" step="1" value="97">
+        <span class="val" id="ts-vGhostTintB">0.97</span>
+      </label>
+      <label>
+        <span class="ln">Ghost 2 offset (px)</span>
+        <input type="range" id="ts-ghost2Offset" min="-80" max="80" step="1" value="0">
+        <span class="val" id="ts-vGhost2Offset">0 px</span>
+      </label>
+      <label>
+        <span class="ln">Ghost 2 strength</span>
+        <input type="range" id="ts-ghost2Str" min="-300" max="300" step="1" value="0">
+        <span class="val" id="ts-vGhost2Str">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Ghost 2 tint R</span>
+        <input type="range" id="ts-ghost2TintR" min="50" max="150" step="1" value="100">
+        <span class="val" id="ts-vGhost2TintR">1.00</span>
+      </label>
+      <label>
+        <span class="ln">Ghost 2 tint G</span>
+        <input type="range" id="ts-ghost2TintG" min="50" max="150" step="1" value="97">
+        <span class="val" id="ts-vGhost2TintG">0.97</span>
+      </label>
+      <label>
+        <span class="ln">Ghost 2 tint B</span>
+        <input type="range" id="ts-ghost2TintB" min="50" max="150" step="1" value="97">
+        <span class="val" id="ts-vGhost2TintB">0.97</span>
+      </label>
+      <div class="rr-sub-hdr">AGC Hunting</div>
+      <label>
+        <span class="ln">AGC hunting amount</span>
+        <input type="range" id="ts-agcAmt" min="0" max="200" step="1" value="12">
+        <span class="val" id="ts-vAgcAmt">0.012</span>
+      </label>
+      <label>
+        <span class="ln">AGC rate (Hz)</span>
+        <input type="range" id="ts-agcRate" min="3" max="40" step="1" value="12">
+        <span class="val" id="ts-vAgcRate">1.2 Hz</span>
+      </label>
+      <div class="rr-sub-hdr">Dot Crawl &amp; Burst-Loss</div>
+      <label>
+        <span class="ln">Dot crawl amount</span>
+        <input type="range" id="ts-dotCrawlAmt" min="0" max="500" step="1" value="90">
+        <span class="val" id="ts-vDotCrawlAmt">0.090</span>
+      </label>
+      <label>
+        <span class="ln">Burst-loss desaturation</span>
+        <input type="range" id="ts-glitchBurstLoss" min="0" max="100" step="1" value="70">
+        <span class="val" id="ts-vGlitchBurstLoss">0.70</span>
+      </label>
+      <div class="rr-sub-hdr">VBI Bleed</div>
+      <label>
+        <span class="ln">VBI bleed amount</span>
+        <input type="range" id="ts-vbiStr" min="0" max="100" step="1" value="7">
+        <span class="val" id="ts-vVbiStr">0.07</span>
+      </label>
+      <label>
+        <span class="ln">VBI bleed rows</span>
+        <input type="range" id="ts-vbiLines" min="1" max="8" step="1" value="3">
+        <span class="val" id="ts-vVbiLines">3</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-signal-body">Composite Signal</div>
+    <div id="ts-signal-body" class="rr-collapse-body">
+      <div class="rr-sub-hdr">A. Horizontal Ringing</div>
+      <label>
+        <span class="ln">Ring amount</span>
+        <input type="range" id="ts-ringAmt" min="0" max="500" step="1" value="0">
+        <span class="val" id="ts-vRingAmt">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Ring decay</span>
+        <input type="range" id="ts-ringDecay" min="30" max="150" step="1" value="80">
+        <span class="val" id="ts-vRingDecay">0.80</span>
+      </label>
+      <label>
+        <span class="ln">Ring freq (cy/smp)</span>
+        <input type="range" id="ts-ringFreq" min="15" max="50" step="1" value="31">
+        <span class="val" id="ts-vRingFreq">0.31</span>
+      </label>
+      <div class="rr-sub-hdr">B. Chroma Blur / Y/C Delay</div>
+      <label>
+        <span class="ln">Chroma blur</span>
+        <input type="range" id="ts-chromaBlur" min="0" max="100" step="1" value="0">
+        <span class="val" id="ts-vChromaBlur">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Y/C delay (px)</span>
+        <input type="range" id="ts-ycDelay" min="-100" max="100" step="1" value="0">
+        <span class="val" id="ts-vYcDelay">0.00 px</span>
+      </label>
+      <div class="rr-sub-hdr">F. Chroma Carrier Noise</div>
+      <label>
+        <span class="ln">Chroma AM noise</span>
+        <input type="range" id="ts-chromaAMNoise" min="0" max="500" step="1" value="0">
+        <span class="val" id="ts-vChromaAMNoise">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Chroma PM noise (rad)</span>
+        <input type="range" id="ts-chromaPMNoise" min="0" max="1000" step="1" value="0">
+        <span class="val" id="ts-vChromaPMNoise">0.000 rad</span>
+      </label>
+      <div class="rr-sub-hdr">G. Cross-Color</div>
+      <label>
+        <span class="ln">Cross-color amount</span>
+        <input type="range" id="ts-crossColorAmt" min="0" max="500" step="1" value="0">
+        <span class="val" id="ts-vCrossColorAmt">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Cross-color freq (MHz)</span>
+        <input type="range" id="ts-crossColorFreq" min="100" max="600" step="1" value="358">
+        <span class="val" id="ts-vCrossColorFreq">3.58 MHz</span>
+      </label>
+      <div class="rr-sub-hdr">H. NTSC Composite Chain</div>
+      <label>
+        <span class="ln">Composite mode</span>
+        <input type="range" id="ts-ntscCompositeMode" min="0" max="1" step="1" value="0">
+        <span class="val" id="ts-vNtscCompositeMode">0</span>
+      </label>
+      <label>
+        <span class="ln">Y/C separator quality</span>
+        <input type="range" id="ts-ycSeparatorQ" min="0" max="100" step="1" value="40">
+        <span class="val" id="ts-vYcSeparatorQ">0.40</span>
+      </label>
+      <div class="rr-sub-hdr">D-3. Tape Dropout</div>
+      <label>
+        <span class="ln">Dropout rate</span>
+        <input type="range" id="ts-tapeDropoutRate" min="0" max="50" step="1" value="0">
+        <span class="val" id="ts-vTapeDropoutRate">0.000</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-vhs-body">VHS Tape</div>
+    <div id="ts-vhs-body" class="rr-collapse-body">
+      <div class="rr-sub-hdr">D-1. Tape Flutter</div>
+      <label>
+        <span class="ln">Flutter amount</span>
+        <input type="range" id="ts-tapeFlutterAmt" min="0" max="200" step="1" value="0">
+        <span class="val" id="ts-vTapeFlutterAmt">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Flutter BW (Hz)</span>
+        <input type="range" id="ts-flutterBW" min="1" max="100" step="1" value="3">
+        <span class="val" id="ts-vFlutterBW">3 Hz</span>
+      </label>
+      <div class="rr-sub-hdr">D-2. Tape Chroma Noise</div>
+      <label>
+        <span class="ln">Chroma noise amount</span>
+        <input type="range" id="ts-tapeChromaAmt" min="0" max="300" step="1" value="0">
+        <span class="val" id="ts-vTapeChromaAmt">0.000</span>
+      </label>
+      <div class="rr-sub-hdr">VHS Signal Processing</div>
+      <label>
+        <span class="ln">Luma blur (sigma px)</span>
+        <input type="range" id="ts-vhsLumaBlur" min="0" max="400" step="1" value="0">
+        <span class="val" id="ts-vVhsLumaBlur">0.00</span>
+      </label>
+      <label>
+        <span class="ln">Chroma V-blend</span>
+        <input type="range" id="ts-vhsChromaVBlend" min="0" max="1000" step="1" value="0">
+        <span class="val" id="ts-vVhsChromaVBlend">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Head switch strength</span>
+        <input type="range" id="ts-vhsSwitchStr" min="0" max="1000" step="1" value="0">
+        <span class="val" id="ts-vVhsSwitchStr">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Switch lines</span>
+        <input type="range" id="ts-vhsSwitchLines" min="1" max="20" step="1" value="8">
+        <span class="val" id="ts-vVhsSwitchLines">8</span>
+      </label>
+      <label>
+        <span class="ln">Switch offset</span>
+        <input type="range" id="ts-vhsSwitchOffset" min="0" max="100" step="1" value="30">
+        <span class="val" id="ts-vVhsSwitchOffset">0.030</span>
+      </label>
+    </div>
+
+    <div class="rr-sec rr-collapsible" data-target="ts-crt-hw-body">CRT Hardware</div>
+    <div id="ts-crt-hw-body" class="rr-collapse-body">
+      <div class="rr-sub-hdr">C. Yoke Ringing</div>
+      <label>
+        <span class="ln">Yoke ring amount</span>
+        <input type="range" id="ts-yokeRingAmt" min="0" max="500" step="1" value="0">
+        <span class="val" id="ts-vYokeRingAmt">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Yoke freq (MHz)</span>
+        <input type="range" id="ts-yokeFreq" min="10" max="200" step="1" value="40">
+        <span class="val" id="ts-vYokeFreq">4.0 MHz</span>
+      </label>
+      <label>
+        <span class="ln">Yoke decay</span>
+        <input type="range" id="ts-yokeDecay" min="10" max="500" step="1" value="120">
+        <span class="val" id="ts-vYokeDecay">12.0</span>
+      </label>
+      <div class="rr-sub-hdr">SVM (Scan Velocity Modulation)</div>
+      <label>
+        <span class="ln">SVM amount</span>
+        <input type="range" id="ts-svmAmt" min="0" max="500" step="1" value="0">
+        <span class="val" id="ts-vSvmAmt">0.0000</span>
+      </label>
+      <div class="rr-sub-hdr">E. Tension Wire Shimmer</div>
+      <label>
+        <span class="ln">Wire shadow strength</span>
+        <input type="range" id="ts-tensionWireStr" min="0" max="500" step="1" value="0">
+        <span class="val" id="ts-vTensionWireStr">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Wire 1 position</span>
+        <input type="range" id="ts-tensionWireY1" min="0" max="1000" step="1" value="333">
+        <span class="val" id="ts-vTensionWireY1">0.333</span>
+      </label>
+      <label>
+        <span class="ln">Wire 2 position</span>
+        <input type="range" id="ts-tensionWireY2" min="0" max="1000" step="1" value="667">
+        <span class="val" id="ts-vTensionWireY2">0.667</span>
+      </label>
+      <label>
+        <span class="ln">Wire width (px)</span>
+        <input type="range" id="ts-tensionWireWidth" min="1" max="40" step="1" value="15">
+        <span class="val" id="ts-vTensionWireWidth">1.5 px</span>
+      </label>
+      <label>
+        <span class="ln">Shimmer amount</span>
+        <input type="range" id="ts-shimmerAmt" min="0" max="20" step="1" value="0">
+        <span class="val" id="ts-vShimmerAmt">0.000</span>
+      </label>
+      <label>
+        <span class="ln">Shimmer freq (Hz)</span>
+        <input type="range" id="ts-shimmerFreq" min="10" max="100" step="1" value="40">
+        <span class="val" id="ts-vShimmerFreq">40 Hz</span>
+      </label>
+    </div>
+  </div>
+
+  <div id="ts-novel-physics-hdr" class="rr-sec rr-collapsible" data-target="ts-novel-physics-body">Novel CRT Physics</div>
+  <div id="ts-novel-physics-body" class="rr-collapse-body">
+    <div class="rr-sub-hdr">EHT Power Supply Ripple</div>
+    <label>
+      <span class="ln">EHT ripple amount</span>
+      <input type="range" id="ts-ehtRippleAmt" min="0" max="150" step="1" value="0">
+      <span class="val" id="ts-vEhtRippleAmt">0.000</span>
+    </label>
+    <label>
+      <span class="ln">EHT decay rate</span>
+      <input type="range" id="ts-ehtDecayRate" min="5" max="200" step="1" value="40">
+      <span class="val" id="ts-vEhtDecayRate">4.0</span>
+    </label>
+
+    <div class="rr-sub-hdr">Beam Astigmatism</div>
+    <label>
+      <span class="ln">Astig amount</span>
+      <input type="range" id="ts-astigAmt" min="0" max="1000" step="1" value="0">
+      <span class="val" id="ts-vAstigAmt">0.000</span>
+    </label>
+    <label>
+      <span class="ln">Astig radial</span>
+      <input type="range" id="ts-astigRadial" min="0" max="1000" step="1" value="500">
+      <span class="val" id="ts-vAstigRadial">0.500</span>
+    </label>
+    <label>
+      <span class="ln">Astig tangential</span>
+      <input type="range" id="ts-astigTangential" min="0" max="1000" step="1" value="150">
+      <span class="val" id="ts-vAstigTangential">0.150</span>
+    </label>
+
+    <div class="rr-sub-hdr">Glass Spectral Transmission</div>
+    <label>
+      <span class="ln">Glass tint strength</span>
+      <input type="range" id="ts-glassTintStr" min="0" max="100" step="1" value="0">
+      <span class="val" id="ts-vGlassTintStr">0.000</span>
+    </label>
+    <label>
+      <span class="ln">Tint profile (0=neutral 1=warm 2=cool)</span>
+      <input type="range" id="ts-glassTintProfile" min="0" max="2" step="1" value="0">
+      <span class="val" id="ts-vGlassTintProfile">neutral</span>
+    </label>
+
+    <div class="rr-sub-hdr">Phosphor Granularity</div>
+    <label>
+      <span class="ln">Grain amount</span>
+      <input type="range" id="ts-phosphorGrainAmt" min="0" max="100" step="1" value="0">
+      <span class="val" id="ts-vPhosphorGrainAmt">0.000</span>
+    </label>
+    <label>
+      <span class="ln">Grain scale</span>
+      <input type="range" id="ts-phosphorGrainScale" min="10" max="400" step="5" value="50">
+      <span class="val" id="ts-vPhosphorGrainScale">0.50</span>
+    </label>
+
+    <div class="rr-sub-hdr">Phosphor Saturation</div>
+    <label>
+      <span class="ln">Sat amount (Shrader-Leverenz)</span>
+      <input type="range" id="ts-phosphorSatAmt" min="0" max="1000" step="1" value="0">
+      <span class="val" id="ts-vPhosphorSatAmt">0.000</span>
+    </label>
+    <p class="rr-note">Quantum efficiency roll-off at high beam current. G/B compress more than R → warm highlights. Physical range: 0.05–0.15.</p>
+
+    <div class="rr-sub-hdr">Phosphor Aging</div>
+    <label>
+      <span class="ln">Age (0=new, 1=end-of-life)</span>
+      <input type="range" id="ts-phosphorAge" min="0" max="1000" step="1" value="0">
+      <span class="val" id="ts-vPhosphorAge">0.000</span>
+    </label>
+    <p class="rr-note">Differential phosphor degradation: ZnS:Ag (B) ages faster than ZnS:Cu,Al (G) &gt; Y₂O₂S:Eu (R). Consumer TV after 5 years: 0.3–0.5.</p>
+
+    <div class="rr-sub-hdr">Phosphor Cross-Talk</div>
+    <label>
+      <span class="ln">Cross-talk amount</span>
+      <input type="range" id="ts-phosphorXtalkAmt" min="0" max="100" step="1" value="0">
+      <span class="val" id="ts-vPhosphorXtalkAmt">0.000</span>
+    </label>
+    <label>
+      <span class="ln">Radius (src px)</span>
+      <input type="range" id="ts-phosphorXtalkRadius" min="10" max="200" step="1" value="50">
+      <span class="val" id="ts-vPhosphorXtalkRadius">0.50</span>
+    </label>
+    <p class="rr-note">Secondary-electron and optical scatter between adjacent phosphor dots. Physical: 0.01–0.03 amt, 0.5–1.0 px radius.</p>
+
+    <div class="rr-sub-hdr">VHS Chroma Heterodyne</div>
+    <label>
+      <span class="ln">Het amount</span>
+      <input type="range" id="ts-vchromaHetAmt" min="0" max="500" step="1" value="0">
+      <span class="val" id="ts-vVchromaHetAmt">0.000</span>
+    </label>
+    <label>
+      <span class="ln">Spatial freq (cycles/width)</span>
+      <input type="range" id="ts-vchromaFreq" min="5" max="300" step="1" value="40">
+      <span class="val" id="ts-vVchromaFreq">4.0</span>
+    </label>
+    <label>
+      <span class="ln">Temporal drift (rad/s)</span>
+      <input type="range" id="ts-vchromaDrift" min="0" max="500" step="1" value="30">
+      <span class="val" id="ts-vVchromaDrift">0.30</span>
+    </label>
+
+    <div class="rr-sub-hdr">Video Amplifier Ringing</div>
+    <label>
+      <span class="ln">Amp freq (MHz)</span>
+      <input type="range" id="ts-vidAmpFreq" min="10" max="200" step="1" value="70">
+      <span class="val" id="ts-vVidAmpFreq">7.0 MHz</span>
+    </label>
+    <label>
+      <span class="ln">Amp damping</span>
+      <input type="range" id="ts-vidAmpDamp" min="10" max="100" step="1" value="70">
+      <span class="val" id="ts-vVidAmpDamp">0.70</span>
+    </label>
+    <label>
+      <span class="ln">Pixel clock (MHz)</span>
+      <input type="range" id="ts-vidAmpPixelClock" min="100" max="300" step="1" value="143">
+      <span class="val" id="ts-vVidAmpPixelClock">14.3 MHz</span>
+    </label>
+
+    <div class="rr-sub-hdr">Differential Phosphor Afterglow</div>
+    <label>
+      <span class="ln">Afterglow strength</span>
+      <input type="range" id="ts-afterglowStr" min="0" max="1000" step="1" value="0">
+      <span class="val" id="ts-vAfterglowStr">0.000</span>
+    </label>
+    <p class="rr-note">For visible reddish trails: increase Flicker tau R to 5–15 ms alongside afterglow strength.</p>
+
+    <div class="rr-sub-hdr">Shadow Mask Thermal Doming</div>
+    <label>
+      <span class="ln">Doming amount</span>
+      <input type="range" id="ts-domingAmt" min="0" max="500" step="1" value="0">
+      <span class="val" id="ts-vDomingAmt">0.000</span>
+    </label>
+    <label>
+      <span class="ln">Thermal tau (s)</span>
+      <input type="range" id="ts-domingThermalTau" min="5" max="100" step="1" value="30">
+      <span class="val" id="ts-vDomingThermalTau">3.0 s</span>
+    </label>
+  </div>
+
+  <div id="key-hint">[ S ] settings panel
+[ T ] test pattern
+[ O ] channel overlay
+[ P ] performance stats
+[◄ ►] teletext pages
+[ F ] freeze feedback</div>
+
+  <script type="module">
+    import * as THREE                                    from 'three/webgpu';
+    import { initTelescreenCRTWebGPU,
+             loadBloomDependencies }                    from './telescreen-crt-webgpu.js';
+    import { initTelescreenCRTControls }               from './telescreen-controls-webgpu.js';
+    import { PRESETS, SIGNAL_PRESETS }                  from './crt-presets.js';
+
+    await loadBloomDependencies();
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let mode = 'none';     // 'none' | 'local'
+    let isMuted = false;
+    let currentVolume = 80;
+    let prevObjectUrl = null;
+    let seekDragging = false;
+    let pollId = null;
+    let canPlayHandler = null;  // pending setVideoSource deferred to canplay
+    let feedbackFrozen = false;
+    let _preFreezeShaderMix = 0.0;
+    let _preFreezeStatus    = '';
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function fmtTime(s) {
+      if (!isFinite(s) || s < 0) return '0:00';
+      const m = Math.floor(s / 60);
+      return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
     }
-    return this.offset + v * this.amplitude;
-  }
 
-  // Live tweak like in LFO Tool
-  set(config) {
-    Object.assign(this, config);
-  }
-}
+    // ── DOM refs ─────────────────────────────────────────────────────────────
+    const statusEl      = document.getElementById('video-status');
+    const btnPlayPause  = document.getElementById('btn-playpause');
+    const btnMute       = document.getElementById('btn-mute');
+    const btnClear      = document.getElementById('btn-clear');
+    const btnLoadUrl    = document.getElementById('btn-load-url');
+    const seekBar       = document.getElementById('seek-bar');
+    const volBar        = document.getElementById('vol-bar');
+    const timeDisplay   = document.getElementById('time-display');
+    const urlInput      = document.getElementById('url-input');
+    const fileInput     = document.getElementById('file-input');
 
-// ====================== USAGE EXAMPLE ======================
-const box = document.getElementById('box');
+    // ── Canvas-texture Y-flip helpers ────────────────────────────────────────
+    // Two separate helpers because the two usage contexts need opposite orientations:
+    //
+    // makeSceneCanvasTex — for scene PlaneGeometry (MeshBasicMaterial.map).
+    //   PlaneGeometry UV: V=0 at plane bottom, V=1 at plane top.
+    //   Three.js WebGL2 backend: flipY=false skips the TextureNode UV flip, so
+    //   V=0 samples texture Y=0 = canvas row 0 = canvas visual top → upside-down.
+    //   Fix: pre-blit the source canvas upside-down into a flipCanvas so that
+    //   texture Y=0 = canvas visual bottom, making V=0 (plane bottom) show the
+    //   canvas visual bottom — right-side up on screen. flipY=false avoids
+    //   UNPACK_FLIP_Y_WEBGL (which Firefox WebGL2 silently ignores on
+    //   texStorage2D-allocated textures) and works on Chrome WebGL2 and WebGPU.
+    //   The needsUpdate setter is shadowed on the instance to re-blit before
+    //   marking dirty, so all call sites (tex.needsUpdate = true) need no changes.
+    //
+    // makeCanvasTex — for PostProcessing/OSD path (sampled at screenUV).
+    //   In WebGL2 screenUV.y=0 = visual top; texture Y=0 = canvas row 0 = visual top.
+    //   No pre-flip needed — flipY=false is correct as-is.
 
-// Two LFOs — exactly like Ableton
-const lfoScale = new LFO({ freq: 0.8, amplitude: 0.4, offset: 1.0, wave: 'sine' });
-const lfoRotate = new LFO({ freq: 1.3, amplitude: 45, offset: 0, wave: 'triangle' });
+    function makeSceneCanvasTex(srcCanvas) {
+      const w = srcCanvas.width, h = srcCanvas.height;
+      const flip = document.createElement('canvas');
+      flip.width = w; flip.height = h;
+      const fctx = flip.getContext('2d');
+      function blit() {
+        fctx.setTransform(1, 0, 0, -1, 0, h);
+        fctx.drawImage(srcCanvas, 0, 0);
+        fctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      blit();
+      const tex = new THREE.Texture(flip);
+      tex.colorSpace      = THREE.SRGBColorSpace;
+      tex.minFilter       = THREE.LinearFilter;
+      tex.magFilter       = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+      tex.flipY           = false;
+      // Shadow needsUpdate on the instance so callers don't need to call blit() manually.
+      const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(tex), 'needsUpdate');
+      Object.defineProperty(tex, 'needsUpdate', {
+        configurable: true,
+        set(v) { if (v) blit(); origDesc.set.call(tex, v); },
+      });
+      tex.needsUpdate = true;
+      return tex;
+    }
 
-let lastTime = performance.now();
+    function makeCanvasTex(srcCanvas) {
+      const tex = new THREE.Texture(srcCanvas);
+      tex.colorSpace      = THREE.SRGBColorSpace;
+      tex.minFilter       = THREE.LinearFilter;
+      tex.magFilter       = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+      tex.flipY           = false;
+      tex.needsUpdate     = true;
+      return tex;
+    }
 
-function animate() {
-  const t = (performance.now() - lastTime) / 1000; // not needed but nice for reference
+    // ── Overlay canvas setup ─────────────────────────────────────────────────
+    function makeOverlayCanvas(w, h) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      return c;
+    }
 
-  const scale = lfoScale.value;   // e.g. 0.6 → 1.4
-  const rot   = lfoRotate.value;  // e.g. -45 → +45
+    function drawOverlay(ctx, w, h, showDot, label, statsInfo) {
+      ctx.clearRect(0, 0, w, h);
+      // Font and padding scale with height. Min 14px so text is never invisible.
+      const px  = Math.max(14, Math.round(h * 0.055)); // ~20px at h=360, ~59px at h=1080
+      const pad = Math.max(10, Math.round(h * 0.045)); // ~16px at h=360
+      ctx.font = `${px}px "Share Tech Mono", monospace`;
+      ctx.lineJoin  = 'round';
+      ctx.lineWidth = Math.max(2, Math.round(px * 0.22));
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.textAlign = 'left';
+      // Channel label — bottom left
+      ctx.fillStyle = 'rgba(0, 212, 176, 0.9)';
+      ctx.strokeText(label, pad, h - pad);
+      ctx.fillText(label, pad, h - pad);
+      // REC indicator — top right (1.5× base size, broadcast-realistic prominence)
+      // Right-anchored so it never overflows the canvas at any aspect ratio.
+      const recPx   = Math.round(px * 1.5);
+      ctx.font      = `${recPx}px "Share Tech Mono", monospace`;
+      ctx.fillStyle = 'rgba(255, 55, 55, 1.0)';
+      ctx.textAlign = 'right';
+      const recRight = w - Math.round(w * 0.02); // 2 % inset from right edge
+      const recY     = Math.round(h * 0.089);    // ~32px at h=360
+      const recStr   = showDot ? '● REC' : 'REC';
+      ctx.strokeText(recStr, recRight, recY);
+      ctx.fillText(recStr,   recRight, recY);
+      ctx.font      = `${px}px "Share Tech Mono", monospace`;
+      ctx.textAlign = 'left';
+      // Stats — pushed inward from the warp-safe margin (~13% from each edge covers
+      // warpMult up to 0.75). Decoupled from recY so it doesn't share the corner zone.
+      if (statsInfo) {
+        const fps = String(statsInfo.fps).padStart(3);
+        const ms  = String(statsInfo.ms).padStart(3);
+        const dc  = String(statsInfo.dc).padStart(6);
+        const statsText = `${fps} FPS  ${ms} MS  ${dc} DC`;
+        const sX  = Math.round(w * 0.13);           // safe inset from left warp edge
+        const sY  = Math.round(h * 0.13);           // safe inset from top warp edge
+        const bgPad = Math.round(px * 0.4);
+        const textW = ctx.measureText(statsText).width;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
+        ctx.fillRect(sX - bgPad, sY - px, textW + bgPad * 2, px + bgPad);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeText(statsText, sX, sY);
+        ctx.fillText(statsText,   sX, sY);
+      }
+    }
 
-  box.style.transform = `scale(${scale}) rotate(${rot}deg)`;
+    function makeSMPTETexture(w, h) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      const bars = ['#C0C0C0','#C0C000','#00C0C0','#00C000','#C000C0','#C00000','#0000C0'];
+      const bw = w / bars.length;
+      bars.forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(i * bw, 0, bw, h * 0.67);
+      });
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, h * 0.67, w, h * 0.33);
+      // Sub-black reference (~3.5 IRE — below-black; clips on most displays).
+      ctx.fillStyle = 'rgb(9,9,9)';
+      ctx.fillRect(0, h * 0.67, w * 0.15, h * 0.33);
+      // White reference (100 IRE, digital full-range peak = 235).
+      const refX0 = Math.round(w * 0.35), refX1 = Math.round(w * 0.65);
+      ctx.fillStyle = 'rgb(235,235,235)';
+      ctx.fillRect(refX0, h * 0.67, refX1 - refX0, h * 0.33);
+      // Near-black reference (~7.5 IRE — should be barely visible on a calibrated display).
+      ctx.fillStyle = 'rgb(19,19,19)';
+      ctx.fillRect(w * 0.85, h * 0.67, w * 0.15, h * 0.33);
+      // 8-step greyscale ramp within the white reference band.
+      const rampY0 = Math.round(h * 0.70), rampY1 = Math.round(h * 0.83);
+      const rampW  = refX1 - refX0;
+      for (let s = 0; s < 8; s++) {
+        const v  = Math.round((s / 7) * 235);
+        const sx = refX0 + Math.round(s * rampW / 8);
+        const ex = refX0 + Math.round((s + 1) * rampW / 8);
+        ctx.fillStyle = `rgb(${v},${v},${v})`;
+        ctx.fillRect(sx, rampY0, ex - sx, rampY1 - rampY0);
+      }
+      // Title: ~10.8% of height, minimum 32px. Both lines stay within the colour bars (0–67%).
+      const titlePx    = Math.max(32, Math.round(h * 0.108));
+      const titleLineH = titlePx * 1.15;
+      ctx.textAlign = 'center';
+      ctx.lineJoin   = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.lineWidth   = Math.max(2, titlePx * 0.10);
+      ctx.font = `bold ${titlePx}px monospace`;
+      ctx.strokeText('TELESCREEN-CRT', w / 2, h * 0.33 - titleLineH * 0.5);
+      ctx.strokeText('WEBGPU',         w / 2, h * 0.33 + titleLineH * 0.5);
+      ctx.fillStyle = 'rgba(192,192,192,0.9)';
+      ctx.fillText('TELESCREEN-CRT', w / 2, h * 0.33 - titleLineH * 0.5);
+      ctx.fillText('WEBGPU',         w / 2, h * 0.33 + titleLineH * 0.5);
+      // Subtitle: ~7.0% of height. Both lines stay within the colour bars. Below 24px skip.
+      const subPx = Math.round(h * 0.070);
+      if (subPx >= 24) {
+        const subLineH = subPx * 1.15;
+        ctx.lineWidth   = Math.max(1, subPx * 0.10);
+        ctx.font = `${subPx}px monospace`;
+        ctx.strokeText('load a file',             w / 2, h * 0.56 - subLineH * 0.5);
+        ctx.strokeText('or press H for settings', w / 2, h * 0.56 + subLineH * 0.5);
+        ctx.fillStyle = 'rgba(192,192,192,0.65)';
+        ctx.fillText('load a file',             w / 2, h * 0.56 - subLineH * 0.5);
+        ctx.fillText('or press H for settings', w / 2, h * 0.56 + subLineH * 0.5);
+      }
+      return makeSceneCanvasTex(c);
+    }
 
-  // You can also modulate:
-  // box.style.opacity = (lfoOpacity.value + 1) / 2; // 0–1
-  // box.style.filter = `hue-rotate(${lfoHue.value}deg)`;
+    function makePM5544Texture() {
+      const W = 768, H = 576;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const ctx = c.getContext('2d');
 
-  requestAnimationFrame(animate);
-}
+      // Step 1 — Background
+      ctx.fillStyle = '#787878';
+      ctx.fillRect(0, 0, W, H);
 
-animate();
+      // Step 2 — Inner sections (clipped to circle r=252)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(384, 288, 252, 0, Math.PI * 2);
+      ctx.clip();
 
-// ====================== LIVE CONTROLS (like LFO Tool) ======================
-function createSlider(label, lfo, prop, min, max, step) {
-  const div = document.createElement('div');
-  div.style.cssText = 'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.8);color:#0ff;padding:10px;border-radius:8px;font-family:monospace';
-  div.innerHTML = `
-    <label>${label} <input type="range" id="${prop}" min="${min}" max="${max}" step="${step}" value="${lfo[prop]}"></label>
-    <span id="${prop}val">${lfo[prop]}</span>
-  `;
-  document.body.appendChild(div);
+      // 2a — White base
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, W, H);
 
-  const input = div.querySelector('input');
-  const valSpan = div.querySelector(`#${prop}val`);
+      // 2b — Colour bars  y=36..200  (six bars, 128 px each, 80% amplitude)
+      ['#CCCC00','#00CCCC','#00CC00','#CC00CC','#CC0000','#0000CC'].forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(i * 128, 36, 128, 164);
+      });
 
-  input.addEventListener('input', () => {
-    lfo.set({ [prop]: parseFloat(input.value) });
-    valSpan.textContent = input.value;
-  });
-}
+      // 2c — Grey scale staircase  y=200..252
+      ['#000000','#343434','#666666','#999999','#CCCCCC','#FFFFFF'].forEach((col, i) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(i * 128, 200, 128, 52);
+      });
 
-createSlider('Scale Rate', lfoScale, 'freq', 0.1, 8, 0.1);
-createSlider('Scale Depth', lfoScale, 'amplitude', 0, 0.8, 0.01);
-createSlider('Rotate Rate', lfoRotate, 'freq', 0.1, 8, 0.1);
-createSlider('Rotate Depth', lfoRotate, 'amplitude', 0, 90, 1);
+      // 2d — Multi-burst frequency blocks  y=252..368
+      // putImageData ignores clip — write to offscreen canvas then drawImage (which does respect clip)
+      const periods = [64, 32, 16, 8, 4];
+      const mbC = document.createElement('canvas');
+      mbC.width = 768; mbC.height = 116;
+      const mbCtx = mbC.getContext('2d');
+      const img = mbCtx.createImageData(768, 116);
+      const d = img.data;
+      for (let b = 0; b < 5; b++) {
+        const bx0 = Math.round(768 * b / 5);
+        const bx1 = Math.round(768 * (b + 1) / 5);
+        const T = periods[b];
+        for (let x = bx0; x < bx1; x++) {
+          const v = Math.round(127.5 + 127.5 * Math.cos(2 * Math.PI * (x - bx0) / T));
+          for (let y = 0; y < 116; y++) {
+            const i4 = (y * 768 + x) * 4;
+            d[i4] = d[i4 + 1] = d[i4 + 2] = v; d[i4 + 3] = 255;
+          }
+        }
+      }
+      mbCtx.putImageData(img, 0, 0);
+      ctx.drawImage(mbC, 0, 252);
 
-// Waveform selector for scale LFO (add more if you want)
-const select = document.createElement('select');
-select.style.cssText = 'position:fixed;bottom:10px;right:10px';
-['sine','triangle','square','saw'].forEach(w => {
-  const opt = document.createElement('option');
-  opt.value = w; opt.textContent = w;
-  if (w === 'sine') opt.selected = true;
-  select.appendChild(opt);
-});
-select.onchange = () => lfoScale.set({ wave: select.value });
-document.body.appendChild(select);
-</script>
+      // 2e — Reference / PLUGE bars  y=368..480
+      [['#090909', 0], ['#000000', 256], ['#1C1C1C', 512]].forEach(([col, x]) => {
+        ctx.fillStyle = col;
+        ctx.fillRect(x, 368, 256, 112);
+      });
+
+      // 2f — Bottom white base  y=480..540  (explicit; already covered by 2a)
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 480, 768, 60);
+
+      // 2g — Top text box  y=36..80
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 36, 768, 44);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('TELESCREEN-CRT WEBGPU', 384, 68);
+
+      // 2h — Bottom text box  y=496..540
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 496, 768, 44);
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.font = '14px monospace';
+      ctx.fillText('press T · H for settings', 384, 518);
+
+      ctx.restore(); // end circle clip
+
+      // Step 3 — Crosshatch grid (full canvas, no clip)
+      ctx.fillStyle = '#FFFFFF';
+      for (let k = 0; k <= 18; k++) ctx.fillRect(Math.round(768 * k / 18), 0, 1, 576);
+      for (let k = 0; k <= 13; k++) ctx.fillRect(0, Math.round(576 * k / 13), 768, 1);
+
+      // Step 4 — Circle outline
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(384, 288, 252, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Step 5 — Centre crosshair
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 288, 768, 1);
+      ctx.fillRect(384, 0, 1, 576);
+
+      return makeSceneCanvasTex(c);
+    }
+
+    // ── Teletext renderer ────────────────────────────────────────────────
+    const TXT_COLORS = ['#000','#F00','#0F0','#FF0','#00F','#F0F','#0FF','#FFF'];
+    const TXT_NAMES  = ['Black','Red','Green','Yellow','Blue','Magenta','Cyan','White'];
+    const TXT_CW = 18, TXT_CH = 23;
+
+    // Mosaic block layout (2-col × 3-row, 6 bits)
+    const TXT_MOSAIC_BLOCKS = [
+      { bx: 0, by:  0, bw: 9, bh: 8 },  // bit 0: top-left
+      { bx: 9, by:  0, bw: 9, bh: 8 },  // bit 1: top-right
+      { bx: 0, by:  8, bw: 9, bh: 8 },  // bit 2: mid-left
+      { bx: 9, by:  8, bw: 9, bh: 8 },  // bit 3: mid-right
+      { bx: 0, by: 16, bw: 9, bh: 7 },  // bit 4: bot-left
+      { bx: 9, by: 16, bw: 9, bh: 7 },  // bit 5: bot-right
+    ];
+    // Mosaic helpers (for use in page data)
+    const M     = bits => String.fromCharCode(0x80 | (bits & 0x3F));  // contiguous
+    const S     = bits => String.fromCharCode(0xC0 | (bits & 0x3F));  // separated
+    const BLOCK = M(0x3F);                                             // all-filled
+    const FL    = ch   => '\x01' + ch;   // flash attribute (2-char: marker + char)
+    const RV    = ch   => '\x02' + ch;   // reveal attribute (2-char: marker + char)
+
+    // opts: { mag, spIdx, held, heldClk, flashOn, revealed, digitBuf }
+    function renderTelextPage(ctx, page, opts) {
+      const o        = opts || {};
+      const mag      = o.mag      || null;
+      const spIdx    = o.spIdx    || 0;
+      const held     = o.held     || false;
+      const heldClk  = o.heldClk  || '';
+      const flashOn  = o.flashOn  !== undefined ? o.flashOn  : true;
+      const revealed = o.revealed || false;
+      const digitBuf = o.digitBuf || '';
+      const mix      = o.mix      || false;
+
+      const now    = new Date();
+      const clk    = held ? heldClk : now.toISOString().slice(11, 19);
+      const mons   = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      const dateStr = String(now.getUTCDate()).padStart(2, '0') + ' ' + mons[now.getUTCMonth()] + ' ' + now.getUTCFullYear();
+      const pgStr   = digitBuf.length > 0
+        ? 'P' + digitBuf + '_'.repeat(3 - digitBuf.length)
+        : (mag ? 'P' + mag.num : 'P???');
+      const subStr  = (mag && mag.subPages.length > 1)
+        ? (' ' + (spIdx + 1) + '/' + mag.subPages.length).padEnd(5)
+        : '     ';
+
+      ctx.font         = 'bold 18px "Courier New", Courier, monospace';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+
+      page.forEach((row, ri) => {
+        const y0 = ri * TXT_CH;
+
+        // Fastext strip — special 4-box coloured rendering
+        if (row.fastext) {
+          const ft       = mag && mag.fastext ? mag.fastext : {};
+          const ftLabels = [ft.redLabel || 'NEWS', ft.greenLabel || 'SPORT', ft.yellowLabel || 'WEATHER', ft.blueLabel || 'TV LIST'];
+          const ftColors = [1, 2, 3, 4];
+          if (mix) { ctx.clearRect(0, y0, 720, TXT_CH); } else {
+            ctx.fillStyle = TXT_COLORS[0];
+            ctx.fillRect(0, y0, 720, TXT_CH);
+          }
+          for (let i = 0; i < 4; i++) {
+            const bx = i * 10 * TXT_CW;
+            ctx.fillStyle = TXT_COLORS[ftColors[i]];
+            ctx.fillRect(bx, y0, 10 * TXT_CW, TXT_CH);
+            ctx.fillStyle = TXT_COLORS[7];
+            ctx.fillText(ftLabels[i], bx + 5 * TXT_CW, y0 + TXT_CH / 2);
+          }
+          return;
+        }
+
+        // Row background
+        if (mix && (row.bg ?? 0) === 0) {
+          ctx.clearRect(0, y0, 720, TXT_CH);
+        } else {
+          ctx.fillStyle = TXT_COLORS[row.bg ?? 0];
+          ctx.fillRect(0, y0, 720, TXT_CH);
+        }
+
+        // Per-segment background overrides (segs with explicit bg)
+        if (row.segs) {
+          let bci = 0;
+          for (const seg of row.segs) {
+            if (seg.bg !== undefined) {
+              ctx.fillStyle = TXT_COLORS[seg.bg];
+              ctx.fillRect(bci * TXT_CW, y0, seg.text.length * TXT_CW, TXT_CH);
+            }
+            bci += seg.text.length;
+          }
+        }
+
+        // Build char + fg arrays
+        const chars = [], fgs = [];
+        if (row.segs) {
+          for (const seg of row.segs) {
+            for (const ch of seg.text) { chars.push(ch); fgs.push(seg.fg ?? 7); }
+          }
+        } else {
+          const txt = (row.text ?? '')
+            .replace('{CLK}',  clk)
+            .replace('{PG}',   pgStr)
+            .replace('{SUB}',  subStr)
+            .replace('{DATE}', dateStr);
+          for (const ch of txt) { chars.push(ch); fgs.push(row.fg ?? 7); }
+        }
+
+        // Render characters
+        for (let ci = 0; ci < chars.length && ci < 40; ci++) {
+          const code = chars[ci].charCodeAt(0);
+          const x0   = ci * TXT_CW;
+
+          // Flash: 0x01 + char — show char only when flashOn=true
+          if (code === 0x01) {
+            ci++;
+            if (ci >= chars.length || ci >= 40) break;
+            if (!flashOn) continue;
+            ctx.fillStyle = TXT_COLORS[fgs[ci]];
+            ctx.fillText(chars[ci], ci * TXT_CW + TXT_CW / 2, y0 + TXT_CH / 2);
+            continue;
+          }
+
+          // Reveal: 0x02 + char — show char only when revealed=true
+          if (code === 0x02) {
+            ci++;
+            if (ci >= chars.length || ci >= 40) break;
+            if (!revealed) continue;
+            ctx.fillStyle = TXT_COLORS[fgs[ci]];
+            ctx.fillText(chars[ci], ci * TXT_CW + TXT_CW / 2, y0 + TXT_CH / 2);
+            continue;
+          }
+
+          // Mosaic: 0x80–0xFF (contiguous 0x80–0xBF, separated 0xC0–0xFF)
+          if (code >= 0x80) {
+            const bits = code & 0x3F;
+            const sep  = code >= 0xC0;
+            ctx.fillStyle = TXT_COLORS[fgs[ci]];
+            for (let b = 0; b < 6; b++) {
+              if (!(bits & (1 << b))) continue;
+              let { bx, by, bw, bh } = TXT_MOSAIC_BLOCKS[b];
+              if (sep) { bx++; by++; bw -= 2; bh -= 2; }
+              ctx.fillRect(x0 + bx, y0 + by, bw, bh);
+            }
+            continue;
+          }
+
+          // Normal character
+          if (chars[ci] === ' ') continue;
+          ctx.fillStyle = TXT_COLORS[fgs[ci]];
+          ctx.fillText(chars[ci], x0 + TXT_CW / 2, y0 + TXT_CH / 2);
+        }
+      });
+
+      // HOLD indicator — top-right 4 chars of row 0
+      if (held) {
+        ctx.fillStyle = TXT_COLORS[0];
+        ctx.fillRect(36 * TXT_CW, 0, 4 * TXT_CW, TXT_CH);
+        ctx.fillStyle = TXT_COLORS[3];
+        'HOLD'.split('').forEach((ch, i) => {
+          ctx.fillText(ch, (36 + i) * TXT_CW + TXT_CW / 2, TXT_CH / 2);
+        });
+      }
+    }
+
+    // Mix-mode render: transparent black backgrounds
+    function renderTelextPageMix(ctx, page, opts) {
+      ctx.clearRect(0, 0, 720, 576);
+      renderTelextPage(ctx, page, Object.assign({}, opts, { mix: true }));
+    }
+
+    // P100 — Index
+    const TXT_P100 = [
+      { bg: 4, fg: 7, text: '{PG}  CEEFAX 1                  {CLK}' },
+      { bg: 4, fg: 3, text: '  THE TELETEXT SERVICE                  ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 2, fg: 0, text: '  NEWS & SPORT                  200+    ' },
+      { bg: 0, fg: 3, text: '  200 News Headlines                    ' },
+      { bg: 0, fg: 3, text: '  400 Sport                             ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 1, fg: 7, text: '  WEATHER                       300+    ' },
+      { bg: 0, fg: 3, text: '  300 Weather Forecast                  ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 5, fg: 7, text: '  ENTERTAINMENT                 500+    ' },
+      { bg: 0, fg: 3, text: '  500 TV Listings                       ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 6, fg: 0, text: '  OTHER SERVICES                800+    ' },
+      { bg: 0, fg: 3, text: '  888 Subtitles                         ' },
+      { bg: 0, fg: 3, text: '  999 CRT Effects Showcase              ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  \u25c4 \u25ba  PAGES    0-9  GOTO    H  HOLD    ' },
+      { fastext: true },
+    ];
+
+    // P200 — News
+    const TXT_P200 = [
+      { bg: 1, fg: 7, text: '{PG}  BBC NEWS  {SUB}           {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  HEADLINES  23 MARCH 2026              ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  PARLIAMENT                            ' },
+      { bg: 0, fg: 7, text: '  Commons debates digital broadcast     ' },
+      { bg: 0, fg: 7, text: '  reform package                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  WEATHER                               ' },
+      { bg: 0, fg: 7, text: '  Mild conditions across UK through     ' },
+      { bg: 0, fg: 7, text: '  the weekend                           ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  SPORT                                 ' },
+      { bg: 0, fg: 7, text: '  England cricket squad departs for     ' },
+      { bg: 0, fg: 7, text: '  Caribbean tour on Monday              ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  TECHNOLOGY                            ' },
+      { bg: 0, fg: 7, text: '  New broadcasting standards bill       ' },
+      { bg: 0, fg: 7, text: '  passes second reading                 ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    // P300 — Weather
+    const TXT_P300 = [
+      { bg: 4, fg: 3, text: '{PG}  WEATHER FORECAST          {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 7, text: '   UK WEATHER OUTLOOK                   ' },
+      { bg: 0, fg: 3, text: '   23 MARCH 2026                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  REGION         TODAY      TONIGHT     ' },
+      { bg: 0, fg: 0, text: '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' },
+      { bg: 0, segs: [{ fg: 7, text: '  ENGLAND         ' }, { fg: 3, text: 'CLOUDY   ' }, { fg: 2, text: '17\u00b0C         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  WALES           ' }, { fg: 3, text: 'BREEZY   ' }, { fg: 2, text: '15\u00b0C         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  SCOTLAND        ' }, { fg: 6, text: 'RAIN     ' }, { fg: 2, text: '12\u00b0C         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  N.IRELAND       ' }, { fg: 3, text: 'OVERCAST ' }, { fg: 2, text: '14\u00b0C         ' }] },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  OUTLOOK FOR THE WEEKEND               ' },
+      { bg: 0, fg: 7, text: '  Improving in the south on Sunday      ' },
+      { bg: 0, fg: 7, text: '  Persistent rain in the north          ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    // P200b — News second edition (sub-page 2)
+    const TXT_P200b = [
+      { bg: 1, fg: 7, text: '{PG}  BBC NEWS  {SUB}           {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  HEADLINES  23 MARCH 2026              ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  ROYAL VISIT                           ' },
+      { bg: 0, fg: 7, text: '  New hospital foundation stone         ' },
+      { bg: 0, fg: 7, text: '  laid in Bristol                       ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  SCIENCE                               ' },
+      { bg: 0, fg: 7, text: '  Astronomers detect largest known      ' },
+      { bg: 0, fg: 7, text: '  asteroid passing Earth safely         ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  ARTS                                  ' },
+      { bg: 0, fg: 7, text: '  National portrait gallery announces   ' },
+      { bg: 0, fg: 7, text: '  new acquisitions from 1920s           ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  WEATHER UPDATE                        ' },
+      { bg: 0, fg: 7, text: '  Further improvement expected          ' },
+      { bg: 0, fg: 7, text: '  by midnight tonight                   ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    // P400 — Sport
+    const TXT_P400 = [
+      { bg: 1, fg: 7, text: '{PG}  BBC SPORT                 {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  FOOTBALL RESULTS           {DATE}  ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, segs: [{ fg: 1, text: M(0x3F).repeat(40) }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Arsenal         ' }, { fg: 3, text: '3-1' }, { fg: 7, text: '  Chelsea          ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Liverpool       ' }, { fg: 3, text: '2-2' }, { fg: 7, text: '  Man United       ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Tottenham       ' }, { fg: 3, text: '1-0' }, { fg: 7, text: '  Newcastle        ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Man City        ' }, { fg: 3, text: '4-0' }, { fg: 7, text: '  Everton          ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Brighton        ' }, { fg: 3, text: '0-0' }, { fg: 7, text: '  West Ham         ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Aston Villa     ' }, { fg: 3, text: '2-1' }, { fg: 7, text: '  Wolves           ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Brentford       ' }, { fg: 3, text: '1-3' }, { fg: 7, text: '  Fulham           ' }] },
+      { bg: 0, segs: [{ fg: 7, text: '  Crystal Palace  ' }, { fg: 3, text: '0-2' }, { fg: 7, text: '  Bournemouth      ' }] },
+      { bg: 0, segs: [{ fg: 1, text: M(0x3F).repeat(40) }] },
+      { bg: 0, fg: 6, text: '  ATHLETICS                             ' },
+      { bg: 0, fg: 7, text: '  World indoor 100m: Samba 9.96s        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  CRICKET                               ' },
+      { bg: 0, fg: 7, text: '  England v West Indies: Day 2          ' },
+      { bg: 0, fg: 7, text: '  England 287-6 at stumps               ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    // P500a — TV Listings 18:00–21:00
+    const TXT_P500a = [
+      { bg: 4, fg: 7, text: '{PG}  TV LISTINGS  {SUB}        {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  MON 23 MAR   18:00 - 21:00           ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 4, fg: 7, text: '  BBC ONE                               ' },
+      { bg: 0, segs: [{ fg: 6, text: '18:00 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'The One Show           ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '19:00 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'EastEnders             ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '19:30 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'BBC News at Six        ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '20:00 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'Panorama               ' }] },
+      { bg: 4, fg: 7, text: '  ITV                                   ' },
+      { bg: 0, segs: [{ fg: 6, text: '18:00 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'ITV Evening News       ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '18:30 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'Emmerdale              ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '19:00 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'Coronation Street      ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '20:00 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'Documentary Special    ' }] },
+      { bg: 4, fg: 7, text: '  CHANNEL 4                             ' },
+      { bg: 0, segs: [{ fg: 6, text: '18:00 ' }, { fg: 2, text: 'CH4   ' }, { fg: 7, text: 'Channel 4 News         ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '19:00 ' }, { fg: 2, text: 'CH4   ' }, { fg: 7, text: 'Countdown              ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '20:00 ' }, { fg: 2, text: 'CH4   ' }, { fg: 7, text: '8 Out of 10 Cats       ' }] },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    // P500b — TV Listings 21:00–00:00
+    const TXT_P500b = [
+      { bg: 4, fg: 7, text: '{PG}  TV LISTINGS  {SUB}        {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 3, text: '  MON 23 MAR   21:00 - 00:00           ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 4, fg: 7, text: '  BBC ONE                               ' },
+      { bg: 0, segs: [{ fg: 6, text: '21:00 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'Drama: The Trial       ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '22:00 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'BBC News at Ten        ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '22:45 ' }, { fg: 2, text: 'BBC1  ' }, { fg: 7, text: 'The Graham Norton Show ' }] },
+      { bg: 4, fg: 7, text: '  ITV                                   ' },
+      { bg: 0, segs: [{ fg: 6, text: '21:00 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'Crime Drama: The Code  ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '22:00 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'ITV News               ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '22:30 ' }, { fg: 2, text: 'ITV   ' }, { fg: 7, text: 'The Jonathan Ross Show ' }] },
+      { bg: 4, fg: 7, text: '  CHANNEL 4                             ' },
+      { bg: 0, segs: [{ fg: 6, text: '21:00 ' }, { fg: 2, text: 'CH4   ' }, { fg: 7, text: 'Film: The Aeronauts    ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '23:00 ' }, { fg: 2, text: 'CH4   ' }, { fg: 7, text: 'Channel 4 Late News    ' }] },
+      { bg: 4, fg: 7, text: '  BBC TWO                               ' },
+      { bg: 0, segs: [{ fg: 6, text: '21:00 ' }, { fg: 2, text: 'BBC2  ' }, { fg: 7, text: 'University Challenge    ' }] },
+      { bg: 0, segs: [{ fg: 6, text: '21:30 ' }, { fg: 2, text: 'BBC2  ' }, { fg: 7, text: 'Newsnight              ' }] },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    // P888a/b/c — Subtitles (3 sub-pages cycling every 6s)
+    const _blank40 = { bg: 0, fg: 0, text: '                                        ' };
+    const TXT_P888a = [
+      ...(Array(21).fill(_blank40)),
+      { bg: 0, fg: 7, text: '          Good evening, everyone.       ' },
+      { bg: 0, fg: 7, text: "     Tonight's programme starts shortly. " },
+      _blank40,
+      { fastext: true },
+    ];
+    const TXT_P888b = [
+      ...(Array(21).fill(_blank40)),
+      { bg: 0, fg: 7, text: '       She opened the old oak door      ' },
+      { bg: 0, fg: 7, text: "     and stepped into the cold night.   " },
+      _blank40,
+      { fastext: true },
+    ];
+    const TXT_P888c = [
+      ...(Array(21).fill(_blank40)),
+      { bg: 0, fg: 7, text: '      ...previously on The Minister...  ' },
+      { bg: 0, fg: 7, text: "      I never said it would be easy.    " },
+      _blank40,
+      { fastext: true },
+    ];
+
+    // P999 — CRT Effects Showcase
+    const TXT_P999 = [
+      { bg: 0, fg: 7, text: '{PG}  CRT EFFECTS SHOWCASE      {CLK}' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 6, text: '  FOREGROUND COLOUR BANDS               ' },
+      { bg: 0, segs: [
+        { fg: 0, text: M(0x3F).repeat(5) }, { fg: 1, text: M(0x3F).repeat(5) },
+        { fg: 2, text: M(0x3F).repeat(5) }, { fg: 3, text: M(0x3F).repeat(5) },
+        { fg: 4, text: M(0x3F).repeat(5) }, { fg: 5, text: M(0x3F).repeat(5) },
+        { fg: 6, text: M(0x3F).repeat(5) }, { fg: 7, text: M(0x3F).repeat(5) },
+      ] },
+      { bg: 0, fg: 6, text: '  BACKGROUND COLOUR BANDS               ' },
+      { bg: 0, fg: 7, text: ('  ' + TXT_NAMES[0]).padEnd(40) },
+      { bg: 1, fg: 7, text: ('  ' + TXT_NAMES[1]).padEnd(40) },
+      { bg: 2, fg: 7, text: ('  ' + TXT_NAMES[2]).padEnd(40) },
+      { bg: 3, fg: 0, text: ('  ' + TXT_NAMES[3]).padEnd(40) },
+      { bg: 4, fg: 7, text: ('  ' + TXT_NAMES[4]).padEnd(40) },
+      { bg: 5, fg: 7, text: ('  ' + TXT_NAMES[5]).padEnd(40) },
+      { bg: 6, fg: 0, text: ('  ' + TXT_NAMES[6]).padEnd(40) },
+      { bg: 7, fg: 0, text: ('  ' + TXT_NAMES[7]).padEnd(40) },
+      { bg: 0, fg: 6, text: '  RINGING TEST  (try ringAmt > 0)       ' },
+      { bg: 0, segs: Array.from({ length: 20 }, (_, i) => [
+        { fg: 7, text: M(0x3F) }, { fg: 0, text: ' ' }
+      ]).flat() },
+      { bg: 0, fg: 6, text: '  CHROMA EDGES  (try chromaBlur > 0)   ' },
+      { bg: 0, segs: [
+        { fg: 1, text: M(0x3F).repeat(4) }, { fg: 6, text: M(0x3F).repeat(4) },
+        { fg: 1, text: M(0x3F).repeat(4) }, { fg: 6, text: M(0x3F).repeat(4) },
+        { fg: 1, text: M(0x3F).repeat(4) }, { fg: 6, text: M(0x3F).repeat(4) },
+        { fg: 1, text: M(0x3F).repeat(4) }, { fg: 6, text: M(0x3F).repeat(4) },
+        { fg: 1, text: M(0x3F).repeat(4) }, { fg: 6, text: M(0x3F).repeat(4) },
+      ] },
+      { bg: 0, fg: 6, text: '  CONVERGENCE TEST                      ' },
+      { bg: 0, segs: [
+        ...Array.from({ length: 13 }, () => [
+          { fg: 1, text: M(0x3F) }, { fg: 2, text: M(0x3F) }, { fg: 4, text: M(0x3F) },
+        ]).flat(),
+        { fg: 1, text: M(0x3F) },
+      ] },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { bg: 0, fg: 0, text: '                                        ' },
+      { fastext: true },
+    ];
+
+    const TXT_PAGES = [
+      { num: 100, subPages: [TXT_P100], cycleSec: null,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+      { num: 200, subPages: [TXT_P200, TXT_P200b], cycleSec: 8,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+      { num: 300, subPages: [TXT_P300], cycleSec: null,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+      { num: 400, subPages: [TXT_P400], cycleSec: null,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+      { num: 500, subPages: [TXT_P500a, TXT_P500b], cycleSec: 12,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+      { num: 888, subPages: [TXT_P888a, TXT_P888b, TXT_P888c], cycleSec: 6,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+      { num: 999, subPages: [TXT_P999], cycleSec: null,
+        fastext: { red: 200, green: 400, yellow: 300, blue: 500,
+                   redLabel: 'NEWS', greenLabel: 'SPORT', yellowLabel: 'WEATHER', blueLabel: 'TV LIST' } },
+    ];
+
+    function makeTeletextSource() {
+      const c   = document.createElement('canvas');
+      c.width   = 720;
+      c.height  = 576;
+      const ctx = c.getContext('2d');
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+
+      // Mix-mode canvas (transparent black backgrounds)
+      const cMix   = document.createElement('canvas');
+      cMix.width   = 720;
+      cMix.height  = 576;
+      const ctxMix = cMix.getContext('2d');
+      const texMix = new THREE.CanvasTexture(cMix);
+      texMix.colorSpace = THREE.SRGBColorSpace;
+
+      let pageIdx    = 0;
+      let subPageIdx = 0;
+      let subTimer   = null;
+      let clockTimer = null;
+
+      // Hold / flash / reveal
+      let _held     = false;
+      let _heldClk  = '';
+      let _flashOn  = true;
+      let _revealed = false;
+      let _mixMode  = false;
+
+      // 3-digit page input
+      let _digitBuf  = '';
+      let _digitTime = null;
+
+      function currentRows() {
+        const mag = TXT_PAGES[pageIdx];
+        return mag.subPages[subPageIdx % mag.subPages.length];
+      }
+
+      function buildOpts() {
+        return { mag: TXT_PAGES[pageIdx], spIdx: subPageIdx,
+                 held: _held, heldClk: _heldClk,
+                 flashOn: _flashOn, revealed: _revealed, digitBuf: _digitBuf };
+      }
+
+      function redraw() {
+        _flashOn = !_flashOn;
+        if (_notFoundTimer !== null) return;  // don't overwrite the not-found overlay
+        const opts = buildOpts();
+        renderTelextPage(ctx, currentRows(), opts);
+        tex.needsUpdate = true;
+        if (_mixMode) {
+          renderTelextPageMix(ctxMix, currentRows(), opts);
+          texMix.needsUpdate = true;
+        }
+      }
+
+      function stopSubCycle() {
+        if (subTimer !== null) { clearInterval(subTimer); subTimer = null; }
+      }
+
+      function startSubCycle() {
+        stopSubCycle();
+        const mag = TXT_PAGES[pageIdx];
+        if (!_held && mag.cycleSec && mag.subPages.length > 1) {
+          subTimer = setInterval(() => {
+            subPageIdx = (subPageIdx + 1) % mag.subPages.length;
+            redraw();
+          }, mag.cycleSec * 1000);
+        }
+      }
+
+      function setPage(idx) {
+        pageIdx    = ((idx % TXT_PAGES.length) + TXT_PAGES.length) % TXT_PAGES.length;
+        subPageIdx = 0;
+        _digitBuf  = '';
+        startSubCycle();
+        redraw();
+      }
+
+      function setPageByNum(num) {
+        const idx = TXT_PAGES.findIndex(m => m.num === num);
+        if (idx >= 0) setPage(idx);
+        else showNotFound(num);
+      }
+
+      function toggleHold() {
+        _held = !_held;
+        if (_held) {
+          _heldClk = new Date().toISOString().slice(11, 19);
+          stopSubCycle();
+        } else {
+          startSubCycle();
+        }
+        redraw();
+      }
+
+      function toggleReveal() {
+        _revealed = !_revealed;
+        redraw();
+      }
+
+      function onDigit(d) {
+        _digitBuf += d;
+        redraw();
+        clearTimeout(_digitTime);
+        if (_digitBuf.length === 3) {
+          const target = parseInt(_digitBuf, 10);
+          _digitBuf = '';
+          setPageByNum(target);
+        } else {
+          _digitTime = setTimeout(() => { _digitBuf = ''; redraw(); }, 2000);
+        }
+      }
+
+      function onFastext(colorKey) {
+        const mag    = TXT_PAGES[pageIdx];
+        const target = mag.fastext && mag.fastext[colorKey];
+        if (target !== undefined) setPageByNum(target);
+      }
+
+      let _notFoundTimer = null;
+      function showNotFound(num) {
+        // Draw overlay then restore after 1.5s
+        const y = 11 * TXT_CH;
+        ctx.fillStyle = TXT_COLORS[1];
+        ctx.fillRect(0, y, 720, TXT_CH);
+        ctx.fillStyle = TXT_COLORS[7];
+        ctx.font         = 'bold 18px "Courier New", Courier, monospace';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('--- PAGE ' + num + ' NOT FOUND ---', 360, y + TXT_CH / 2);
+        tex.needsUpdate = true;
+        if (_notFoundTimer) clearTimeout(_notFoundTimer);
+        _notFoundTimer = setTimeout(() => { _notFoundTimer = null; redraw(); }, 1500);
+      }
+
+      function setMixMode(on) {
+        _mixMode = on;
+        if (!on) {
+          ctxMix.clearRect(0, 0, 720, 576);
+          texMix.needsUpdate = true;
+        }
+        redraw();
+      }
+
+      function start() {
+        _flashOn = false;   // redraw() toggles to true for first render
+        redraw();
+        clockTimer = setInterval(redraw, 500);
+        startSubCycle();
+      }
+
+      function stop() {
+        stopSubCycle();
+        if (clockTimer !== null) { clearInterval(clockTimer); clockTimer = null; }
+      }
+
+      return {
+        texture: tex,
+        mixModeTexture: texMix,
+        get mixMode()    { return _mixMode; },
+        get held()       { return _held; },
+        start, stop, setPage, toggleHold, toggleReveal, onDigit, onFastext, setMixMode,
+        get pageCount()  { return TXT_PAGES.length; },
+        get currentPage(){ return pageIdx; },
+      };
+    }
+
+    // Hidden <video> element for local video / direct URL playback.
+    const videoEl       = document.createElement('video');
+    videoEl.loop        = true;
+    videoEl.playsInline = true;
+    videoEl.crossOrigin = 'anonymous';
+    videoEl.style.display = 'none';
+    document.body.appendChild(videoEl);
+
+    async function boot() {
+      const wrapper = document.querySelector('.s9-telescreen');
+
+      const canvas = document.createElement('canvas');
+      canvas.setAttribute('aria-label', 'CRT feed');
+      wrapper.insertBefore(canvas, wrapper.firstChild);
+
+      const renderer = new THREE.WebGPURenderer({ canvas, antialias: false });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight);
+      renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+      renderer.toneMapping = THREE.NoToneMapping;
+
+      try {
+        await renderer.init();
+      } catch (e) {
+        document.getElementById('no-webgpu').classList.remove('hidden');
+        console.error('WebGPU init failed:', e);
+        return;
+      }
+
+      if (!renderer.backend?.isWebGPUBackend) {
+        console.warn('telescreen-crt-webgpu: running on WebGL2 backend. glslFn() shaders are compatible with both backends.');
+      }
+
+      const scene  = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      // In SMPTE mode the pattern fills the full viewport, so start at the viewport aspect.
+      let videoAspect = window.innerWidth / window.innerHeight;
+      const camera = new THREE.OrthographicCamera(
+        -videoAspect / 2, videoAspect / 2,
+        0.5, -0.5,
+        0.1, 10
+      );
+      camera.position.z = 1;
+
+      // SMPTE test pattern — default source, hidden when video is loaded.
+      // z=0.005: sits in front of the video mesh (z=0) so the black DataTexture
+      // placeholder doesn't bleed through in SMPTE mode.
+      // map: null on creation — regenerateSMPTETexture() sets it synchronously below.
+      const smpteMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(videoAspect, 1.0),
+        new THREE.MeshBasicMaterial({ map: null })
+      );
+      smpteMesh.position.z = 0.005;
+      scene.add(smpteMesh);
+
+      // Canvas width is fixed at 1920; height tracks the current aspect so text is never
+      // stretched. rebuildOverlayTexture() swaps in a new CanvasTexture whenever the
+      // plane aspect changes, avoiding GPU-level distortion of the overlay glyphs.
+      let overlayCanvas = makeOverlayCanvas(1920, Math.round(1920 / videoAspect));
+      let overlayCtx    = overlayCanvas.getContext('2d');
+      let overlayTex    = makeSceneCanvasTex(overlayCanvas);
+      const overlayPlane  = new THREE.Mesh(
+        new THREE.PlaneGeometry(videoAspect, 1.0),
+        new THREE.MeshBasicMaterial({ map: overlayTex, transparent: true })
+      );
+      overlayPlane.position.z = 0.01;
+      scene.add(overlayPlane);
+
+      let recDot = true;
+      let overlayLabel = 'CH-01 // SMPTE-TEST // LIVE';
+      let _statsInfo = null;
+
+      // OSD canvas — used as a CanvasTexture source for in-kernel OSD mode (SPEC-osd-overlay).
+      // Toggle with O key. Default: signal mode (overlayPlane in scene).
+      // In OSD mode the overlay is blended at the mask stage: phosphor mask, scanlines,
+      // halation, grain, and scratch all apply — but NOT signal-chain artifacts (glitch, ghost, etc).
+      // Fixed 1920×1080 so the CanvasTexture remains valid across window resizes (Option A).
+      let overlayOSD = false;
+      const osdCanvas = document.createElement('canvas');
+      osdCanvas.width  = 1920;
+      osdCanvas.height = 1080;
+      // Not appended to DOM — used only as a GPU texture source.
+      function resizeOsdCanvas() {
+        // Fixed resolution: no-op. Kept for call-site compatibility (resize handler).
+      }
+
+      function redrawOverlay() {
+        if (overlayOSD) {
+          drawOverlay(osdCanvas.getContext('2d'), osdCanvas.width, osdCanvas.height, recDot, overlayLabel, _statsInfo);
+          osdCanvasTex.needsUpdate = true;
+        } else {
+          drawOverlay(overlayCtx, overlayCanvas.width, overlayCanvas.height, recDot, overlayLabel, _statsInfo);
+          overlayTex.needsUpdate = true;
+        }
+      }
+
+      // Swap to a new canvas+texture sized to match the given aspect ratio.
+      // Creating a fresh CanvasTexture avoids WebGPU stale-texture artifacts that occur
+      // when canvas.width/height are mutated in place on an already-uploaded texture.
+      function rebuildOverlayTexture(aspect) {
+        const w = 1920;
+        const h = Math.round(1920 / aspect);
+        const oldTex  = overlayTex;
+        overlayCanvas = makeOverlayCanvas(w, h);
+        overlayCtx    = overlayCanvas.getContext('2d');
+        overlayTex    = makeSceneCanvasTex(overlayCanvas);
+        overlayPlane.material.map = overlayTex;
+        overlayPlane.material.needsUpdate = true;
+        oldTex.dispose();
+        redrawOverlay();
+      }
+
+      redrawOverlay();
+      const recInterval = setInterval(() => {
+        recDot = !recDot;
+        redrawOverlay();
+      }, 600);
+
+      initKeybindPlane(scene);
+
+      const crt = initTelescreenCRTWebGPU(renderer, scene, camera, {
+        scratchUrl:  './data/scratches.png',
+        autoRender:  true,
+        videoSource: videoEl,
+      });
+      // Replace the blank VideoTexture (no src → invalid GPU texture view) with a
+      // valid 1×1 black DataTexture until the user actually loads a video file.
+      crt.setVideoSource(null);
+
+      // Reflect auto-computed effective source size in the UI inputs.
+      // Only updates when value changes and the user hasn't typed into the fields.
+      const srcXEl = document.getElementById('ts-sourceSizeX');
+      const srcYEl = document.getElementById('ts-sourceSizeY');
+      let _lastShownSrcW = -1, _lastShownSrcH = -1;
+      setInterval(() => {
+        const w = crt.effectiveSourceW, h = crt.effectiveSourceH;
+        if (w !== _lastShownSrcW || h !== _lastShownSrcH) {
+          _lastShownSrcW = w; _lastShownSrcH = h;
+          if (document.activeElement !== srcXEl) srcXEl.value = w;
+          if (document.activeElement !== srcYEl) srcYEl.value = h;
+        }
+      }, 300);
+
+      // OSD mode: register CanvasTexture backed by osdCanvas. Mode starts off (signal mode).
+      // osdCanvasTex must be created after crt so the TSL graph is already built.
+      const osdCanvasTex = makeCanvasTex(osdCanvas);
+      crt.setOSD(false, osdCanvasTex);
+
+      videoEl.addEventListener('loadedmetadata', () => {
+        if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+          videoAspect = videoEl.videoWidth / videoEl.videoHeight;
+          overlayPlane.geometry.dispose();
+          overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          rebuildOverlayTexture(videoAspect);
+          updateCamera();
+        }
+      });
+
+      // Pass PRESETS so the preset picker is populated. Do NOT call crt.setShader() here
+      // with a preset's sourceSizeX/Y — fitPlane manages source size from the video element.
+      // applyPreset() already strips sourceSizeX/Y, so the picker is safe to use at runtime.
+      initTelescreenCRTControls(crt, { presets: PRESETS, signalPresets: SIGNAL_PRESETS });
+
+      // ── Camera fit — keeps content aspect ratio with letterbox/pillarbox ────
+      function updateCamera() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const S = w / h;
+        const A = videoAspect;
+        if (S >= A) {
+          camera.top    =  0.5;
+          camera.bottom = -0.5;
+          camera.left   = -S / 2;
+          camera.right  =  S / 2;
+        } else {
+          camera.left   = -A / 2;
+          camera.right  =  A / 2;
+          camera.top    =  A / (2 * S);
+          camera.bottom = -A / (2 * S);
+        }
+        camera.updateProjectionMatrix();
+      }
+
+      // ── Playback polling ────────────────────────────────────────────────────
+      function startPoll() {
+        stopPoll();
+        pollId = setInterval(() => {
+          if (seekDragging) return;
+          const cur = videoEl.currentTime;
+          const dur = isFinite(videoEl.duration) ? videoEl.duration : 0;
+          if (dur > 0) {
+            seekBar.value = (cur / dur) * 100;
+            timeDisplay.textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+          }
+          updatePlayPauseBtn();
+        }, 300);
+      }
+
+      function stopPoll() {
+        if (pollId !== null) { clearInterval(pollId); pollId = null; }
+      }
+
+      function updatePlayPauseBtn() {
+        btnPlayPause.textContent = (!videoEl.paused && !videoEl.ended) ? '⏸' : '⏵';
+      }
+
+      // ── Mode switching ──────────────────────────────────────────────────────
+      function clearSource() {
+        stopPoll();
+        if (canPlayHandler) {
+          videoEl.removeEventListener('canplay', canPlayHandler);
+          canPlayHandler = null;
+        }
+        videoEl.pause();
+        videoEl.src = '';
+        if (prevObjectUrl) { URL.revokeObjectURL(prevObjectUrl); prevObjectUrl = null; }
+        crt.setVideoSource(null);
+        mode = 'none';
+        seekBar.value = 0;
+        timeDisplay.textContent = '0:00 / 0:00';
+        btnPlayPause.textContent = '⏵';
+        statusEl.textContent = 'No video loaded';
+        smpteMesh.visible = true;
+        applyPattern(patternIdx);
+      }
+
+      function loadLocalVideo(src, label) {
+        clearSource();
+        prevObjectUrl = src.startsWith('blob:') ? src : null;
+        smpteMesh.visible = false;
+        overlayLabel = 'CH-02 // VIDEO-SRC // LIVE';
+        mode = 'local';
+        videoEl.volume = currentVolume / 100;
+        videoEl.muted  = isMuted;
+        videoEl.src    = src;
+        videoEl.load();
+        // Defer setVideoSource until the browser has a decodable frame — a
+        // VideoTexture with no frame data causes a WebGPU bind group error.
+        canPlayHandler = () => {
+          canPlayHandler = null;
+          crt.setVideoSource(videoEl);
+        };
+        videoEl.addEventListener('canplay', canPlayHandler, { once: true });
+        // Try with audio; fall back to muted autoplay and sync UI state.
+        videoEl.play().catch(() => {
+          isMuted = true;
+          videoEl.muted = true;
+          btnMute.textContent = '🔇';
+          videoEl.play().catch(() => {});
+        });
+        statusEl.textContent = label;
+        startPoll();
+      }
+
+      // ── Control event listeners ─────────────────────────────────────────────
+      fileInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        loadLocalVideo(URL.createObjectURL(file), file.name);
+        e.target.value = '';
+      });
+
+      btnLoadUrl.addEventListener('click', () => {
+        const url = urlInput.value.trim();
+        if (!url) return;
+        const label = url.split('/').pop().split('?')[0] || 'video';
+        loadLocalVideo(url, label);
+        urlInput.value = '';
+      });
+
+      urlInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') btnLoadUrl.click();
+      });
+
+      // Auto-load from ?video= URL parameter
+      const autoUrl = new URLSearchParams(location.search).get('video');
+      if (autoUrl) {
+        urlInput.value = autoUrl;
+        btnLoadUrl.click();
+      }
+
+      btnClear.addEventListener('click', clearSource);
+
+      btnPlayPause.addEventListener('click', () => {
+        if (videoEl.paused) videoEl.play().catch(() => {});
+        else videoEl.pause();
+        updatePlayPauseBtn();
+      });
+
+      // Seek bar — pause polling while dragging to avoid feedback
+      seekBar.addEventListener('mousedown',  () => { seekDragging = true; });
+      seekBar.addEventListener('touchstart', () => { seekDragging = true; }, { passive: true });
+      seekBar.addEventListener('input', () => {
+        const dur = isFinite(videoEl.duration) ? videoEl.duration : 0;
+        if (dur > 0) videoEl.currentTime = (seekBar.value / 100) * dur;
+      });
+      seekBar.addEventListener('change', () => { seekDragging = false; });
+
+      // Volume
+      volBar.addEventListener('input', () => {
+        currentVolume = parseInt(volBar.value, 10);
+        isMuted = currentVolume === 0;
+        btnMute.textContent = isMuted ? '🔇' : '🔊';
+        videoEl.volume = currentVolume / 100;
+        videoEl.muted  = isMuted;
+      });
+
+      // Mute toggle
+      btnMute.addEventListener('click', () => {
+        isMuted = !isMuted;
+        btnMute.textContent = isMuted ? '🔇' : '🔊';
+        volBar.value = isMuted ? 0 : currentVolume;
+        videoEl.muted = isMuted;
+      });
+
+      // Sync time display while video plays (local)
+      videoEl.addEventListener('play',  updatePlayPauseBtn);
+      videoEl.addEventListener('pause', updatePlayPauseBtn);
+      videoEl.addEventListener('ended', updatePlayPauseBtn);
+
+      // ── Resize handling ───────────────────────────────────────────────────
+      let _smpteBounce = null;
+
+      // Regenerates the SMPTE canvas texture at the current viewport size (capped at
+      // 1920 px wide). Extracted so clearSource() and the resize handler share the
+      // same logic without duplication.
+      function regenerateSMPTETexture() {
+        const tw = Math.min(window.innerWidth, 1920);
+        const th = Math.round(tw * window.innerHeight / window.innerWidth);
+        const old = smpteMesh.material.map;
+        smpteMesh.material.map = makeSMPTETexture(tw, th);
+        smpteMesh.material.needsUpdate = true;
+        old?.dispose();
+      }
+
+      function onResize() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h); // also updates canvas.style.width/height inline styles
+        renderer.setPixelRatio(window.devicePixelRatio);
+        // SMPTE fills the full viewport — update aspect + geometry immediately and
+        // debounce the canvas redraw. Fixed-aspect patterns (PM5544) only need
+        // updateCamera() since their plane geometry never changes on resize.
+        if (smpteMesh.visible && PATTERNS[patternIdx].planeW === null) {
+          videoAspect = w / h;
+          smpteMesh.geometry.dispose();
+          smpteMesh.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          overlayPlane.geometry.dispose();
+          overlayPlane.geometry = new THREE.PlaneGeometry(videoAspect, 1.0);
+          rebuildOverlayTexture(videoAspect);
+          clearTimeout(_smpteBounce);
+          _smpteBounce = setTimeout(regenerateSMPTETexture, 150);
+        }
+        resizeOsdCanvas();
+        updateCamera();
+      }
+      // ── Pattern sources (T key cycles) ───────────────────────────────────────
+      // planeW: fixed aspect ratio, or null for viewport-fill (SMPTE special case).
+      const teletextSrc = makeTeletextSource();
+
+      const PATTERNS = [
+        { name: 'SMPTE',    make: null,              planeW: null,   label: 'CH-01 // SMPTE-TEST // LIVE' },
+        { name: 'PM5544',   make: makePM5544Texture, planeW: 4 / 3, label: 'CH-01 // PM5544 // LIVE' },
+        // signalPreset / sourceW / sourceH: auto-applied on entry, restored on exit
+        { name: 'TELETEXT', liveSource: teletextSrc, planeW: 4 / 3, label: 'CH-03 // CEEFAX // LIVE',
+          signalPreset: 'offAirPal', sourceW: 720, sourceH: 576 },
+        { name: 'DEMO',     videoUrl: './data/telescreen_demo.webm', label: 'CH-02 // DEMO // LIVE' },
+        { name: 'FEEDBACK', make: null, planeW: null, label: 'CH-06 // FEEDBACK // LIVE',
+          onEnter: () => {
+            // Seed from current frame (SMPTE bars visible for one frame then absorbed into the loop)
+            crt.setShader({ feedbackMix: 0.0 });   // one clean frame
+            requestAnimationFrame(() => {
+              crt.setShader({ feedbackMix: 0.92 });
+              const sl = document.getElementById('ts-feedbackMix');
+              if (sl) { sl.value = 92; sl.dispatchEvent(new Event('input')); }
+            });
+          },
+          onExit: () => {
+            crt.setShader({ feedbackMix: 0.0 });
+            const sl = document.getElementById('ts-feedbackMix');
+            if (sl) { sl.value = 0; sl.dispatchEvent(new Event('input')); }
+          },
+        },
+      ];
+      let patternIdx = 0;
+
+      // Saved values restored when leaving a pattern that has signalPreset / sourceW/H
+      let _prevSignalPreset = null;
+      let _prevSourceX      = null;
+      let _prevSourceY      = null;
+
+      function applyPattern(idx) {
+        teletextSrc.stop();
+        const p      = PATTERNS[idx];
+        const pw     = p.planeW ?? (window.innerWidth / window.innerHeight);
+        const sigEl  = document.getElementById('ts-signalPreset');
+        const srcXEl = document.getElementById('ts-sourceSizeX');
+        const srcYEl = document.getElementById('ts-sourceSizeY');
+
+        // Restore previously auto-applied signal preset when leaving a pattern that set one.
+        // Guard: only restore if the new pattern does NOT also set one (avoids double-restore
+        // when clearSource() re-applies the same pattern, or when chaining live sources).
+        if (_prevSignalPreset !== null && sigEl && !p.signalPreset) {
+          sigEl.value = _prevSignalPreset;
+          sigEl.dispatchEvent(new Event('change'));
+          _prevSignalPreset = null;
+        }
+        if (_prevSourceX !== null && srcXEl && p.sourceW === undefined) {
+          srcXEl.value = _prevSourceX;
+          srcXEl.dispatchEvent(new Event('change'));
+          srcYEl.value = _prevSourceY;
+          srcYEl.dispatchEvent(new Event('change'));
+          _prevSourceX = _prevSourceY = null;
+        }
+
+        // Auto-apply pattern-specific signal preset (save current value first, once).
+        if (p.signalPreset && sigEl) {
+          if (_prevSignalPreset === null) _prevSignalPreset = sigEl.value;
+          sigEl.value = p.signalPreset;
+          sigEl.dispatchEvent(new Event('change'));
+        }
+        // Auto-apply pattern-specific source resolution (save current values first, once).
+        if (p.sourceW !== undefined && srcXEl) {
+          if (_prevSourceX === null) {
+            _prevSourceX = parseInt(srcXEl.value, 10) || 0;
+            _prevSourceY = parseInt(srcYEl.value, 10) || 0;
+          }
+          srcXEl.value = p.sourceW;
+          srcXEl.dispatchEvent(new Event('change'));
+          srcYEl.value = p.sourceH ?? p.sourceW;
+          srcYEl.dispatchEvent(new Event('change'));
+        }
+
+        if (p.videoUrl) {
+          // Load video directly — do NOT call loadLocalVideo (it calls clearSource which calls
+          // applyPattern again → infinite loop). Inline only what's needed.
+          smpteMesh.visible = false;
+          mode = 'local';
+          videoEl.volume = currentVolume / 100;
+          videoEl.muted  = isMuted;
+          videoEl.src    = p.videoUrl;
+          videoEl.load();
+          if (canPlayHandler) { videoEl.removeEventListener('canplay', canPlayHandler); }
+          canPlayHandler = () => { canPlayHandler = null; crt.setVideoSource(videoEl); };
+          videoEl.addEventListener('canplay', canPlayHandler, { once: true });
+          videoEl.play().catch(() => {
+            isMuted = true;
+            videoEl.muted = true;
+            btnMute.textContent = '🔇';
+            videoEl.play().catch(() => {});
+          });
+          statusEl.textContent = p.label;
+          startPoll();
+          // Fall through to geometry/overlay setup below
+        } else if (p.liveSource) {
+          smpteMesh.material.map?.dispose();
+          smpteMesh.material.map = p.liveSource.texture;
+          smpteMesh.material.needsUpdate = true;
+          p.liveSource.start();
+        } else if (p.make) {
+          smpteMesh.material.map?.dispose();
+          smpteMesh.material.map = p.make();
+          smpteMesh.material.needsUpdate = true;
+        } else {
+          regenerateSMPTETexture(); // SMPTE: handles dispose + assign internally
+        }
+        smpteMesh.geometry.dispose();
+        smpteMesh.geometry = new THREE.PlaneGeometry(pw, 1.0);
+        overlayPlane.geometry.dispose();
+        overlayPlane.geometry = new THREE.PlaneGeometry(pw, 1.0);
+        videoAspect  = pw;
+        overlayLabel = p.label;   // set before rebuildOverlayTexture → redrawOverlay()
+        rebuildOverlayTexture(pw);
+        updateCamera();
+      }
+
+      window.addEventListener('resize', onResize);
+      applyPattern(0); // PM5544 default — sets geometry, texture, aspect, overlay, camera
+
+      // ── Source resolution preset ───────────────────────────────────────────
+      document.getElementById('ts-sourcePreset').addEventListener('change', e => {
+        if (!e.target.value) return;
+        const [w, h] = e.target.value.split(',').map(Number);
+        const xEl = document.getElementById('ts-sourceSizeX');
+        const yEl = document.getElementById('ts-sourceSizeY');
+        xEl.value = w;
+        yEl.value = h;
+        // Fire change events so the controls module picks them up
+        xEl.dispatchEvent(new Event('change'));
+        yEl.dispatchEvent(new Event('change'));
+      });
+
+      // ── Stats.js (P key toggle) ─────────────────────────────────────────────
+      const stats = new Stats();
+      stats.dom.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;';
+      stats.dom.style.display = 'none';
+      document.body.appendChild(stats.dom);
+      const dcPanel = new Stats.Panel('DC', '#ff8', '#221');
+      stats.addPanel(dcPanel);
+      stats.showPanel(0);
+      // Drive stats from its own RAF — internalLoop calls the closure's renderFrame
+      // directly so patching crt.renderFrame wouldn't intercept it. A parallel RAF
+      // calling stats.update() measures the same wall-clock frame rate accurately.
+      // Also writes FPS/MS/DC into the in-scene overlay canvas so the stats are
+      // affected by the CRT post-processing pipeline.
+      let _sFpsFrames = 0, _sFpsWinStart = performance.now(), _sPrevTs = performance.now(), _sLastOverlay = 0;
+      let _statsMode = 0; // 0=crt (in-scene), 1=normal (stats.js dom), 2=hidden
+      _statsInfo = { fps: '--', ms: '--', dc: '--' };
+      (function statsLoop(ts) {
+        const now = performance.now();
+        const dc  = renderer.info.render.calls;
+        _sFpsFrames++;
+        const elapsed = now - _sFpsWinStart;
+        let fps = _statsInfo ? _statsInfo.fps : '--';
+        if (elapsed >= 500) {
+          fps = Math.round(_sFpsFrames * 1000 / elapsed);
+          _sFpsFrames = 0;
+          _sFpsWinStart = now;
+        }
+        const ms = Math.round(now - _sPrevTs);
+        _sPrevTs = now;
+        dcPanel.update(dc, 200);
+        stats.update();
+        if (_statsMode === 0) {
+          _statsInfo = { fps, ms, dc };
+        } else {
+          _statsInfo = null;
+        }
+        if (now - _sLastOverlay > 250) {
+          _sLastOverlay = now;
+          redrawOverlay();
+        }
+        requestAnimationFrame(statsLoop);
+      })();
+
+      // ── S key panel toggle / H key teletext hold ───────────────────────────
+      const panel = document.getElementById('rr-panel');
+      const hint  = document.getElementById('key-hint');
+      const isTeletext = () => PATTERNS[patternIdx]?.name === 'TELETEXT';
+      const HINT_DEFAULT = '[ S ] settings panel\n[ T ] test pattern\n[ O ] channel overlay\n[ P ] performance stats\n[◄ ►] teletext pages\n[ F ] freeze feedback';
+      // Rate-limit T-key pattern switches: rapid cycling creates/disposes large canvas textures
+      // faster than the GPU can free their VRAM, causing VK_ERROR_OUT_OF_DEVICE_MEMORY.
+      let _lastPatternSwitchTs = 0;
+      window.addEventListener('keydown', e => {
+        if (e.target === urlInput) return; // don't steal keys while typing
+        if (e.key === 's' || e.key === 'S') {
+          panel.classList.toggle('rr-visible');
+          hint.textContent = panel.classList.contains('rr-visible') ? '' : HINT_DEFAULT;
+        }
+        if ((e.key === 'h' || e.key === 'H') && isTeletext()) {
+          teletextSrc.toggleHold();
+          hint.textContent = teletextSrc.held
+            ? '[ H ] HOLD active — press H to resume\n[ S ] settings panel\n[◄ ►] teletext pages'
+            : HINT_DEFAULT;
+        }
+        if (e.key === 'p' || e.key === 'P') {
+          _statsMode = (_statsMode + 1) % 3;
+          stats.dom.style.display = _statsMode === 1 ? 'block' : 'none';
+        }
+        if (e.key === 'o' || e.key === 'O') {
+          overlayOSD = !overlayOSD;
+          overlayPlane.visible = !overlayOSD;   // hide signal-mode mesh in OSD mode
+          crt.setOSD(overlayOSD, osdCanvasTex);
+          redrawOverlay();
+        }
+        if (e.key === 't' || e.key === 'T') {
+          const _now = performance.now();
+          if (_now - _lastPatternSwitchTs < 300) return;
+          _lastPatternSwitchTs = _now;
+          // Clean up mix mode before pattern change
+          if (teletextSrc.mixMode) {
+            teletextSrc.setMixMode(false);
+            crt.setOSD(overlayOSD, overlayOSD ? osdCanvasTex : null);
+          }
+          PATTERNS[patternIdx].onExit?.();
+          clearSource();
+          patternIdx = (patternIdx + 1) % PATTERNS.length;
+          applyPattern(patternIdx);
+          PATTERNS[patternIdx].onEnter?.();
+        }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          if (PATTERNS[patternIdx]?.liveSource) {
+            const src   = PATTERNS[patternIdx].liveSource;
+            const delta = e.key === 'ArrowRight' ? 1 : -1;
+            src.setPage(src.currentPage + delta);
+          }
+        }
+        // F = Freeze/unfreeze feedback loop
+        if (e.key === 'f' || e.key === 'F') {
+          const fbSlider = document.getElementById('ts-feedbackMix');
+          // Guard: if feedback is off and not currently frozen, nothing to freeze.
+          if (!feedbackFrozen && parseFloat(fbSlider.value) === 0) {
+            // no-op
+          } else {
+            feedbackFrozen = !feedbackFrozen;
+            if (feedbackFrozen) {
+              _preFreezeShaderMix = parseFloat(fbSlider.value) / 100;
+              _preFreezeStatus    = statusEl.textContent;
+              // Cut live source blend to near-zero; do NOT update slider (restored on unfreeze).
+              crt.setShader({ feedbackMix: 0.97 });
+              statusEl.textContent = 'FEEDBACK FROZEN';
+            } else {
+              crt.setShader({ feedbackMix: _preFreezeShaderMix });
+              statusEl.textContent = _preFreezeStatus;
+            }
+          }
+        }
+        // R = Reveal (teletext only)
+        if ((e.key === 'r' || e.key === 'R') && isTeletext()) {
+          teletextSrc.toggleReveal();
+        }
+        // M = Mix mode (teletext + video loaded)
+        if ((e.key === 'm' || e.key === 'M') && isTeletext() && mode === 'local') {
+          const on = !teletextSrc.mixMode;
+          teletextSrc.setMixMode(on);
+          if (on) {
+            crt.setOSD(true, teletextSrc.mixModeTexture);
+            overlayLabel = 'CH-03 // CEEFAX // MIX';
+          } else {
+            crt.setOSD(overlayOSD, overlayOSD ? osdCanvasTex : null);
+            overlayLabel = PATTERNS[patternIdx].label;
+          }
+          rebuildOverlayTexture(videoAspect);
+        }
+        // 0–9 = 3-digit page number input (teletext only)
+        if (isTeletext() && e.key >= '0' && e.key <= '9') {
+          teletextSrc.onDigit(e.key);
+          e.preventDefault();
+        }
+        // F1–F4 = Fastext navigation (teletext only)
+        if (isTeletext() && ['F1','F2','F3','F4'].includes(e.key)) {
+          teletextSrc.onFastext(['red','green','yellow','blue'][['F1','F2','F3','F4'].indexOf(e.key)]);
+          e.preventDefault();
+        }
+      });
+    }
+
+    function initKeybindPlane(scene) {
+      const ROW_H = 26, CW = 480, ROWS = 9;
+      const CH = ROW_H * ROWS; // 234
+      const kbCanvas = document.createElement('canvas');
+      kbCanvas.width = CW; kbCanvas.height = CH;
+      const kbCtx = kbCanvas.getContext('2d');
+      kbCtx.font = 'bold 13px "Courier New", Courier, monospace';
+      kbCtx.textBaseline = 'middle';
+
+      const CARD_ROWS = [
+        { bg: '#00F',    type: 'header' },
+        { bg: '#000',    type: 'sep' },
+        { bg: '#000',    type: 'key', key: '[ S ]',    desc: 'SETTINGS PANEL' },
+        { bg: '#000',    type: 'key', key: '[ T ]',    desc: 'CYCLE TEST PATTERN' },
+        { bg: '#000',    type: 'key', key: '[ O ]',    desc: 'OVERLAY MODE TOGGLE' },
+        { bg: '#000',    type: 'key', key: '[ P ]',    desc: 'PERFORMANCE STATS' },
+        { bg: '#000',    type: 'key', key: '[\u25c4 \u25ba]', desc: 'BROWSE TELETEXT PAGES' },
+        { bg: '#000',    type: 'sep' },
+        { bg: '#000080', type: 'footer' },
+      ];
+
+      let revealedRows = 0;
+      function drawRows(count) {
+        const clk = new Date().toISOString().slice(11, 19);
+        CARD_ROWS.slice(0, count).forEach((row, i) => {
+          const y = i * ROW_H, cy = y + ROW_H / 2;
+          kbCtx.fillStyle = row.bg;
+          kbCtx.fillRect(0, y, CW, ROW_H);
+          if (row.type === 'header') {
+            kbCtx.fillStyle = '#FFF'; kbCtx.textAlign = 'left';
+            kbCtx.fillText('  P888  KEYBOARD GUIDE', 8, cy);
+            kbCtx.fillStyle = '#FF0'; kbCtx.textAlign = 'right';
+            kbCtx.fillText(clk + '  ', CW, cy);
+          } else if (row.type === 'sep') {
+            kbCtx.fillStyle = '#0FF'; kbCtx.textAlign = 'left';
+            kbCtx.fillText('\u2500'.repeat(60), 4, cy);
+          } else if (row.type === 'key') {
+            kbCtx.fillStyle = '#FF0'; kbCtx.textAlign = 'left';
+            kbCtx.fillText('  ' + row.key, 8, cy);
+            kbCtx.fillStyle = '#FFF';
+            kbCtx.fillText(row.desc, 102, cy);
+          } else if (row.type === 'footer') {
+            kbCtx.fillStyle = '#0FF'; kbCtx.textAlign = 'center';
+            kbCtx.fillText('PRESS ANY KEY OR CLICK \u00b7 DISMISS', CW / 2, cy);
+          }
+        });
+      }
+
+      drawRows(1);
+      const kbTex = makeSceneCanvasTex(kbCanvas);
+      const planeH = 0.60, planeW = planeH * (CW / CH);
+      const kbMat  = new THREE.MeshBasicMaterial({ map: kbTex, transparent: true, opacity: 0, depthTest: false });
+      const kbGeo  = new THREE.PlaneGeometry(planeW, planeH);
+      const kbMesh = new THREE.Mesh(kbGeo, kbMat);
+      kbMesh.position.z = 0.02;
+      kbMesh.renderOrder = 10;
+      scene.add(kbMesh);
+
+      let dismissed = false, revealIv, clockIv, flashTo;
+
+      function dismiss() {
+        if (dismissed) return; dismissed = true;
+        clearInterval(revealIv); clearInterval(clockIv); clearTimeout(flashTo);
+        window.removeEventListener('keydown', onKey);
+        document.removeEventListener('click', onClick);
+        scene.remove(kbMesh);
+        kbGeo.dispose(); kbMat.dispose(); kbTex.dispose();
+      }
+
+      // Staggered row reveal every 55 ms
+      revealIv = setInterval(() => {
+        if (revealedRows < ROWS) { revealedRows++; drawRows(revealedRows); kbTex.needsUpdate = true; }
+        else clearInterval(revealIv);
+      }, 55);
+
+      // Asymmetric blink: 2200 ms on, 180 ms off — broadcast "STAND BY" rhythm
+      kbMat.opacity = 1;
+      (function blink() {
+        flashTo = setTimeout(() => {
+          if (dismissed) return;
+          kbMat.opacity = 0;
+          flashTo = setTimeout(() => { if (!dismissed) { kbMat.opacity = 1; blink(); } }, 180);
+        }, 2200);
+      })();
+      clockIv = setInterval(() => { drawRows(revealedRows); kbTex.needsUpdate = true; }, 500);
+
+      function onKey(e) { if (e.target !== document.getElementById('url-input')) dismiss(); }
+      function onClick() { dismiss(); }
+      window.addEventListener('keydown', onKey);
+      setTimeout(() => document.addEventListener('click', onClick), 500); // delay to ignore boot clicks
+      setTimeout(dismiss, 8000);
+    }
+
+    boot().catch(e => {
+      document.getElementById('no-webgpu').classList.remove('hidden');
+      console.error('telescreen-crt-webgpu boot error:', e);
+    });
+  </script>
 </body>
 </html>
