@@ -32,39 +32,78 @@ import {
 } from 'three/tsl';
 
 import { computeFlickerBoost, computeMaskBoost } from './crt-math.js';
-import { crtKernelFn, crtHalationFn, crtHorzPassFn, crtVertPassFn } from './crt-kernel.wgsl.js';
-import { crtGlitchFallbackFn } from './crt-glitch.wgsl.js';
+
+// WebGPU (WGSL) kernel + glitch variants:
 import {
-  buildMaskLutFn,
-  grainFn,
-  snowFn,
+  crtKernelFn   as _crtKernelWGSL,
+  crtHalationFn as _crtHalationWGSL,
+  crtHorzPassFn as _crtHorzWGSL,
+  crtVertPassFn as _crtVertWGSL,
+} from './crt-kernel.wgsl.js';
+import { crtGlitchFallbackFn as _glitchWGSL } from './crt-glitch.wgsl.js';
+
+// WebGL2 (GLSL) kernel + glitch variants:
+import {
+  crtKernelFn   as _crtKernelGLSL,
+  crtHalationFn as _crtHalationGLSL,
+  crtHorzPassFn as _crtHorzGLSL,
+  crtVertPassFn as _crtVertGLSL,
+} from './crt-kernel.glsl.js';
+import { crtGlitchFallbackFn as _glitchGLSL } from './crt-glitch.glsl.js';
+
+// Pure-TSL node builders + wgslFn shader helpers (WebGPU):
+import {
   buildWarpNode,
   buildCornerMaskNode,
   buildGammaNode,
   buildScratchNode,
   buildP22MatrixNode,
   buildColorTempNode,
-  ghostFn,
-  vbiFn,
-  dotCrawlFn,
+  buildTensionWireNode,
+  buildMaskLutFn  as _buildMaskLutWGSL,
+  grainFn         as _grainWGSL,
+  snowFn          as _snowWGSL,
+  ghostFn         as _ghostWGSL,
+  vbiFn           as _vbiWGSL,
+  dotCrawlFn      as _dotCrawlWGSL,
+  signalProcessFn as _signalWGSL,
+  tapeFlutterFn      as _tapeFlutterWGSL,
+  tapeChromaFn       as _tapeChromaWGSL,
+  afterglowAccumFn   as _afterglowAccumWGSL,
 } from './crt-tsl.js';
 
-// ---------------------------------------------------------------------------
-// Struct-return version gate
-// ---------------------------------------------------------------------------
+// glslFn shader helpers (WebGL2):
+import {
+  buildMaskLutFn     as _buildMaskLutGLSL,
+  grainFn            as _grainGLSL,
+  snowFn             as _snowGLSL,
+  ghostFn            as _ghostGLSL,
+  vbiFn              as _vbiGLSL,
+  dotCrawlFn         as _dotCrawlGLSL,
+  signalProcessFn    as _signalGLSL,
+  tapeFlutterFn      as _tapeFlutterGLSL,
+  tapeChromaFn       as _tapeChromaGLSL,
+  afterglowAccumFn   as _afterglowAccumGLSL,
+} from './crt-tsl.glsl.js';
 
-/**
- * First Three.js revision confirmed to support wgslFn struct return via .element().
- * If the runtime revision is below this, the vec3f fallback encoding is used instead.
- * Update downward if a regression is discovered in a newer revision.
- */
-const STRUCT_RETURN_MIN_REV = 9999;
-// r171 WGSLNodeFunction cannot parse user-defined struct types inside wgslFn source:
-// the source must begin with `fn` (regexp anchored at ^fn). Custom struct definitions
-// (e.g. `struct GlitchResult { ... }`) break parsing.
-// WGSL built-in types (vec4f, vec3f, vec2f, f32, etc.) work correctly as return types.
-// All current multi-value returns use vec3f or vec4f packing — no custom struct is needed.
-// Lower STRUCT_RETURN_MIN_REV if a future Three.js revision supports struct defs in wgslFn.
+// ---------------------------------------------------------------------------
+// Three.js r183 WebGL2 sampler fix
+//
+// TextureNode.generate(builder, 'sampler2D') returns `name + '_sampler'`
+// because /^sampler/.test('sampler2D') is true — designed for WebGPU where
+// texture and sampler are separate bindings.  On WebGL2 GLSL ES 3.00 only
+// `uniform sampler2D name` is declared; there is no `name_sampler` variant.
+// Redirecting to the 'property' path returns just `name`, which is correct.
+// ---------------------------------------------------------------------------
+{
+  const _origTextureGenerate = THREE.TextureNode.prototype.generate;
+  THREE.TextureNode.prototype.generate = function _patchedGenerate( builder, output ) {
+    if ( /^sampler/.test( output ) && builder.renderer?.backend?.isWebGPUBackend !== true ) {
+      return _origTextureGenerate.call( this, builder, 'property' );
+    }
+    return _origTextureGenerate.call( this, builder, output );
+  };
+}
 
 // ---------------------------------------------------------------------------
 // GPU bloom — optional GaussianBlurNode addon
@@ -119,9 +158,11 @@ export async function loadBloomDependencies() {
  *                  Does not fire for device-loss — that triggers automatic recovery.
  *
  * @param {HTMLVideoElement} [opts.videoSource]  Optional video element to route through the CRT
- *                  effect. The library creates a VideoTexture, PlaneGeometry, and MeshBasicMaterial
- *                  and adds them to the scene. The caller must call video.play() inside a user
- *                  gesture handler (or set video.muted = true for autoplay without a gesture).
+ *                  effect. The library creates an OffscreenCanvas + CanvasTexture (avoids the
+ *                  "fails extracting valid resource" error from copyExternalImageToTexture with
+ *                  HTMLVideoElement), a PlaneGeometry, and MeshBasicMaterial, and adds them to
+ *                  the scene. The caller must call video.play() inside a user gesture handler
+ *                  (or set video.muted = true for autoplay without a gesture).
  *                  Use crt.setVideoSource() to swap or clear the video at runtime.
  * @note The renderer must be configured with `outputColorSpace = THREE.LinearSRGBColorSpace`
  *       before calling this function. With SRGBColorSpace (Three.js default) the pipeline
@@ -160,15 +201,25 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     ? (_ctx.getContextAttributes()?.antialias ?? false)
     : false;
 
-  // wgslFn() shaders are WGSL-only and require the WebGPU backend.
-  // The WebGL2 fallback uses a GLSL compiler that cannot parse WGSL strings.
-  if (renderer.backend && !renderer.backend.isWebGPUBackend) {
-    throw new Error(
-      'telescreen-crt-webgpu: WebGPU backend required. ' +
-      'The current renderer is using the WebGL2 fallback, which cannot compile wgslFn() WGSL shaders. ' +
-      'Use Chrome 113+ / Edge 113+ with WebGPU enabled.'
-    );
-  }
+  // Select backend-appropriate shader function variants.
+  // glslFn is WebGL2-only: FunctionNode.getNodeFunction() always calls builder.parser.parseFunction(),
+  // and the WebGPU backend's WGSLNodeParser throws on any source that doesn't start with `fn`.
+  const _isWebGPU = renderer.backend?.isWebGPUBackend === true;
+  const crtKernelFn       = _isWebGPU ? _crtKernelWGSL       : _crtKernelGLSL;
+  const crtHalationFn     = _isWebGPU ? _crtHalationWGSL     : _crtHalationGLSL;
+  const crtHorzPassFn     = _isWebGPU ? _crtHorzWGSL         : _crtHorzGLSL;
+  const crtVertPassFn     = _isWebGPU ? _crtVertWGSL         : _crtVertGLSL;
+  const crtGlitchFallbackFn = _isWebGPU ? _glitchWGSL        : _glitchGLSL;
+  const buildMaskLutFn    = _isWebGPU ? _buildMaskLutWGSL    : _buildMaskLutGLSL;
+  const grainFn           = _isWebGPU ? _grainWGSL           : _grainGLSL;
+  const snowFn            = _isWebGPU ? _snowWGSL            : _snowGLSL;
+  const ghostFn           = _isWebGPU ? _ghostWGSL           : _ghostGLSL;
+  const vbiFn             = _isWebGPU ? _vbiWGSL             : _vbiGLSL;
+  const dotCrawlFn        = _isWebGPU ? _dotCrawlWGSL        : _dotCrawlGLSL;
+  const signalProcessFn   = _isWebGPU ? _signalWGSL          : _signalGLSL;
+  const tapeFlutterFn     = _isWebGPU ? _tapeFlutterWGSL     : _tapeFlutterGLSL;
+  const tapeChromaFn      = _isWebGPU ? _tapeChromaWGSL      : _tapeChromaGLSL;
+  const afterglowAccumFn  = _isWebGPU ? _afterglowAccumWGSL  : _afterglowAccumGLSL;
 
   const {
     scratchUrl   = './data/scratches.png',
@@ -178,6 +229,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     videoSource: videoOpt   = undefined,
     onError,
     accurateHalation = true,
+    _externalSource: externalSourceOpt = null,
   } = opts;
 
   // P1-A: post-kernel RTT for accurate outer halation taps (+1 draw call per frame when true).
@@ -230,22 +282,42 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   let _haloMissingWarned = false;      // P0-A: one-time warning flag when haloStr set without GaussianBlurNode
   let _dotCrawlRttNode = null;         // pre-kernel dot crawl RTT (null when dotCrawlAmt <= 0.001)
   let _lastDotCrawlActive = false;     // dot crawl active flag at last buildPostProcessing
+  let _signalRttNode = null;           // pre-kernel signal processing RTT (ringing/chroma/xcolor/dropout)
+  let _lastSignalActive = false;       // signal RTT active flag at last buildPostProcessing
+  // Tension wire shimmer CPU state (drives shimmerPhase uniform in renderFrame).
+  let _shimmerActive = false;
+  let _shimmerPhase  = 0.0;
   // One-frame gap between dispose and rebuild prevents Vulkan OOM from dispose-then-allocate
   // in the same JS turn (GPU memory release is async; new allocs would overlap with old ones).
   let _rebuildPending = false;
   let _rebuildArgs    = null;  // [srcW, srcH, usePrevTex] — stored params for deferred build
+  // Additional inter-build cooldown: after a build completes, don't dispose-and-rebuild for
+  // at least _REBUILD_COOLDOWN_MS. Rapid source changes (e.g. fast T-key pattern cycling)
+  // triggered multiple build cycles faster than Vulkan could process deferred VRAM frees,
+  // leading to VK_ERROR_OUT_OF_DEVICE_MEMORY. During cooldown the current PP renders with
+  // slightly wrong parameters (at most 200 ms) rather than crashing.
+  let _lastBuildTimestamp = 0;
+  const _REBUILD_COOLDOWN_MS = 200;
+
+  // ── External source mode (bridge integration) ────────────────────────────
+  let _externalSource = externalSourceOpt;  // non-null when bridge owns the scene render
+  let _sourceNode     = _externalSource;    // canonical source node — always updated by setSourceNode
 
   // ── Video source state (populated only when opts.videoSource is provided) ─
-  // VideoTexture → copyExternalImageToTexture(videoElement) is rejected by Chrome
-  // WebGPU when the bind group is built before the GPU validates the video frame.
-  // Instead we proxy through an OffscreenCanvas: draw the video to the canvas each
-  // frame and use CanvasTexture, which copyExternalImageToTexture always accepts.
+  // Firefox WebGL2 ignores UNPACK_FLIP_Y_WEBGL for HTMLVideoElement (bug), causing
+  // a Y-flip with THREE.VideoTexture. Route through an HTMLCanvasElement intermediary
+  // (THREE.CanvasTexture): Firefox correctly applies UNPACK_FLIP_Y for canvas sources.
+  // Chrome's "fails extracting valid resource" copyExternalImageToTexture error is
+  // avoided because canvas frames are always GPU-copyable; requestVideoFrameCallback
+  // drives canvas draws so we never upload a canvas with no valid content.
   let videoTexture      = null;   // THREE.CanvasTexture or DataTexture placeholder
+  let videoCanvas       = null;   // HTMLCanvasElement for video frame intermediary
+  let videoCtx          = null;   // 2D context on videoCanvas
+  let videoRafCbId      = 0;      // requestVideoFrameCallback ID (for cancel)
   let videoMesh         = null;   // THREE.Mesh added to scene
   let currentVideoEl    = null;   // current HTMLVideoElement reference
   let loadedMetaHandler = null;   // bound listener for removal
-  let _videoCanvas      = null;   // OffscreenCanvas proxy for video frames
-  let _videoCtx         = null;   // 2D context for _videoCanvas
+  let canPlayHandler    = null;   // deferred CanvasTexture activation (fires on canplay)
 
   let destroyed        = false;
   let rafId            = null;
@@ -253,7 +325,6 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   let deviceLost       = false;
   let firstRenderDone  = false;
   let _renderInFlight  = false;  // guards against concurrent renderAsync() calls
-  let _lastVideoTime   = -1;     // tracks last drawn video currentTime; avoids redundant drawImage
 
   // ── Phosphor persistence render targets (created lazily on first use) ─────
   // prevTexNode: TSL texture node for prevRT.texture. Initialised to a 1×1 dummy
@@ -263,6 +334,31 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   let prevTexNode = null;    // TSL texture node for prevRT.texture
   let _persistW   = 0;       // RT width at last build (for resize detection)
   let _persistH   = 0;       // RT height at last build
+
+  // ── Video feedback render targets (SPEC-feedback-loop) ───────────────────
+  let feedbackRT       = null;   // full-res HalfFloat RT holding previous CRT output
+  let feedbackTexNode  = null;   // TSL texture node — initialized to _dummyFeedbackRT.texture,
+                                 //   hot-swapped to feedbackRT.texture in ensureFeedbackTarget()
+  let _feedbackW       = 0;      // RT width at last ensureFeedbackTarget()
+  let _feedbackH       = 0;      // RT height at last ensureFeedbackTarget()
+  let _lastFeedbackActive = false; // build-time flag: feedbackMix > 0.001 at last build
+  const _dummyFeedbackRT = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType });
+
+  // ── Differential phosphor afterglow RT (SPEC-novel-crt-physics Effect 7) ──
+  // Accumulation buffer: HalfFloat full-res RT holding per-channel phosphor state.
+  // Hot-swapped to _afterglowRT.texture when afterglowStr > 0.001.
+  let _afterglowRT       = null;   // accumulation RT (full-res, HalfFloat)
+  let _afterglowTexNode  = null;   // TSL texture() node — hot-swapped to _afterglowRT.texture
+  let _afterglowW        = 0;      // RT width at last ensureAfterglowTarget()
+  let _afterglowH        = 0;      // RT height at last ensureAfterglowTarget()
+  let _lastAfterglowActive = false; // build-time flag: afterglowStr > 0.001 at last build
+  const _dummyAfterglowRT = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType });
+  // CPU-side per-channel decay uniforms — updated each frame in renderFrame.
+  // Computed as exp(-dt / flickerTauX) and passed to afterglowAccumFn.
+  // Stored as Three.js uniform() nodes so the TSL node graph can read them.
+  const afterglowDecayR = uniform(0.0);
+  const afterglowDecayG = uniform(0.0);
+  const afterglowDecayB = uniform(0.0);
 
   // ── Mode-transition tracking for two-pass RTTNode rebuild ────────────────
   // _lastSrcW/H: source resolution of the current horzRttNode (0 = single-pass).
@@ -286,10 +382,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   // Timestamp of the previous renderFrame call. Null on first call — a fallback
   // of 1/60 s (≈ steady-state 60 Hz value) is used once without visible artifact.
   let lastTs = null;
-  // vec3f fallback is the only path — struct return from wgslFn is not supported in r171.
-  // STRUCT_RETURN_MIN_REV = 9999 ensures this. The struct export was removed in DR-5 P3-A.
-  // If a future Three.js version adds struct-return support, re-introduce crtGlitchFn
-  // in crt-glitch.wgsl.js and restore the version-gate logic here.
+  // vec3(pos.x, pos.y, rgbSplitPx) packing — struct return from wgslFn was not supported
+  // in r171 (DR-5 P3-A). Now using glslFn; packing retained for simplicity.
   const glitchFn = crtGlitchFallbackFn;
 
   // ── Uniforms ─────────────────────────────────────────────────────────────
@@ -308,9 +402,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
                                // Always set via setShader({ maskType }) which calls Math.round().
                                // Do NOT write .value directly — use setShader to preserve the round().
     grainAmt:       uniform(0.010),
-    halationStr:    uniform(2.0),
-    halationSharp:  uniform(-0.85), // vertical Gaussian sharpness for halation scatter.
-                                    // -2.5 = inter-scanline bleed; -0.4 = diffuse scatter (~4 src-px σ)
+    halationStr:         uniform(2.0),
+    halationSharp:       uniform(-0.85), // vertical Gaussian sharpness for halation scatter.
+                                         // -2.5 = inter-scanline bleed; -0.4 = diffuse scatter (~4 src-px σ)
+    halationTailSigma:   uniform(0.8),   // bi-exponential tail 1/e length in src-px (0.3–1.0; max = 7-tap window)
+    halationCoreBlend:   uniform(0.7),   // 0=pure exp tail, 1=pure Gaussian; default 0.7 per spec
+    halationSpectra:     uniform(0.0),   // 0=achromatic PSF; 1=full per-channel Rayleigh lambda^-2 spread
     convergence:    uniform(0.018),
     convStaticX:    uniform(0.0),    // static H misconvergence in source pixels: R shifts +X (P1-H: reduced to near-zero)
     convStaticY:    uniform(0.0),    // static V misconvergence in source pixels: R shifts +Y (P1-H: reduced to near-zero)
@@ -325,6 +422,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     cornerFade:     uniform(0.022),  // bezel edge fade radius (UV fraction); heavier presets use larger values
     // Realism pass uniforms
     swimAmt:        uniform(0.12),   // H-deflection jitter amplitude (0=off, 1=full, 2=strong)
+    swimNoise:      uniform(0.0),    // CPU-driven OU scalar in [-1,1]; driven by _tick OU process
     colorTempStr:   uniform(0.65),   // 9300K white point correction (0=D65, 1=full 9300K)
     rollbarPhase:   uniform(0.0),    // driven by renderFrame: 0=no scroll, 0→1 during rollbar sweep
     sagPhase:       uniform(0.0),    // driven by renderFrame: 0=none, bell-curve during sag event
@@ -415,6 +513,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     ghostTintR:     uniform(1.0),    // P0-A ghost tint R channel (1.0=neutral)
     ghostTintG:     uniform(0.97),   // P0-A ghost tint G channel — mild cable HF roll-off
     ghostTintB:     uniform(0.97),   // P0-A ghost tint B channel — mild cable HF roll-off (not a blue lift; UHF has no blue boost)
+    ghost2Offset:   uniform(0.0),    // RF. tap-2 H offset in output px (same unit as ghostOffset)
+    ghost2Str:      uniform(0.0),    // RF. tap-2 strength: 0=off, positive=echo, negative=polarity-inv
+    ghost2TintR:    uniform(1.0),    // RF. tap-2 R tint
+    ghost2TintG:    uniform(0.97),   // RF. tap-2 G tint (mild HF roll-off)
+    ghost2TintB:    uniform(0.97),   // RF. tap-2 B tint
     dotCrawlAmt:    uniform(0.09),   // P2-A dot crawl amplitude: 0=off, 0.15=NTSC-like, 0.5=strong
     glitchBurstLoss: uniform(0.70), // P2-B burst-loss desaturation depth: 0=off, 1=full greyscale
     vbiStr:         uniform(0.07),   // P2-C VBI bleed amplitude: 0=off, 0.3=subtle
@@ -422,6 +525,71 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     frameCount:     uniform(0.0),    // P2-C frame counter (incremented each frame, mod 1e7)
     osdEnabled:     uniform(0.0),    // OSD mode: 0 = signal mode, 1 = OSD mode (O key in demo)
     gammaFast:      uniform(0.0),    // 0 = exact pow(x, 1/kernelGamma); 1 = fast sqrt(x) approx (γ=2, ~10× faster)
+    beamAlpha:      uniform(0.667),  // space-charge beam-widening exponent (Langmuir-Child I^(2/3) = 0.667)
+    // Analog signal artifacts (SPEC-analog-artifacts A/B/G/D)
+    ringAmt:         uniform(0.0),   // A. ringing amplitude: 0=off, 0.1=subtle, 0.3=strong
+    ringDecay:       uniform(0.8),   // A. causal FIR decay (alpha): higher Q = lower alpha = more rings (0.3–1.5)
+    ringFreq:        uniform(0.31),  // A. IF resonant frequency (cycles/sample): NTSC = 4.2/13.5 = 0.31
+    chromaBlur:      uniform(0.0),   // B. chroma Gaussian sigma in src-px: 0=off, 1.5=NTSC broadcast
+    ycDelay:         uniform(0.0),   // B. Y/C delay: chroma shifted right by this many src-px (−2–2)
+    chromaAMNoise:   uniform(0.0),   // F. AM noise on chroma carrier: 0=off, 0.3=strong VHS shimmer
+    chromaPMNoise:   uniform(0.0),   // F. PM noise (hue jitter) in radians: 0=off, 0.3=visible shimmer
+    crossColorAmt:   uniform(0.0),   // G. false chroma on HF luma: 0=off, 0.05=subtle, 0.2=strong
+    crossColorFreq:  uniform(3.58),  // G. subcarrier frequency (NTSC=3.58, PAL=4.43 MHz equivalent)
+    ntscCompositeMode: uniform(0.0), // H. NTSC composite chain mode (0=off, 1=on)
+    ycSeparatorQ:      uniform(0.4), // H. Y/C separator quality (0=poor notch, 1=near-ideal)
+    tapeDropoutRate: uniform(0.0),   // D-3. dropout probability per src-line/field: 0=off, 0.003=occasional
+    tapeFlutterAmt:  uniform(0.0),   // D-1. flutter gain swing: 0=off, 0.05=subtle, 0.15=strong
+    tapeFlutterRate: uniform(2.3),   // D-1. flutter temporal frequency Hz (retained for API compat; OU process supersedes)
+    flutterNoise:    uniform(0.0),   // D-1. CPU-driven OU scalar in [-1,1]; driven by _tick OU process
+    tapeChromaAmt:   uniform(0.0),   // D-2. per-field coarse chroma noise: 0=off, 0.08=subtle, 0.2=strong
+    // CRT hardware artifacts (SPEC-analog-artifacts C/E)
+    yokeRingAmt:      uniform(0.0),  // C. H-flyback yoke ring amplitude: 0=off, 0.08=subtle
+    yokeFreq:         uniform(4.0),  // C. oscillation cycles across visible screen width (1–12)
+    yokeDecay:        uniform(12.0), // C. exponential decay rate 1/width; higher = confined to left edge
+    svmAmt:           uniform(0.0),  // SVM: horizontal scan velocity modulation (Trinitron CPD-G circuit)
+    tensionWireStr:   uniform(0.0),  // E. wire opacity: 0=invisible, 0.4=physical Trinitron, 1=fully dark
+    tensionWireY1:    uniform(0.333),// E. first wire screen-Y position (fraction of height)
+    tensionWireY2:    uniform(0.667),// E. second wire screen-Y position
+    tensionWireWidth: uniform(1.5),  // E. wire half-width in output pixels (physical ~0.5–1.5 px)
+    shimmerAmt:       uniform(0.0),  // E. shimmer peak amplitude in screen fractions (~0.002=2px@1080p)
+    shimmerPhase:     uniform(0.0),  // E. CPU-driven phase; driven by renderFrame decay; not user-settable
+    shimmerFreq:      uniform(40.0), // E. wire resonant oscillation frequency Hz (physical 35–55 Hz)
+    // Video feedback loop (SPEC-feedback-loop)
+    feedbackMix:      uniform(0.0),  // 0 = off, ~0.95 = heavy feedback. Clamped to [0, 0.97] in setShader.
+    // Novel CRT physics effects (SPEC-novel-crt-physics)
+    // Effect 1: EHT ripple brightness gradient
+    ehtRippleAmt:     uniform(0.0),  // 0=off, 0.05=subtle, 0.2=strong
+    ehtDecayRate:     uniform(4.0),  // exponential decay rate across scan line (higher=faster fall-off)
+    // Effect 2: position-dependent beam astigmatism
+    astigAmt:         uniform(0.0),  // 0=off, 0.3=subtle, 1.0=strong
+    astigRadial:      uniform(0.5),  // radial (along-radius) astigmatism component: enlarges V at top/bottom
+    astigTangential:  uniform(0.15), // tangential (perpendicular) component: enlarges H at left/right
+    // Effect 3: glass spectral transmission tint (pure TSL, post-gamma)
+    glassTintStr:     uniform(0.0),  // 0=off, 1=full tint
+    glassTintProfile: uniform(0.0),  // 0=neutral, 1=warm (0.94,0.91,0.81), 2=cool (0.93,0.93,0.97)
+    // Effect 4: phosphor granularity (spatial hash, no time variable)
+    phosphorGrainAmt:   uniform(0.0),   // 0=off, 0.03=subtle, 0.08=strong
+    phosphorGrainScale: uniform(0.5),   // spatial frequency scale (higher=finer texture)
+    // Effect 5: VHS chroma heterodyne noise (pre-kernel signal chain)
+    vchromaHetAmt:    uniform(0.0),  // 0=off, 0.08=subtle, 0.25=strong
+    vchromaFreq:      uniform(4.0),  // heterodyne modulation frequency (arbitrary units)
+    vchromaDrift:     uniform(0.3),  // temporal drift rate (fields/sec equivalent)
+    // SPEC-vhs-signal-artifacts: VHS luma BW, chroma 1H blend, head switching
+    vhsLumaBlur:      uniform(0.0),  // Y-channel Gaussian sigma in source pixels; SP=1.0, LP=1.2, EP=1.6
+    vhsChromaVBlend:  uniform(0.0),  // chroma 1H delay-line blend strength [0,1]; 1.0=full hardware blend
+    vhsSwitchStr:     uniform(0.0),  // head switching noise strength [0,1]; 1.0=max 72-sample shift
+    vhsSwitchLines:   uniform(8.0),  // number of affected lines (physical: 6-10)
+    vhsSwitchOffset:  uniform(0.03), // UV margin from bottom to top of switching zone
+    // Effect 7: differential phosphor afterglow (RTT accumulation)
+    afterglowStr:     uniform(0.0),  // 0=off, >0 enables per-frame accumulation RTT
+    // Effect 8: shadow mask thermal doming (single-frame approximation)
+    domingAmt:        uniform(0.0),  // 0=off, 0.05=subtle, 0.15=strong
+    domingThermalTau: uniform(3.0),  // thermal time constant seconds (not yet used in GPU; reserved)
+    phosphorSatAmt:   uniform(0.0),  // Shrader-Leverenz efficiency roll-off; 0=off; consumer CRT: 0.08–0.12
+    phosphorXtalkAmt:    uniform(0.0),  // inter-phosphor cross-talk amplitude; 0=off; physical: 0.01–0.03
+    phosphorXtalkRadius: uniform(0.5),  // cross-talk radius in source pixels; physical: 0.5–1.0
+    phosphorAge:      uniform(0.0),  // phosphor aging warm drift; 0=new; 5-year consumer TV: 0.3–0.4
   };
 
   // P3-C: CPU-side scalar state — not GPU uniforms, just JS bookkeeping.
@@ -454,9 +622,17 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     sagGeomEnabled: true,        // GPU UV squeeze synced to CSS voltage sag animation
     // Interference pass config (SPEC-glitch-interference-v2)
     humRate: 0.06,          // P0-B hum bar scroll rate (NTSC beat: |60.000−59.94|=0.06 Hz)
-    agcAmt:  0.012,         // P1-C AGC hunting oscillation amplitude (0=off, 0.05=subtle)
-    agcRate: 1.2,           // P1-C AGC hunting primary oscillation rate (Hz)
+    agcAmt:     0.012,      // P1-C AGC hunting oscillation amplitude (0=off, 0.05=subtle)
+    agcRate:    1.2,        // P1-C AGC hunting primary oscillation rate (Hz)
+    swimBW:     5.0,        // AFC bandwidth for H-swim OU process (Hz). Physical ~50 Hz but 5 Hz gives visible 1/f^2 coloring.
+    flutterBW:  3.0,        // Capstan servo bandwidth for tape flutter OU process (Hz). Physical ~2–4 Hz.
   };
+
+  // OU process state for H-swim and tape flutter (Item 5 — 1/f noise, SPEC-physics-grounding).
+  // Each is a leaky integrator: state = alpha*state + (1-alpha)*noise.
+  // swimAlpha and flutterAlpha are recomputed each frame from swimBW/flutterBW and frameRate.
+  let _swimState   = 0.0;
+  let _flutterState = 0.0;
   let glitchNextFire = 0;
   let glitchEndTime  = 0;
 
@@ -558,20 +734,65 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       console.warn('telescreen-crt-webgpu: opts.videoSource is not an HTMLVideoElement — video init skipped.');
     } else {
       currentVideoEl = videoOpt;
-      const _initVw = videoOpt.videoWidth  || 1;
-      const _initVh = videoOpt.videoHeight || 1;
-      _videoCanvas = new OffscreenCanvas(_initVw, _initVh);
-      _videoCtx    = _videoCanvas.getContext('2d');
-      _videoCtx.drawImage(videoOpt, 0, 0, _initVw, _initVh);
-      videoTexture = new THREE.CanvasTexture(_videoCanvas);
-      videoTexture.minFilter = THREE.LinearFilter;
-      videoTexture.magFilter = THREE.LinearFilter;
-      videoTexture.colorSpace = THREE.SRGBColorSpace;
+      // Start with a 1×1 black placeholder; VideoTexture is deferred to canplay
+      // to prevent "Browser fails extracting valid resource" on the first GPU copy.
+      const _initBlack = new Uint8Array([0, 0, 0, 255]);
+      videoTexture = new THREE.DataTexture(_initBlack, 1, 1);
       videoTexture.needsUpdate = true;
       const videoGeometry = new THREE.PlaneGeometry(1, 1);
       const videoMaterial = new THREE.MeshBasicMaterial({ map: videoTexture });
       videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
       scene.add(videoMesh);
+
+      const _initActivate = () => {
+        if (destroyed || currentVideoEl !== videoOpt) return;
+        if (canPlayHandler) {
+          videoOpt.removeEventListener('canplay', canPlayHandler);
+          canPlayHandler = null;
+        }
+        if (videoRafCbId && currentVideoEl) {
+          try { currentVideoEl.cancelVideoFrameCallback(videoRafCbId); } catch (_) {}
+          videoRafCbId = 0;
+        }
+        const w = videoOpt.videoWidth  || 2;
+        const h = videoOpt.videoHeight || 2;
+        videoCanvas = document.createElement('canvas'); videoCanvas.width = w; videoCanvas.height = h;
+        videoCtx    = videoCanvas.getContext('2d');
+        const vt = new THREE.CanvasTexture(videoCanvas);
+        vt.minFilter      = THREE.LinearFilter;
+        vt.magFilter      = THREE.LinearFilter;
+        vt.colorSpace     = THREE.SRGBColorSpace;
+        vt.generateMipmaps = false;
+        vt.flipY          = false;  // QuadGeometry(false) V=0→screen-top; no UNPACK_FLIP_Y needed
+        if (videoTexture && !videoTexture.isCanvasTexture) {
+          try { videoTexture.dispose(); } catch (_) {}
+        }
+        videoTexture = vt;
+        videoMesh.material.map = videoTexture;
+        videoMesh.material.needsUpdate = true;
+        if ('requestVideoFrameCallback' in videoOpt) {
+          const drawFrame = () => {
+            if (destroyed || currentVideoEl !== videoOpt || !videoCtx) return;
+            if (videoOpt.videoWidth > 0 && videoOpt.videoHeight > 0) {
+              if (videoCanvas.width !== videoOpt.videoWidth || videoCanvas.height !== videoOpt.videoHeight) {
+                videoCanvas.width  = videoOpt.videoWidth;
+                videoCanvas.height = videoOpt.videoHeight;
+              }
+              videoCtx.drawImage(videoOpt, 0, 0);
+              if (videoTexture && videoTexture.isCanvasTexture) videoTexture.needsUpdate = true;
+            }
+            videoRafCbId = videoOpt.requestVideoFrameCallback(drawFrame);
+          };
+          videoRafCbId = videoOpt.requestVideoFrameCallback(drawFrame);
+        }
+      };
+      if (videoOpt.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        _initActivate();
+      } else {
+        canPlayHandler = _initActivate;
+        videoOpt.addEventListener('canplay', canPlayHandler, { once: true });
+      }
+
       if (videoOpt.readyState >= HTMLMediaElement.HAVE_METADATA) {
         fitPlane(videoMesh, videoOpt);
       } else {
@@ -594,6 +815,13 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   // or initialize prevRT to match the output resolution at construction time.
   const _dummyPrevRT = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType });
   prevTexNode = texture(_dummyPrevRT.texture, screenUV);
+
+  // Feedback texture placeholder — same initialisation pattern as prevTexNode.
+  // Hot-swapped to feedbackRT.texture in ensureFeedbackTarget().
+  feedbackTexNode = texture(_dummyFeedbackRT.texture, screenUV);
+
+  // Afterglow texture placeholder — hot-swapped to _afterglowRT.texture in ensureAfterglowTarget().
+  _afterglowTexNode = texture(_dummyAfterglowRT.texture, screenUV);
 
   // ── PostProcessing ────────────────────────────────────────────────────────
   // Lazy init: postProcessing is built on first use rather than at init.
@@ -643,13 +871,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // Correct output UV: fragCoord / outputCanvas — stays in [0,1] for all canvas pixels.
       const outputUV = pixelCoord.div(outputSizeVec);
 
-      // 1. Barrel warp — uses outputUV and outputSizeVec so the warp and corner mask
-      // are always computed in canvas-relative space, even when screenSize is wrong.
-      const pos = buildWarpNode(outputUV, uniforms.warpMult, outputSizeVec, uniforms.warpAniso);
-
-      // 2. Glitch displacement + RGB split output
+      // 1. Glitch displacement + RGB split (Tier A — signal chain).
+      // Operates on outputUV (pre-warp screen space): glitch is a raster horizontal
+      // sync error, not a geometric effect. Barrel warp is applied after (Tier B).
       const glitchResult = glitchFn(
-        pos,
+        outputUV,
         uniforms.glitchEnabled,
         uniforms.glitchActive,
         uniforms.glitchStrength,
@@ -659,8 +885,15 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         uniforms.tWrapped
       );
       // vec3f fallback encoding: .xy = vec2 pos, .z = float rgbSplitPx
-      const glitchedPos = glitchResult.xy;
+      const glitchedUV  = glitchResult.xy;   // pre-warp screen UV + optional H-shift
       const rgbSplitPx  = glitchResult.z;
+
+      // 2. Barrel warp — first step of Tier B (display physics).
+      // pos:        warped position for display-geometry nodes (tension wire, corner mask).
+      // glitchedPos: warped position of the glitch-shifted UV → fed to kernel + halation.
+      // When glitch is inactive glitchedUV == outputUV so both are identical.
+      const pos         = buildWarpNode(outputUV,   uniforms.warpMult, outputSizeVec, uniforms.warpAniso);
+      const glitchedPos = buildWarpNode(glitchedUV, uniforms.warpMult, outputSizeVec, uniforms.warpAniso);
 
       // P2-B: Clamp rgbSplitPx for kernel use — sentinel -999 must not cause a
       // -999px RGB split. Kernel receives clamped value; sentinel is checked post-kernel.
@@ -697,6 +930,16 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.interlaceField,
           uniforms.apertureH,
           uniforms.gammaFast,
+          uniforms.ehtRippleAmt,
+          uniforms.ehtDecayRate,
+          uniforms.astigAmt,
+          uniforms.astigRadial,
+          uniforms.astigTangential,
+          uniforms.phosphorGrainAmt,
+          uniforms.phosphorGrainScale,
+          uniforms.phosphorSatAmt,
+          uniforms.phosphorXtalkAmt,
+          uniforms.phosphorXtalkRadius,
         );
       } else {
         col = crtKernelFn(
@@ -732,6 +975,20 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.apertureW,
           uniforms.apertureH,
           uniforms.gammaFast,
+          uniforms.beamAlpha,
+          uniforms.swimNoise,
+          uniforms.ehtRippleAmt,
+          uniforms.ehtDecayRate,
+          uniforms.astigAmt,
+          uniforms.astigRadial,
+          uniforms.astigTangential,
+          uniforms.phosphorGrainAmt,
+          uniforms.phosphorGrainScale,
+          uniforms.domingAmt,
+          uniforms.domingThermalTau,
+          uniforms.phosphorSatAmt,
+          uniforms.phosphorXtalkAmt,
+          uniforms.phosphorXtalkRadius,
         );
       }
 
@@ -765,6 +1022,18 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         const burstLuma    = col.dot(vec3(0.2126, 0.7152, 0.0722));
         const desaturated  = vec3(burstLuma);
         col = mix(col, desaturated, isBurstLoss.mul(uniforms.glitchBurstLoss));
+      }
+
+      // C. Yoke ringing — H-flyback coil resonance near left edge (SPEC-analog-artifacts C).
+      // After each horizontal sync the deflection coil rings at ~100–600 kHz, producing
+      // 2–4 oscillating brightness bands that decay exponentially from the left edge.
+      // yokeRingAmt=0 → yokeMod=1.0 → no effect (always-include, no build-time guard).
+      {
+        const yokeX   = outputUV.x;                                      // 0=left, 1=right (screen space, pre-warp)
+        const yokeEnv = yokeX.mul(uniforms.yokeDecay).negate().exp();    // exp(-x * decay)
+        const yokeOsc = yokeX.mul(uniforms.yokeFreq).mul(6.2832).sin().mul(yokeEnv);
+        const yokeMod = float(1.0).add(yokeOsc.mul(uniforms.yokeRingAmt));
+        col = col.mul(yokeMod.max(float(0.0)));
       }
 
       // 5. Phosphor mask — Lanczos-resampled LUT (F-8 Moiré elimination).
@@ -824,7 +1093,14 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // P2-C: maskBoostFactor compensates for aperture transmittance loss (auto-computed in JS).
       const masked = col.mul(mix(vec3(1.0), maskPattern, uniforms.maskStr)).mul(uniforms.maskBoostFactor);
 
-      // OSD overlay blend — after mask, before halation (SPEC-osd-overlay).
+      // E. Tension wire attenuation — post-mask (SPEC-analog-artifacts E).
+      // Aperture-grille tension wires block the electron beam, creating two faint dark
+      // horizontal lines at ~1/3 and ~2/3 screen height on bright content.
+      // tensionWireStr=0 → wireFactor=1.0 → no effect (always-include, no build-time guard).
+      const wireFactor  = buildTensionWireNode(pos, outputSizeVec, uniforms);
+      const withWires   = masked.mul(wireFactor);
+
+      // OSD overlay blend — after mask and wire, before halation (SPEC-osd-overlay).
       // osdTexNode is sampled at screenUV (straight, unglitched UV) — not affected by glitchedPos.
       // maskMultiplier: reuses maskPattern (above) — applies phosphor stripe modulation to OSD.
       // vWeight: vertical Gaussian beam profile mirroring kernel Gaus(v, hardScan).
@@ -836,7 +1112,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       const vPhase         = screenUV.y.mul(srcYNode).fract().sub(0.5);
       const vWeight        = float(2.0).pow(vPhase.mul(vPhase).mul(uniforms.hardScan));
       const osdModulated   = osdTexNode.rgb.mul(maskMultiplier).mul(vWeight);
-      const maskedWithOSD  = mix(masked, osdModulated, osdTexNode.a.mul(uniforms.osdEnabled));
+      const maskedWithOSD  = mix(withWires, osdModulated, osdTexNode.a.mul(uniforms.osdEnabled));
 
       // 6. Halation — reads from post-mask 'masked' (physically correct: the phosphor
       // halo radiates from emitted light, which already has the mask structure).
@@ -856,10 +1132,10 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       // masked is linear light; encode to gamma before RTT.
       //
       // DR-9 P3-F: UV distortion chain — both kernel and halation receive the same glitchedPos:
-      //   1. buildWarpNode(outputUV)                → barrel warp
-      //   2. crtGlitchFallbackFn(warped).xy         → warp + glitch H-shift
+      //   1. crtGlitchFallbackFn(outputUV).xy  → glitch H-shift in pre-warp screen space
+      //   2. buildWarpNode(glitchedUV)          → barrel warp applied after glitch → glitchedPos
       //   3. crtKernelFn / crtHalationFn → applyUVDistortions(glitchedPos, …)
-      //                                   → warp + glitch + sag + rollbar + hook + swim
+      //                                   → glitch + warp + sag + rollbar + hook + swim
       // glitchedPos does NOT include swim; swim is applied inside applyUVDistortions.
       // Kernel and halation sample identical final UV positions — no double-distortion.
       // 6. Halation — reads from phosphor-emitted signal (post-mask).
@@ -890,6 +1166,10 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.hardScan,
           uniforms.kernelGamma,
           float(_accurateHalation ? 1.0 : 0.0),
+          uniforms.halationTailSigma,
+          uniforms.halationCoreBlend,
+          uniforms.swimNoise,
+          uniforms.halationSpectra,
         ).rgb;
       }
       // halationWarm tint: 0 = neutral/achromatic. 1 = Trinitron Nd³⁺ glass (cool/purple).
@@ -904,7 +1184,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
 
       // 7. Corner mask (bezel/overscan fade) — applied to warped pos.
       // Pass outputSizeVec for aspect so the fade radius is always correct (canvas space).
-      const corner     = buildCornerMaskNode(pos, outputSizeVec, uniforms.cornerFade);
+      // Item 3 (SPEC-physics-grounding): derive cornerFade from deflection geometry.
+      // At warpMult=0.20 (default) → 0.022, matching the previous hardcoded default.
+      // clamp to 0.008 minimum so the mask never fully vanishes at warpMult≈0.
+      const derivedCornerFade = uniforms.warpMult.mul(0.11).max(float(0.008));
+      const corner     = buildCornerMaskNode(pos, outputSizeVec, derivedCornerFade);
       const withCorner = withHalo.mul(corner);
 
       // 8. Brightness boost (pre-gamma so it interacts naturally with the curve).
@@ -959,10 +1243,18 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       );
       const withSnow = preGamma.add(snow);
 
+      // 9.9. Bradford D65→9300K CAT — pre-gamma (linear-light cone space).
+      // PC-M5 (SPEC-deep-review-22): moved from post-gamma to pre-gamma. Bradford chromatic
+      // adaptation is defined in linear-light cone-response space (Lam 1985). Applying it
+      // pre-gamma gives the physically correct effective boost: M[B]=1.3021 in linear at any
+      // signal level. Post-gamma application (prior behaviour) yielded M[B]^γ at mid-tones,
+      // deviating from the Bradford matrix value. Blue clips at B_lin > 0.748 in both paths.
+      const preGammaCat = buildColorTempNode(withSnow, uniforms.colorTempStr);
+
       // 10. CRT gamma encode — uses kernelGamma uniform (default 2.5).
       // DR-9 P1-B: was hardcoded 1/2.5; now uses kernelGamma via buildGammaNode(col, gamma).
       // Grain and scratch are NOT added here — see buildPostProcessing.
-      return buildGammaNode(withSnow, uniforms.kernelGamma);
+      return buildGammaNode(preGammaCat, uniforms.kernelGamma);
     })();
   }
 
@@ -1020,18 +1312,45 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
                        _GaussianBlurNode !== null;
     const pp = new THREE.RenderPipeline(rdr);
 
-    // Scene pass — always created. In single-pass, sceneOutput feeds crtKernelFn
-    // directly. In two-pass, sceneOutput feeds crtHorzPassFn inside the RTTNode.
-    // PassNode fires once per frame (FRAME priority) at canvas resolution
-    // regardless of any active render target — renderer.getSize() is unaffected
-    // by setRenderTarget(). Having a single pass() avoids duplicate scene renders.
-    const scenePass   = pass(scn, cam);
-    const sceneOutput = scenePass.getTextureNode('output');
-    if (!sceneOutput) {
-      throw new Error(
-        'telescreen-crt-webgpu: scenePass.getTextureNode("output") returned null. ' +
-        'Check Three.js version (r183+ required).'
+    // ── Source node: scene pass (standalone) or external node (bridge mode) ──
+    let initialSourceNode;
+    if (_externalSource !== null) {
+      initialSourceNode = _sourceNode;
+    } else {
+      // Scene pass — always created. In single-pass, sceneOutput feeds crtKernelFn
+      // directly. In two-pass, sceneOutput feeds crtHorzPassFn inside the RTTNode.
+      // PassNode fires once per frame (FRAME priority) at canvas resolution
+      // regardless of any active render target — renderer.getSize() is unaffected
+      // by setRenderTarget(). Having a single pass() avoids duplicate scene renders.
+      const scenePass   = pass(scn, cam);
+      const sceneOutput = scenePass.getTextureNode('output');
+      if (!sceneOutput) {
+        throw new Error(
+          'telescreen-crt-webgpu: scenePass.getTextureNode("output") returned null. ' +
+          'Check Three.js version (r183+ required).'
+        );
+      }
+      initialSourceNode = sceneOutput;
+    }
+
+    // §4-A (SPEC-feedback-loop): build-time flag — must match _lastFeedbackActive check in renderFrame.
+    // feedbackTexNode holds the previous frame's crtBase (gamma-encoded). Decode to linear before
+    // mixing with the (linear) source so both operands are in the same domain; kernel re-encodes.
+    const feedbackActive = uniforms.feedbackMix.value > 0.001;
+    _lastFeedbackActive  = feedbackActive;
+
+    // §4-B (SPEC-feedback-loop): source blending — blend live scene with previous CRT output.
+    // Wrapped in rtt() so downstream ghost/dotcrawl/signal can sample at arbitrary UV offsets.
+    let _feedbackBlendRtt_local = null;
+    let sourceNode = initialSourceNode;
+    if (feedbackActive) {
+      const feedbackLinear = feedbackTexNode.rgb.max(vec3(0.0)).pow(vec3(uniforms.kernelGamma));
+      const blended = vec4(
+        mix(initialSourceNode.rgb, feedbackLinear, uniforms.feedbackMix),
+        1.0
       );
+      _feedbackBlendRtt_local = rtt(blended, renderer.domElement.width, renderer.domElement.height);
+      sourceNode = _feedbackBlendRtt_local;
     }
 
     // DR-14 P1-B: Pre-kernel ghost mixing — ghost must traverse the same scanline
@@ -1039,18 +1358,29 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     // signal arrives at the electron gun before display). ghostStr=0 at build time
     // → no RTT, no cost. Crossing the 0.001 threshold triggers buildPostProcessing
     // rebuild (tracked via _lastGhostActive).
-    const ghostActive = uniforms.ghostStr.value > 0.001;
-    let ghostedScene = sceneOutput;
+    const ghostActive = Math.abs(uniforms.ghostStr.value)  > 0.001
+                     || Math.abs(uniforms.ghost2Str.value) > 0.001;
+    let ghostedScene = sourceNode;
     if (ghostActive) {
+      // Tap 1 (existing)
       const ghostSample  = ghostFn(
-        sceneOutput,
+        sourceNode,
         screenUV,
         uniforms.ghostOffset.div(uniforms.outputSizeX.max(float(1.0)))
       );
       const ghostTint    = vec3(uniforms.ghostTintR, uniforms.ghostTintG, uniforms.ghostTintB);
-      const ghostMixedRgb = sceneOutput.rgb
+      let ghostMixedRgb  = sourceNode.rgb
         .add(ghostSample.mul(ghostTint).mul(uniforms.ghostStr))
         .max(vec3(0));
+
+      // Tap 2 (new) — samples sourceNode, not ghostMixedRgb, so both taps are independent echoes
+      const ghost2Sample  = ghostFn(sourceNode, screenUV,
+                                    uniforms.ghost2Offset.div(uniforms.outputSizeX.max(float(1.0))));
+      const ghost2TintVec = vec3(uniforms.ghost2TintR, uniforms.ghost2TintG, uniforms.ghost2TintB);
+      ghostMixedRgb = ghostMixedRgb
+        .add(ghost2Sample.mul(ghost2TintVec).mul(uniforms.ghost2Str))
+        .max(vec3(0));
+
       _ghostRttNode  = rtt(vec4(ghostMixedRgb, 1.0),
                             renderer.domElement.width, renderer.domElement.height);
       ghostedScene   = _ghostRttNode;
@@ -1078,6 +1408,53 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       kernelInputScene = _dotCrawlRttNode;
     }
 
+    // Pre-kernel signal processing RTT (SPEC-analog-artifacts A/B/G/D-3).
+    // signalProcessFn combines ringing, chroma blur, cross-color, and tape dropout
+    // in a single pass. All read from the same source texture (parallel model;
+    // chroma blur uses luma from the ringed result for a physical cascade approximation).
+    // Build-time flag: crossing the threshold triggers a pipeline rebuild (same pattern
+    // as ghostActive / dotCrawlActive) so the RTT is only created when needed.
+    const signalActive = uniforms.ntscCompositeMode.value > 0.5
+                      || uniforms.svmAmt.value > 0.0001
+                      || uniforms.ringAmt.value > 0.001
+                      || uniforms.chromaBlur.value > 0.001
+                      || Math.abs(uniforms.ycDelay.value) > 0.001
+                      || uniforms.chromaAMNoise.value > 0.001
+                      || uniforms.chromaPMNoise.value > 0.001
+                      || uniforms.crossColorAmt.value > 0.001
+                      || uniforms.tapeDropoutRate.value > 0.0001
+                      || uniforms.vchromaHetAmt.value > 0.001
+                      || uniforms.vhsLumaBlur.value > 0.001
+                      || uniforms.vhsChromaVBlend.value > 0.001
+                      || uniforms.vhsSwitchStr.value > 0.001;
+    if (signalActive) {
+      const signalSrcW = float(srcW > 0 ? srcW : renderer.domElement.width);
+      const signalSrcH = float(srcH > 0 ? srcH : renderer.domElement.height);
+      const processed  = signalProcessFn(
+        kernelInputScene, screenUV,
+        uniforms.svmAmt,
+        uniforms.ringAmt,
+        uniforms.ringDecay,
+        uniforms.ringFreq,
+        uniforms.chromaBlur, uniforms.ycDelay,
+        uniforms.chromaAMNoise, uniforms.chromaPMNoise,
+        uniforms.crossColorAmt, uniforms.crossColorFreq,
+        uniforms.ntscCompositeMode, uniforms.ycSeparatorQ,
+        uniforms.tapeDropoutRate, uniforms.frameCount,
+        signalSrcW, signalSrcH,
+        uniforms.tWrapped, uniforms.flickerRate,
+        uniforms.vchromaHetAmt, uniforms.vchromaFreq, uniforms.vchromaDrift,
+        uniforms.vhsLumaBlur,
+        uniforms.vhsChromaVBlend,
+        uniforms.vhsSwitchStr,
+        uniforms.vhsSwitchLines,
+        uniforms.vhsSwitchOffset
+      );
+      _signalRttNode   = rtt(vec4(processed, 1.0),
+                              renderer.domElement.width, renderer.domElement.height);
+      kernelInputScene = _signalRttNode;
+    }
+
     const useTwoPass = srcW > 0 && srcH > 0;
     let inputNode;
     let horzRttNode = null;
@@ -1098,6 +1475,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         uniforms.sagPhase, uniforms.defocusAmt, uniforms.defocusAniso, uniforms.apertureW,
         uniforms.outputSizeY,
         uniforms.gammaFast,
+        uniforms.beamAlpha,
+        uniforms.swimNoise,
+        uniforms.astigAmt,
+        uniforms.astigRadial,
+        uniforms.astigTangential,
       );
       horzRttNode = rtt(vec4(horzResult, 1.0), srcW, srcH);
       inputNode   = horzRttNode;
@@ -1122,6 +1504,10 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         float(srcW), float(srcH),
         uniforms.halationSharp, uniforms.hardScan, uniforms.kernelGamma,
         float(1.0),
+        uniforms.halationTailSigma,
+        uniforms.halationCoreBlend,
+        uniforms.swimNoise,
+        uniforms.halationSpectra,
       );
       _haloSrcRttNode = rtt(haloSrcVec4, srcW, srcH);
     }
@@ -1152,7 +1538,20 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     // Direction (brighten vs darken) is controlled by the sign of humAmt uniform.
     const humBar   = barPhase.mul(6.28318).sin().abs();
 
-    const crtBase     = buildCRTEffect(inputNode, useTwoPass, humBar);
+    // §4-C (SPEC-feedback-loop): capture CRT output (pre-grain, pre-scratch, pre-bloom)
+    // as the feedback source for the next frame. When feedbackActive, the kernel expression
+    // is wrapped in an rtt() and crtBase is reassigned to that RTT node — all downstream
+    // stages sample the RTT texture rather than re-executing the kernel graph, ensuring a
+    // single kernel evaluation per frame regardless of how many downstream consumers reference crtBase.
+    const _crtBaseExpr = buildCRTEffect(inputNode, useTwoPass, humBar);
+    let crtBase = _crtBaseExpr;
+    let _feedbackCaptureRtt_local = null;
+    if (feedbackActive) {
+      _feedbackCaptureRtt_local = rtt(vec4(_crtBaseExpr, 1.0),
+                                      renderer.domElement.width, renderer.domElement.height);
+      crtBase = _feedbackCaptureRtt_local;   // downstream reads from RTT — single kernel eval
+    }
+    pp._feedbackCaptureRtt = _feedbackCaptureRtt_local;
 
     // P0-A Gap B: 2D isotropic halation — GaussianBlurNode on post-gamma crtBase.
     // Physical mechanism: total-internal-reflection scatter inside the CRT glass faceplate
@@ -1181,11 +1580,13 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       crtWithHalo = crtBase.add(nodeObject(haloBlur).rgb.mul(tint).mul(uniforms.haloStr));
     }
 
-    // P1-D: Bradford D65→9300K applied post-gamma (display space) to reduce blue clipping for
-    // mid-tones. See buildColorTempNode comment in crt-tsl.js for full clipping analysis.
-    const tempAdjusted = buildColorTempNode(crtWithHalo, uniforms.colorTempStr);
+    // PC-M5: Bradford CAT now applied pre-gamma inside the kernel Fn (see step 9.9 above).
+    // No additional CAT transform at this stage; crtWithHalo is already color-temperature-
+    // corrected. The halation contribution is added in gamma-encoded space after the CAT,
+    // which is physically acceptable: halation warm tint is handled separately by halationWarm.
+    const tempAdjusted = crtWithHalo;
 
-    const grain       = grainFn(screenUV.mul(screenSize), uniforms.tWrapped, uniforms.grainAmt);
+    const grain       = grainFn(screenUV.mul(screenSize), uniforms.tWrapped, uniforms.grainAmt, tempAdjusted);
     const scratchLuma = scratchTexNode.rgb.dot(vec3(0.2126, 0.7152, 0.0722));  // BT.709 (consistent with pipeline)
 
     // P1-C: AGC hunting — multiply by CPU-driven gain oscillator (uniform updated in renderFrame).
@@ -1204,7 +1605,16 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     const effectiveSrcH = uniforms.sourceSizeY.greaterThan(0.5)
       .select(uniforms.sourceSizeY, uniforms.outputSizeY);
     const isVBI    = screenUV.y.lessThan(uniforms.vbiLines.div(effectiveSrcH.max(float(1.0))));
-    const baseSig  = isVBI.select(vbiColor, withAGC);
+    const baseSigRaw = isVBI.select(vbiColor, withAGC);
+
+    // D-1. Tape flutter (post-gamma, SPEC-analog-artifacts D-1): quasi-random horizontal
+    // banding from tape-transport speed variation. tapeFlutterAmt=0 → WGSL early-exit → no-op.
+    // D-2. Tape chroma noise (post-gamma, SPEC-analog-artifacts D-2): coarse per-field
+    // colour noise from VHS FM carrier instability. tapeChromaAmt=0 → WGSL early-exit → no-op.
+    const withFlutter = tapeFlutterFn(baseSigRaw, screenUV, uniforms.flutterNoise,
+                                      uniforms.tapeFlutterAmt, uniforms.tapeFlutterRate);
+    const baseSig     = tapeChromaFn(withFlutter, screenUV, uniforms.frameCount,
+                                     uniforms.tapeChromaAmt);
 
     // DR-15 P1-C / DR-16: bloom and glass scatter both operate in linear light.
     // baseSig is gamma-encoded; decode once when at least one linear-domain operation is active.
@@ -1300,11 +1710,65 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       finalComposite = baseSig;
     }
 
+    // Phosphor aging: differential efficiency loss under sustained electron bombardment.
+    // ZnS:Ag (B) ages faster than ZnS:Cu,Al (G) > Y₂O₂S:Eu³⁺ (R, most stable).
+    // agedVec = [1,1,1] at phosphorAge=0 (identity). Post-gamma approximation is valid
+    // for ≤12% attenuation (pre/post-gamma difference is perceptually negligible).
+    // Source: Nakamura et al. 2014; Kumar et al. 2010; Liu et al. 2014.
+    {
+      const agedVec = mix(vec3(1.0), vec3(1.0, 0.94, 0.88), uniforms.phosphorAge);
+      finalComposite = finalComposite.mul(agedVec);
+    }
+
+    // Effect 7: differential phosphor afterglow (SPEC-novel-crt-physics).
+    // Captures pre-grain gamma-encoded output as the inter-frame accumulation source.
+    // afterglowAccumFn computes: newAccum = prevAccum * decay + current * (1-decay)
+    // residual = max(0, newAccum - current) * afterglowStr is added to the display.
+    // decayR/G/B are computed CPU-side in renderFrame and stored in afterglowDecayR/G/B.
+    // The accumulation RTT result is copied to _afterglowRT in _postRender — same pattern
+    // as feedbackCaptureRtt. afterglowActive evaluated at build time; 0↔nonzero triggers rebuild.
+    const afterglowActive = uniforms.afterglowStr.value > 0.001;
+    pp._afterglowAccumRtt = null;
+    if (afterglowActive) {
+      const newAccum = afterglowAccumFn(
+        _afterglowTexNode.rgb,
+        finalComposite,
+        afterglowDecayR,
+        afterglowDecayG,
+        afterglowDecayB,
+      );
+      const afterglowAccumRtt = rtt(vec4(newAccum, 1.0),
+                                    rdr.domElement.width, rdr.domElement.height);
+      pp._afterglowAccumRtt = afterglowAccumRtt;
+      // residual: excess phosphor glow beyond current excitation (no double-counting).
+      const residual = max(afterglowAccumRtt.rgb.sub(finalComposite), vec3(0.0))
+                         .mul(uniforms.afterglowStr);
+      finalComposite = finalComposite.add(residual);
+    }
+
     {
       // 4. Scratch — glass surface, after bloom and glass scatter
       const withScratch = buildScratchNode(finalComposite, vec3(scratchLuma), uniforms.scratchStr);
       // 5. Grain — post-bloom, post-scratch (blackLevel applied pre-gamma in buildCRTEffect)
       finalComposite = withScratch.add(grain);
+    }
+
+    // Effect 3: glass spectral transmission tint (pure TSL, post-gamma).
+    // Physical: CRT faceplate glass absorbs differently at different wavelengths.
+    // Profile 0 = neutral (no tint), 1 = warm/yellow (phosphate glass: 0.94R, 0.91G, 0.81B),
+    // 2 = cool/blue-tinted (neodymium-doped glass: 0.93R, 0.93G, 0.97B).
+    // glassTintStr=0 → mul(1,1,1) = identity. Evaluated each pixel but no branching needed.
+    {
+      const tintWarm = vec3(0.94, 0.91, 0.81);
+      const tintCool = vec3(0.93, 0.93, 0.97);
+      const tintNeutral = vec3(1.0, 1.0, 1.0);
+      // Select tint profile: profile < 0.5 = neutral, 0.5..1.5 = warm, > 1.5 = cool.
+      // Avoid .and() on TSL comparison nodes (unreliable in r183); use nested selects instead.
+      const warmOrCool   = uniforms.glassTintProfile.greaterThanEqual(float(1.5)).select(tintCool, tintWarm);
+      const selectedTint = uniforms.glassTintProfile.greaterThanEqual(float(0.5)).select(warmOrCool, tintNeutral);
+      // Lerp tint by glassTintStr: 0 = no effect, 1 = full tint.
+      const tintFactor = mix(vec3(1.0, 1.0, 1.0), selectedTint, uniforms.glassTintStr);
+      finalComposite = finalComposite.mul(tintFactor);
     }
 
     // Phosphor persistence: blend current frame with previous frame in linear light.
@@ -1382,6 +1846,38 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   }
 
   /**
+   * Create or resize the HalfFloat render target used for video feedback.
+   * feedbackTexNode.value is hot-swapped in-place so the node graph always
+   * references the current feedbackRT.texture without requiring a rebuild.
+   */
+  function ensureFeedbackTarget() {
+    const w = renderer.domElement.width;
+    const h = renderer.domElement.height;
+    if (feedbackRT && _feedbackW === w && _feedbackH === h) return;
+    if (feedbackRT) try { feedbackRT.dispose(); } catch (_) {}
+    feedbackRT  = new THREE.RenderTarget(w, h, { type: THREE.HalfFloatType });
+    _feedbackW  = w;
+    _feedbackH  = h;
+    feedbackTexNode.value = feedbackRT.texture;
+  }
+
+  /**
+   * Create or resize the HalfFloat render target used for differential phosphor afterglow.
+   * _afterglowTexNode.value is hot-swapped in-place so the node graph built in
+   * buildPostProcessing always references the current _afterglowRT.texture without rebuild.
+   */
+  function ensureAfterglowTarget() {
+    const w = renderer.domElement.width;
+    const h = renderer.domElement.height;
+    if (_afterglowRT && _afterglowW === w && _afterglowH === h) return;
+    if (_afterglowRT) try { _afterglowRT.dispose(); } catch (_) {}
+    _afterglowRT  = new THREE.RenderTarget(w, h, { type: THREE.HalfFloatType });
+    _afterglowW   = w;
+    _afterglowH   = h;
+    _afterglowTexNode.value = _afterglowRT.texture;
+  }
+
+  /**
    * Dispose the current PostProcessing graph and all associated GPU resources.
    * Safe to call when postProcessing is null (no-op).
    * After return: postProcessing = null, bloom refs cleared, prevRT disposed.
@@ -1437,6 +1933,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       try { _dotCrawlRttNode.renderTarget.dispose(); } catch (_) {}
       _dotCrawlRttNode = null;
     }
+    // Signal processing pre-kernel RTT (SPEC-analog-artifacts)
+    if (_signalRttNode?.renderTarget) {
+      try { _signalRttNode.renderTarget.dispose(); } catch (_) {}
+      _signalRttNode = null;
+    }
     // Mask LUT RTT node
     if (_maskLutRttNode?.renderTarget) {
       try { _maskLutRttNode.renderTarget.dispose(); } catch (_) {}
@@ -1450,6 +1951,14 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (prevRT) { try { prevRT.dispose(); } catch (_) {} prevRT = null; }
     if (prevTexNode) prevTexNode.value = _dummyPrevRT.texture;
     _persistW = 0; _persistH = 0;
+    // Feedback RT (SPEC-feedback-loop)
+    if (feedbackRT) { try { feedbackRT.dispose(); } catch (_) {} feedbackRT = null; }
+    if (feedbackTexNode) feedbackTexNode.value = _dummyFeedbackRT.texture;
+    _feedbackW = 0; _feedbackH = 0;
+    // Afterglow RT (SPEC-novel-crt-physics Effect 7)
+    if (_afterglowRT) { try { _afterglowRT.dispose(); } catch (_) {} _afterglowRT = null; }
+    if (_afterglowTexNode) _afterglowTexNode.value = _dummyAfterglowRT.texture;
+    _afterglowW = 0; _afterglowH = 0;
     postProcessing = null;
     _rebuildPending = false;  // cancel any pending deferred build
     _rebuildArgs    = null;
@@ -1485,6 +1994,19 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       await newRenderer.init();
     } catch (e) {
       console.error('telescreen-crt-webgpu: failed to reinitialise renderer after device loss', e);
+      // GPU device loss due to OOM can permanently invalidate the canvas context in Chrome
+      // (the browser refuses to create a new WebGPU or WebGL2 context on the same canvas).
+      // There is no in-page recovery path — the user must reload.
+      try {
+        const ctx2d = canvas.getContext('2d');
+        if (ctx2d) {
+          ctx2d.fillStyle = '#000';
+          ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+          ctx2d.fillStyle = '#f44';
+          ctx2d.font = `${Math.round(canvas.height * 0.025)}px monospace`;
+          ctx2d.fillText('GPU out of memory — please reload the page (F5)', Math.round(canvas.width * 0.05), Math.round(canvas.height * 0.5));
+        }
+      } catch (_) {}
       return;
     }
 
@@ -1496,6 +2018,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     _lastUsePrevTex = false;      // DR-7 P2-A: force rebuild with correct usePrevTex after recovery
     _lastGlassBlurActive = false; // DR-8 P2-D: force rebuild with correct glassBlur state
     _lastHaloActive = false;      // P0-A: force rebuild with correct halo state
+    _lastSignalActive = false;    // SPEC-analog-artifacts: force rebuild with correct signal state
     _lastCanvasW = 0; _lastCanvasH = 0;
     firstRenderDone = false;
 
@@ -1507,6 +2030,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     // ensurePersistenceTargets() will recreate prevRT on next use.
     if (prevRT) { try { prevRT.dispose(); } catch (_) {} prevRT = null; _persistW = 0; _persistH = 0; }
     if (prevTexNode) prevTexNode.value = _dummyPrevRT.texture;
+    // Reset feedback state (SPEC-feedback-loop) — same pattern as prevRT above.
+    if (feedbackRT) { try { feedbackRT.dispose(); } catch (_) {} feedbackRT = null; _feedbackW = 0; _feedbackH = 0; }
+    if (feedbackTexNode) feedbackTexNode.value = _dummyFeedbackRT.texture;
+    // Reset afterglow state (SPEC-novel-crt-physics Effect 7) — same pattern.
+    if (_afterglowRT) { try { _afterglowRT.dispose(); } catch (_) {} _afterglowRT = null; _afterglowW = 0; _afterglowH = 0; }
+    if (_afterglowTexNode) _afterglowTexNode.value = _dummyAfterglowRT.texture;
 
     deviceLost = false;
     registerDeviceLostHandler(renderer);
@@ -1575,64 +2104,50 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     }
   }
 
-  // ── Render frame (shared by internal loop and external callers) ───────────
-  async function renderFrame(ts) {
-    if (destroyed || deviceLost || _renderInFlight) return;
-    _renderInFlight = true;
+  // ── Bridge-mode helpers ───────────────────────────────────────────────────
+  // _tick: uniform/state updates + rebuild detection; returns { skipRender, newOutputNode }.
+  // _postRender: persistence/feedback texture copy after pp.render().
+  // _setSourceNode: hot-swap the source node and schedule a CRT rebuild.
+  // Used by buildCRTNodesFromSource (exported below).
+
+  function _tick(ts) {
+    if (destroyed || deviceLost) return { skipRender: true, newOutputNode: null };
+
     if (startTime === null) startTime = ts;
     const t = (ts - startTime) / 1000;
 
-    // Copy the current video frame into the proxy canvas so CanvasTexture stays live.
-    // Guard on currentTime change to avoid redundant drawImage on paused or slow video.
-    if (_videoCanvas && _videoCtx && currentVideoEl &&
-        currentVideoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-      const vt = currentVideoEl.currentTime;
-      if (vt !== _lastVideoTime) {
-        _lastVideoTime = vt;
-        const vw = currentVideoEl.videoWidth;
-        const vh = currentVideoEl.videoHeight;
-        if (vw > 0 && vh > 0) {
-          if (_videoCanvas.width !== vw || _videoCanvas.height !== vh) {
-            _videoCanvas.width  = vw;
-            _videoCanvas.height = vh;
-          }
-          _videoCtx.drawImage(currentVideoEl, 0, 0, vw, vh);
-          if (videoTexture) videoTexture.needsUpdate = true;
-        }
+    // Fallback for browsers without requestVideoFrameCallback.
+    // rVFC-capable browsers drive canvas updates in the drawFrame closure above.
+    if (videoTexture && videoTexture.isCanvasTexture && videoCtx && currentVideoEl &&
+        !('requestVideoFrameCallback' in currentVideoEl) &&
+        currentVideoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+        currentVideoEl.videoWidth > 0 && currentVideoEl.videoHeight > 0) {
+      if (videoCanvas.width  !== currentVideoEl.videoWidth ||
+          videoCanvas.height !== currentVideoEl.videoHeight) {
+        videoCanvas.width  = currentVideoEl.videoWidth;
+        videoCanvas.height = currentVideoEl.videoHeight;
       }
+      videoCtx.drawImage(currentVideoEl, 0, 0);
+      videoTexture.needsUpdate = true;
     }
 
-    // Compute per-frame delta time. lastTs is null only on the very first call;
-    // a fallback of 1/60 s is used once (produces steady-state 60 Hz blend value).
     const dt = lastTs !== null ? (ts - lastTs) / 1000 : 1.0 / 60.0;
     lastTs = ts;
 
-    // Auto-compute frame-rate-correct persistence blend when persistenceTau is set.
-    // exp(-dt / τ) approaches 1.0 at very long τ; clamped at 0.99 to guarantee
-    // the IIR always converges and avoids fp precision loss when (1−blend) → 0.
     if (_persistenceTau > 0) {
       uniforms.persistence.value = Math.min(0.99, Math.exp(-dt / _persistenceTau));
     }
 
-    // Wrap to 3600s — prevents f32 precision loss in noise/scroll for long sessions.
-    // Period 3600s chosen so grain fract(tWrapped × 73) = fract(262800) = 0 exactly:
-    // 3600 × 73 = 262800 is exactly representable in f32 (IEEE 754: 0x40402D00).
     uniforms.tWrapped.value = t % 3600.0;
 
     updateGlitchScheduler(t);
     updateRollbarPhase(t);
     updateSagPhase(t);
 
-    // P0-B: Hum bar phase driver — scrolls at cfg.humRate cycles/second.
-    // humPhase wraps 0..1 (one full vertical traversal = one mains beat cycle).
-    // Frozen at 0 when reduced motion is preferred (no animated brightness drift).
-    // P1-C: AGC hunting oscillator — beat of two incommensurable frequencies for
-    // non-repeating irregular pulsation. Disabled when cfg.agcAmt = 0.
     if (!prefersReduced.matches) {
       uniforms.humPhase.value = (t * (cfg.humRate ?? 0.06)) % 1.0;
       if (cfg.agcAmt > 0) {
         const agcPhase = t * (cfg.agcRate ?? 1.2);
-        // Golden ratio: φ = 1.618... ensures the two frequencies are incommensurable.
         const agcVal = Math.sin(agcPhase) * 0.6 + Math.sin(agcPhase * 1.618) * 0.4;
         uniforms.agcGain.value = 1.0 + agcVal * cfg.agcAmt;
       } else {
@@ -1642,93 +2157,147 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       uniforms.humPhase.value = 0.0;
       uniforms.agcGain.value  = 1.0;
     }
-    // P2-C: VBI frame counter — incremented each frame, mod 1e7 to prevent f32 precision loss.
     uniforms.frameCount.value = (uniforms.frameCount.value + 1.0) % 1e7;
 
-    // Gap C — interlace field parity: toggle 0↔1 each frame when interlace active.
-    // Driven by the CPU rather than floor(t * flickerRate) % 2 to avoid frame-rate
-    // aliasing (the floor() transitions are tied to wall-clock time, not display frames).
+    if (_shimmerActive) {
+      _shimmerPhase += dt;
+      uniforms.shimmerPhase.value = _shimmerPhase;
+      if (_shimmerPhase >= 1.5) {
+        _shimmerActive = false;
+        _shimmerPhase  = 0.0;
+        uniforms.shimmerPhase.value = 0.0;
+      }
+    }
+
+    // Differential phosphor afterglow per-channel decay (SPEC-novel-crt-physics Effect 7).
+    // decay = exp(-dt / flickerTauX). dt clamped to 0.1s to avoid near-zero decay on tab-wake.
+    if (_lastAfterglowActive) {
+      const safeDtAg = Math.min(dt, 0.1);
+      afterglowDecayR.value = Math.exp(-safeDtAg / Math.max(uniforms.flickerTauR.value, 1e-6));
+      afterglowDecayG.value = Math.exp(-safeDtAg / Math.max(uniforms.flickerTauG.value, 1e-6));
+      afterglowDecayB.value = Math.exp(-safeDtAg / Math.max(uniforms.flickerTauB.value, 1e-6));
+    }
+
+    // OU processes for H-swim and tape flutter (SPEC-physics-grounding Item 5).
+    // alpha = exp(-2*PI*BW/frameRate). dt is clamped to avoid large alpha on tab-wake.
+    const safeDt  = Math.min(dt, 0.1);
+    const swimAlpha    = Math.exp(-2 * Math.PI * (cfg.swimBW ?? 5.0) * safeDt);
+    const flutterAlpha = Math.exp(-2 * Math.PI * (cfg.flutterBW ?? 3.0) * safeDt);
+    _swimState    = swimAlpha    * _swimState    + (1 - swimAlpha)    * (Math.random() * 2 - 1);
+    _flutterState = flutterAlpha * _flutterState + (1 - flutterAlpha) * (Math.random() * 2 - 1);
+    uniforms.swimNoise.value    = _swimState;
+    uniforms.flutterNoise.value = _flutterState;
+
     if (uniforms.interlace.value > 0.5) {
       uniforms.interlaceField.value = 1.0 - uniforms.interlaceField.value;
     }
-    // Update JS-side interlace decay scalar for early-exit guards in _computeNeedsPrevTex.
-    // decayFactor = exp(-1/(flickerRate * flickerTau)) — same formula as WGSL crtKernel.
     _cpuState.interlaceDecay = Math.exp(-1.0 / (uniforms.flickerRate.value * _cpuState.flickerTau));
 
-    // Determine whether to use the two-pass kernel path.
-    // When sourceSizeX is explicitly set (> 0.5), use it directly.
-    // Otherwise, when autoTwoPass is enabled, infer a virtual source size from
-    // the output width using a quality-tiered table (computeAutoSourceWidth).
-    // Two-pass activates only when the effective source is < 80% of output width.
     const outW = renderer.domElement.width;
     const outH = renderer.domElement.height;
-    // Keep outputSizeX/Y in sync with the actual canvas every frame.
-    // These uniforms are used in buildCRTEffect instead of screenSize to guarantee
-    // warp, corner mask, and scanline UV are always computed in canvas space.
     uniforms.outputSizeX.value = outW;
     uniforms.outputSizeY.value = outH;
-    // Compute scroll phase: (t * scrollRate) % srcY — wraps at source-grid period.
-    // tWrapped-based t * scrollRate jumps by scrollRate * 3600 at the 3600-s boundary.
-    // JS-side computation uses the full elapsed t, so the phase is continuous.
     {
       const _srcY = (uniforms.sourceSizeY.value > 0.5)
         ? uniforms.sourceSizeY.value
         : outH;
       uniforms.scrollPhase.value = (t * uniforms.scrollRate.value) % Math.max(_srcY, 1);
     }
-    // _userSetSourceSize distinguishes user-explicit sourceSizeX (via setShader)
-    // from auto-set values (via autoTwoPass). Without this, auto-set sourceSizeX
-    // (e.g. 640) makes explicitSrc=true on the NEXT frame, preventing reset when
-    // the window shrinks back to single-pass — sourceSizeX stays stuck at 640.
+
     const explicitSrc = _userSetSourceSize && uniforms.sourceSizeX.value > 0.5;
     const autoSrc     = autoTwoPass ? computeAutoSourceWidth(outW) : 0;
     const effectiveSrc = explicitSrc ? uniforms.sourceSizeX.value : autoSrc;
-
-    // Derive effective source height proportionally when using auto source width.
     const effectiveSrcH = explicitSrc
       ? (uniforms.sourceSizeY.value > 0.5 ? uniforms.sourceSizeY.value : outH)
       : (effectiveSrc > 0.5 ? Math.round(effectiveSrc * outH / outW) : outH);
-
     const needsTwoPass = effectiveSrc > 0.5 && effectiveSrc < outW * 0.8;
 
-    // Mode transition: single-pass ↔ two-pass, source dimensions changed,
-    // or persistence/interlace active state changed (DR-7 P2-A).
-    // RTTNode inside PostProcessing is fixed-size — rebuild when any of these change.
-    // curTwoPass: null?._horzRttNode is undefined, undefined != null is true... use !! to coerce.
+    // Deferred rebuild: execute pending rebuild first (one-frame gap after dispose).
+    if (_rebuildPending) {
+      _rebuildPending = false;
+      const args = _rebuildArgs ?? [0, 0, _computeNeedsPrevTex()];
+      postProcessing = buildPostProcessing(renderer, scene, camera, ...args);
+      _rebuildArgs    = null;
+      _lastBuildTimestamp = performance.now();
+      firstRenderDone = false;
+      // Re-sync _last* flags to the actual state at build time.
+      // Without this, if the user changed a threshold param (e.g. ghostStr → 0 → non-zero)
+      // during the disposal gap, frame N+2 would see _lastGhostActive ≠ ghostActive and
+      // trigger another immediate dispose+rebuild, leaking the just-built PP's VRAM.
+      // Rapid slider dragging repeats this cycle until VK_ERROR_OUT_OF_DEVICE_MEMORY.
+      _lastGhostActive     = Math.abs(uniforms.ghostStr.value) > 0.001
+                          || Math.abs(uniforms.ghost2Str.value) > 0.001;
+      _lastSignalActive    = uniforms.ntscCompositeMode.value > 0.5
+                          || uniforms.ringAmt.value > 0.001
+                          || uniforms.chromaBlur.value > 0.001
+                          || Math.abs(uniforms.ycDelay.value) > 0.001
+                          || uniforms.crossColorAmt.value > 0.001
+                          || uniforms.tapeDropoutRate.value > 0.0001
+                          || uniforms.vchromaHetAmt.value > 0.001
+                          || uniforms.vhsLumaBlur.value > 0.001
+                          || uniforms.vhsChromaVBlend.value > 0.001
+                          || uniforms.vhsSwitchStr.value > 0.001;
+      _lastDotCrawlActive  = uniforms.dotCrawlAmt.value > 0.001;
+      _lastGlassBlurActive = uniforms.glassBlurStr.value > 0.001;
+      _lastUsePrevTex      = _computeNeedsPrevTex();
+      _lastFeedbackActive  = uniforms.feedbackMix.value > 0.001;
+      _lastAfterglowActive = uniforms.afterglowStr.value > 0.001;
+      _lastHaloActive      = uniforms.haloStr.value > 0.001
+                          && uniforms.haloRadius.value > 0.1
+                          && _GaussianBlurNode !== null;
+      return { skipRender: true, newOutputNode: postProcessing.outputNode };
+    }
+
     const curTwoPass = !!(postProcessing?._horzRttNode);
     const srcChanged = needsTwoPass && curTwoPass &&
       (Math.round(effectiveSrc) !== _lastSrcW || Math.round(effectiveSrcH) !== _lastSrcH);
-    const usePrevTex = _computeNeedsPrevTex();  // DR-7 P2-A: build-time decision
-    const glassBlurActive = uniforms.glassBlurStr.value > 0.001; // DR-8 P2-D
-    const ghostActive = uniforms.ghostStr.value > 0.001;          // DR-14 P1-B
-    const haloActive = uniforms.haloStr.value > 0.001 &&           // P0-A
-                       uniforms.haloRadius.value > 0.1 &&
-                       _GaussianBlurNode !== null;
-    const dotCrawlActive = uniforms.dotCrawlAmt.value > 0.001;    // DR-19 P0-A
-
-    // Deferred pipeline build: old pipeline was disposed last frame.
-    // One-frame gap lets the GPU driver release VRAM before new RTT allocations.
-    if (_rebuildPending) {
-      _rebuildPending = false;
-      postProcessing  = buildPostProcessing(renderer, scene, camera, ..._rebuildArgs);
-      _rebuildArgs    = null;
-      firstRenderDone = false;
-      _renderInFlight = false;
-      return; // skip frame — next frame renders with fresh pipeline
-    }
+    const usePrevTex = _computeNeedsPrevTex();
+    const glassBlurActive   = uniforms.glassBlurStr.value > 0.001;
+    const ghostActive       = Math.abs(uniforms.ghostStr.value)  > 0.001
+                           || Math.abs(uniforms.ghost2Str.value) > 0.001;
+    const haloActive        = uniforms.haloStr.value > 0.001 &&
+                              uniforms.haloRadius.value > 0.1 &&
+                              _GaussianBlurNode !== null;
+    const dotCrawlActive    = uniforms.dotCrawlAmt.value > 0.001;
+    const signalActive      = uniforms.ntscCompositeMode.value > 0.5
+                           || uniforms.ringAmt.value > 0.001
+                           || uniforms.chromaBlur.value > 0.001
+                           || Math.abs(uniforms.ycDelay.value) > 0.001
+                           || uniforms.crossColorAmt.value > 0.001
+                           || uniforms.tapeDropoutRate.value > 0.0001
+                           || uniforms.vchromaHetAmt.value > 0.001
+                           || uniforms.vhsLumaBlur.value > 0.001
+                           || uniforms.vhsChromaVBlend.value > 0.001
+                           || uniforms.vhsSwitchStr.value > 0.001;
+    const feedbackActiveNow  = uniforms.feedbackMix.value > 0.001;
+    const afterglowActiveNow = uniforms.afterglowStr.value > 0.001;
 
     if (!postProcessing || needsTwoPass !== curTwoPass || srcChanged ||
         usePrevTex !== _lastUsePrevTex || glassBlurActive !== _lastGlassBlurActive ||
         ghostActive !== _lastGhostActive || haloActive !== _lastHaloActive ||
-        dotCrawlActive !== _lastDotCrawlActive) {
+        dotCrawlActive !== _lastDotCrawlActive || signalActive !== _lastSignalActive ||
+        feedbackActiveNow !== _lastFeedbackActive ||
+        afterglowActiveNow !== _lastAfterglowActive) {
+      // Cooldown guard: if a PP was built recently, defer this rebuild until Vulkan has had
+      // time to process deferred VRAM frees from the previous dispose. Without this, rapid
+      // parameter cycling (e.g. fast T-key pattern switching with sourceW changes) allocates
+      // a new PP before the old one is freed, accumulating VRAM until VK_ERROR_OUT_OF_DEVICE_MEMORY.
+      // Resize-triggered rebuilds (below) bypass this guard since stale RTT sizes cause
+      // visible corruption — a brief wrong-parameter render is the lesser of two evils.
+      if (postProcessing && performance.now() - _lastBuildTimestamp < _REBUILD_COOLDOWN_MS) {
+        return { skipRender: false, newOutputNode: null };
+      }
       disposeCurrentPP();
       _lastSrcW = needsTwoPass ? Math.round(effectiveSrc) : 0;
       _lastSrcH = needsTwoPass ? Math.round(effectiveSrcH) : 0;
       _lastUsePrevTex = usePrevTex;
-      _lastGlassBlurActive = glassBlurActive; // DR-8 P2-D
-      _lastGhostActive = ghostActive;         // DR-14 P1-B
-      _lastHaloActive = haloActive;           // P0-A
-      _lastDotCrawlActive = dotCrawlActive;   // DR-19 P0-A
+      _lastGlassBlurActive = glassBlurActive;
+      _lastGhostActive = ghostActive;
+      _lastHaloActive = haloActive;
+      _lastDotCrawlActive = dotCrawlActive;
+      _lastSignalActive = signalActive;
+      _lastFeedbackActive = feedbackActiveNow;
+      _lastAfterglowActive = afterglowActiveNow;
       _rebuildPending = true;
       _rebuildArgs    = [
         needsTwoPass ? Math.round(effectiveSrc) : 0,
@@ -1736,28 +2305,21 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         usePrevTex,
       ];
       firstRenderDone = false;
-      _renderInFlight = false;
-      return; // skip frame — GPU releases disposed memory before next-frame build
+      return { skipRender: true, newOutputNode: null };
     }
 
-    // Sync uniforms with effective source dims.
     if (needsTwoPass) {
       uniforms.kernelSrcW.value  = Math.round(effectiveSrc);
       uniforms.kernelSrcH.value  = Math.round(effectiveSrcH);
       uniforms.sourceSizeX.value = Math.round(effectiveSrc);
       uniforms.sourceSizeY.value = Math.round(effectiveSrcH);
     } else {
-      // Single-pass: reset to 0 so WGSL functions use canvas-space coordinates.
       if (!explicitSrc) {
         uniforms.sourceSizeX.value = 0;
         uniforms.sourceSizeY.value = 0;
       }
     }
 
-    // P1-A: sync mask energy compensation with the effective shader mask scale.
-    // Shader computes autoScale = outW/sourceSizeX in two-pass mode (not uniforms.maskScale).
-    // Must be recalculated on every resize or source-size change; gate on tolerance to avoid
-    // unnecessary uniform writes on frames where neither outW nor effectiveSrc changed.
     {
       const effectiveMaskScale = needsTwoPass
         ? outW / Math.max(effectiveSrc, 1)
@@ -1769,20 +2331,22 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     }
 
     // Resize detection: rtt() nodes do not auto-resize after first render.
-    // Track the canvas size and rebuild the active PostProcessing when it changes.
     {
-      const rdrW = renderer.domElement.width;
-      const rdrH = renderer.domElement.height;
+      const rdrW = outW;
+      const rdrH = outH;
       if (firstRenderDone && _lastCanvasW > 0 &&
           (rdrW !== _lastCanvasW || rdrH !== _lastCanvasH)) {
         disposeCurrentPP();
         _lastSrcW = needsTwoPass ? Math.round(effectiveSrc) : 0;
         _lastSrcH = needsTwoPass ? Math.round(effectiveSrcH) : 0;
         _lastUsePrevTex = usePrevTex;
-        _lastGlassBlurActive = glassBlurActive; // DR-8 P2-D
-        _lastGhostActive = ghostActive;         // DR-14 P1-B
-        _lastHaloActive = haloActive;           // P0-A
-        _lastDotCrawlActive = dotCrawlActive;   // DR-19 P0-A
+        _lastGlassBlurActive = glassBlurActive;
+        _lastGhostActive = ghostActive;
+        _lastHaloActive = haloActive;
+        _lastDotCrawlActive  = dotCrawlActive;
+        _lastSignalActive    = signalActive;
+        _lastFeedbackActive  = feedbackActiveNow;
+        _lastAfterglowActive = afterglowActiveNow;
         _rebuildPending = true;
         _rebuildArgs    = [
           needsTwoPass ? Math.round(effectiveSrc) : 0,
@@ -1790,21 +2354,17 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           usePrevTex,
         ];
         firstRenderDone = false;
-        // DR-14 P0-A: recompute mask boost with updated effective scale after resize.
         if (uniforms.sourceSizeX.value > 0.5) {
           updateMaskBoost(renderer.domElement.width / uniforms.sourceSizeX.value);
         } else {
           updateMaskBoost();
         }
-        _renderInFlight = false;
-        return; // skip frame — GPU releases disposed memory before next-frame build
+        return { skipRender: true, newOutputNode: null };
       }
       _lastCanvasW = rdrW;
       _lastCanvasH = rdrH;
     }
 
-    // DR-14 P1-A: mask LUT dirty-flag — only re-render when mask-governing params change.
-    // Saves ~11M sin()/sec at 4K60 steady state (maskType/maskSmooth/maskScale rarely animated).
     {
       const lutType   = uniforms.maskType.value;
       const lutSmooth = uniforms.maskSmooth.value;
@@ -1822,34 +2382,57 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       }
     }
 
+    return { skipRender: false, newOutputNode: null };
+  }
+
+  function _postRender(rdr) {
+    if (_maskLutNeedsBoostReadback) {
+      _maskLutNeedsBoostReadback = false;
+      updateMaskBoostFromLut();
+    }
+    const needsPrevTex = postProcessing._rttBlend !== null && (
+      uniforms.persistence.value > 0.001 ||
+      uniforms.interlace.value > 0.5
+    );
+    if (needsPrevTex) {
+      ensurePersistenceTargets();
+      rdr.copyTextureToTexture(postProcessing._rttBlend.renderTarget.texture, prevRT.texture);
+    }
+    if (_lastFeedbackActive && postProcessing._feedbackCaptureRtt) {
+      ensureFeedbackTarget();
+      rdr.copyTextureToTexture(
+        postProcessing._feedbackCaptureRtt.renderTarget.texture,
+        feedbackRT.texture
+      );
+    }
+    // Afterglow: copy new accumulation buffer to _afterglowRT for next frame's read.
+    if (_lastAfterglowActive && postProcessing._afterglowAccumRtt) {
+      ensureAfterglowTarget();
+      rdr.copyTextureToTexture(
+        postProcessing._afterglowAccumRtt.renderTarget.texture,
+        _afterglowRT.texture
+      );
+    }
+    firstRenderDone = true;
+  }
+
+  function _setSourceNode(node) {
+    _sourceNode = node;
+    if (!_rebuildPending) _rebuildPending = true;
+  }
+
+  // ── Render frame (shared by internal loop and external callers) ───────────
+  async function renderFrame(ts) {
+    if (destroyed || deviceLost || _renderInFlight) return;
+    _renderInFlight = true;
     try {
-      // Single PostProcessing — RTTNode.updateBefore fires automatically:
-      //   1. PassNode.updateBefore (FRAME) renders scene at canvas res
-      //   2. RTTNode.updateBefore (RENDER) renders horzPass at srcW × srcH (two-pass only)
-      //   3. PostProcessing renders main pipeline to canvas using RTTNode's texture
+      const tickResult = _tick(ts);
+      if (tickResult.skipRender) return;
+
       await postProcessing.render();
 
-      // DR-14 P2-A: exact mask boost calibration via LUT readback after each LUT rebuild.
-      if (_maskLutNeedsBoostReadback) {
-        _maskLutNeedsBoostReadback = false;
-        updateMaskBoostFromLut(); // async — fires after GPU readback completes
-      }
-
-      // Copy rtt output to prevRT when either persistence or interlace field blending is active.
-      // Both mechanisms read from prevTexNode to blend with the previous frame.
-      // DR-7 P2-A: _rttBlend is null when usePrevTex=false (no persistence/interlace).
-      // Guard both conditions — skip copy if pipeline has no rtt or feature is inactive.
-      const needsPrevTex = postProcessing._rttBlend !== null && (
-        uniforms.persistence.value > 0.001 ||
-        uniforms.interlace.value > 0.5  // off-field rows always need prevTexNode
-      );
-      if (needsPrevTex) {
-        ensurePersistenceTargets();
-        renderer.copyTextureToTexture(postProcessing._rttBlend.renderTarget.texture, prevRT.texture);
-      }
-      firstRenderDone = true;
+      _postRender(renderer);
     } catch (e) {
-      // Guard for device loss surfacing as a thrown error
       console.warn('telescreen-crt-webgpu: renderAsync threw:', e);
     } finally {
       _renderInFlight = false;
@@ -1861,6 +2444,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (destroyed) return;
     rafId = requestAnimationFrame(internalLoop);
     renderFrame(ts);
+  }
+
+  // In external-source (bridge) mode, build the initial CRT chain synchronously so the
+  // caller can access outputNode immediately (required for bridge pipeline assembly).
+  if (_externalSource !== null) {
+    postProcessing = buildPostProcessing(renderer, null, null, 0, 0, false);
   }
 
   if (autoRender) {
@@ -1976,14 +2565,19 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
    *                  (inductive coupling; less common). Waveform is full-wave rectified abs(sin)
    *                  so peak is always humAmt in direction of sign. DR-15 P1-E.
    * @param {number}  [p.ghostStr]        ghost strength: 0=off, 0.15=subtle, negative=polarity-inverted.
-   *                  Note: ghost is composited post-scanline-reconstruction so it lacks the CRT's
-   *                  scanline/phosphor texture. Visually accurate for ghostStr ≤ 0.15 (< 2% error).
-   *                  Above 0.3 the unscanlined ghost becomes perceptible.
+   *                  Ghost is composited pre-kernel (DR-14 P1-B): mixed into the scene before
+   *                  scanline reconstruction, so it carries the same scanline, mask, and phosphor
+   *                  texture as the direct signal.
    * @param {number}  [p.haloRadius]  2D isotropic halation Gaussian sigma, output pixels.
    *                  Models photon TIR scatter in CRT glass faceplate. Requires
    *                  loadBloomDependencies(). 0 = off (default). Typical: 3–8 px.
    * @param {number}  [p.haloStr]     2D isotropic halation additive intensity.
    *                  Requires loadBloomDependencies(). 0 = off (default). Typical: 0.3–1.0.
+   * @param {boolean} [p.gammaFast]   Use sqrt/square fast-gamma path (γ=2.0) instead of
+   *                  pow(x, 1/kernelGamma). Off by default. Ignores kernelGamma — effective
+   *                  kernel gamma is always 2.0 regardless of the kernelGamma setting.
+   *                  Shadow accuracy is ~−20% vs the exact path. Only useful on GPU hardware
+   *                  where pow() is unusually expensive.
    */
   function updateFlickerCompensation() {
     uniforms.flickerBoost.value = computeFlickerBoost(
@@ -2070,11 +2664,44 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     humAmt, humBars, humRate,
     dotCrawlAmt,
     ghostOffset, ghostStr, ghostTintR, ghostTintG, ghostTintB,
+    ghost2Offset, ghost2Str, ghost2TintR, ghost2TintG, ghost2TintB,
     glitchBurstLoss,
     vbiStr, vbiLines,
     agcAmt, agcRate,
     cornerFade,
-    gammaFast,
+    gammaFast, beamAlpha,
+    // SPEC-physics-grounding: causal ringing shape, bi-exp halation, OU bandwidths
+    ringDecay, ringFreq,
+    halationTailSigma, halationCoreBlend, halationSpectra,
+    swimBW, flutterBW,
+    // SPEC-analog-artifacts: composite signal (A/B/G/F), CRT hardware (C/E/SVM), VHS tape (D)
+    ringAmt, chromaBlur, ycDelay,
+    chromaAMNoise, chromaPMNoise,
+    crossColorAmt, crossColorFreq,
+    ntscCompositeMode, ycSeparatorQ,
+    tapeDropoutRate,
+    tapeFlutterAmt, tapeFlutterRate,
+    tapeChromaAmt,
+    yokeRingAmt, yokeFreq, yokeDecay,
+    svmAmt,
+    tensionWireStr, tensionWireY1, tensionWireY2, tensionWireWidth,
+    shimmerAmt, shimmerFreq,
+    // SPEC-feedback-loop
+    feedbackMix,
+    // SPEC-novel-crt-physics (Effects 1-8)
+    ehtRippleAmt, ehtDecayRate,
+    astigAmt, astigRadial, astigTangential,
+    glassTintStr, glassTintProfile,
+    phosphorGrainAmt, phosphorGrainScale,
+    vchromaHetAmt, vchromaFreq, vchromaDrift,
+    vidAmpFreq, vidAmpDamp, vidAmpPixelClock,
+    afterglowStr,
+    domingAmt, domingThermalTau,
+    // SPEC-vhs-signal-artifacts
+    vhsLumaBlur, vhsChromaVBlend,
+    vhsSwitchStr, vhsSwitchLines, vhsSwitchOffset,
+    // SPEC-phosphor-physics-advanced
+    phosphorSatAmt, phosphorXtalkAmt, phosphorXtalkRadius, phosphorAge,
   } = {}) {
     if (hardPix       !== undefined) uniforms.hardPix.value       = hardPix;
     if (hardScan      !== undefined) uniforms.hardScan.value      = hardScan;
@@ -2128,9 +2755,9 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     }
     if (rollbarScroll !== undefined) cfg.rollbarScrollEnabled     = !!rollbarScroll;
     if (sagGeom       !== undefined) cfg.sagGeomEnabled           = !!sagGeom;
-    if (defocusAmt    !== undefined) uniforms.defocusAmt.value    = defocusAmt;
+    if (defocusAmt    !== undefined) uniforms.defocusAmt.value    = Math.min(0.45, Math.max(0, defocusAmt));
     if (defocusAniso  !== undefined) uniforms.defocusAniso.value  = defocusAniso;
-    if (warpAniso     !== undefined) uniforms.warpAniso.value     = warpAniso;
+    if (warpAniso     !== undefined) uniforms.warpAniso.value     = Math.min(1, Math.max(0, warpAniso));
     if (p22Str        !== undefined) uniforms.p22Str.value        = p22Str;
     if (flickerRate   !== undefined) uniforms.flickerRate.value   = flickerRate;
     if (flickerTau    !== undefined) {
@@ -2162,6 +2789,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (apertureW     !== undefined) uniforms.apertureW.value     = Math.max(0.1, apertureW);
     if (apertureH     !== undefined) uniforms.apertureH.value     = Math.max(0.1, apertureH);
     if (gammaFast     !== undefined) uniforms.gammaFast.value     = gammaFast ? 1.0 : 0.0;
+    if (beamAlpha     !== undefined) uniforms.beamAlpha.value     = beamAlpha;
     if (blackLevel    !== undefined) uniforms.blackLevel.value    = blackLevel;
     if (persistence   !== undefined) uniforms.persistence.value  = persistence;
     if (persistenceTau !== undefined) {
@@ -2204,6 +2832,11 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (ghostTintR    !== undefined) uniforms.ghostTintR.value    = ghostTintR;
     if (ghostTintG    !== undefined) uniforms.ghostTintG.value    = ghostTintG;
     if (ghostTintB    !== undefined) uniforms.ghostTintB.value    = ghostTintB;
+    if (ghost2Offset  !== undefined) uniforms.ghost2Offset.value  = ghost2Offset;
+    if (ghost2Str     !== undefined) uniforms.ghost2Str.value     = ghost2Str;
+    if (ghost2TintR   !== undefined) uniforms.ghost2TintR.value   = ghost2TintR;
+    if (ghost2TintG   !== undefined) uniforms.ghost2TintG.value   = ghost2TintG;
+    if (ghost2TintB   !== undefined) uniforms.ghost2TintB.value   = ghost2TintB;
     if (glitchBurstLoss !== undefined) uniforms.glitchBurstLoss.value = glitchBurstLoss;
     if (vbiStr        !== undefined) uniforms.vbiStr.value        = vbiStr;
     if (vbiLines      !== undefined) uniforms.vbiLines.value      = vbiLines;
@@ -2218,8 +2851,90 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       );
       uniforms.glassBlurRadius.value = v;
     }
-    if (haloRadius !== undefined) uniforms.haloRadius.value = haloRadius;
-    if (haloStr    !== undefined) uniforms.haloStr.value    = haloStr;
+    if (haloRadius      !== undefined) uniforms.haloRadius.value      = haloRadius;
+    if (haloStr         !== undefined) uniforms.haloStr.value         = haloStr;
+    // SPEC-analog-artifacts params
+    // SPEC-physics-grounding params
+    if (ringDecay           !== undefined) uniforms.ringDecay.value           = ringDecay;
+    if (ringFreq            !== undefined) uniforms.ringFreq.value            = ringFreq;
+    if (halationTailSigma   !== undefined) uniforms.halationTailSigma.value   = halationTailSigma;
+    if (halationCoreBlend   !== undefined) uniforms.halationCoreBlend.value   = halationCoreBlend;
+    if (halationSpectra     !== undefined) uniforms.halationSpectra.value     = Math.max(0, Math.min(1, halationSpectra));
+    if (swimBW              !== undefined) cfg.swimBW                         = swimBW;
+    if (flutterBW           !== undefined) cfg.flutterBW                      = flutterBW;
+    if (ringAmt         !== undefined) uniforms.ringAmt.value         = ringAmt;
+    if (chromaBlur      !== undefined) uniforms.chromaBlur.value      = chromaBlur;
+    if (ycDelay         !== undefined) uniforms.ycDelay.value         = ycDelay;
+    if (chromaAMNoise   !== undefined) uniforms.chromaAMNoise.value   = chromaAMNoise;
+    if (chromaPMNoise   !== undefined) uniforms.chromaPMNoise.value   = chromaPMNoise;
+    if (crossColorAmt     !== undefined) uniforms.crossColorAmt.value     = crossColorAmt;
+    if (crossColorFreq    !== undefined) uniforms.crossColorFreq.value    = crossColorFreq;
+    if (ntscCompositeMode !== undefined) uniforms.ntscCompositeMode.value = ntscCompositeMode;
+    if (ycSeparatorQ      !== undefined) uniforms.ycSeparatorQ.value      = ycSeparatorQ;
+    if (tapeDropoutRate !== undefined) uniforms.tapeDropoutRate.value = tapeDropoutRate;
+    if (tapeFlutterAmt  !== undefined) uniforms.tapeFlutterAmt.value  = tapeFlutterAmt;
+    if (tapeFlutterRate !== undefined) uniforms.tapeFlutterRate.value = tapeFlutterRate;
+    if (tapeChromaAmt   !== undefined) uniforms.tapeChromaAmt.value   = tapeChromaAmt;
+    if (yokeRingAmt     !== undefined) uniforms.yokeRingAmt.value     = yokeRingAmt;
+    if (yokeFreq        !== undefined) uniforms.yokeFreq.value        = yokeFreq;
+    if (yokeDecay       !== undefined) uniforms.yokeDecay.value       = yokeDecay;
+    if (svmAmt          !== undefined) uniforms.svmAmt.value          = svmAmt;
+    if (tensionWireStr  !== undefined) uniforms.tensionWireStr.value  = tensionWireStr;
+    if (tensionWireY1   !== undefined) uniforms.tensionWireY1.value   = tensionWireY1;
+    if (tensionWireY2   !== undefined) uniforms.tensionWireY2.value   = tensionWireY2;
+    if (tensionWireWidth !== undefined) uniforms.tensionWireWidth.value = tensionWireWidth;
+    if (shimmerAmt      !== undefined) uniforms.shimmerAmt.value      = shimmerAmt;
+    if (shimmerFreq     !== undefined) uniforms.shimmerFreq.value     = shimmerFreq;
+    // SPEC-feedback-loop: feedbackMix clamped to [0, 0.97] — values above ~0.97 risk
+    // divergence when warpMult is nonzero and halation is active.
+    if (feedbackMix     !== undefined) uniforms.feedbackMix.value     = Math.min(Math.max(parseFloat(feedbackMix), 0), 0.97);
+    // SPEC-novel-crt-physics param assignments
+    if (ehtRippleAmt    !== undefined) uniforms.ehtRippleAmt.value    = Math.max(0, ehtRippleAmt);
+    if (ehtDecayRate    !== undefined) uniforms.ehtDecayRate.value    = Math.max(0.1, ehtDecayRate);
+    if (astigAmt        !== undefined) uniforms.astigAmt.value        = Math.max(0, astigAmt);
+    if (astigRadial     !== undefined) uniforms.astigRadial.value     = Math.max(0, astigRadial);
+    if (astigTangential !== undefined) uniforms.astigTangential.value = Math.max(0, astigTangential);
+    if (glassTintStr    !== undefined) uniforms.glassTintStr.value    = Math.min(1, Math.max(0, glassTintStr));
+    if (glassTintProfile !== undefined) uniforms.glassTintProfile.value = Math.min(2, Math.max(0, glassTintProfile));
+    if (phosphorGrainAmt   !== undefined) uniforms.phosphorGrainAmt.value   = Math.max(0, phosphorGrainAmt);
+    if (phosphorGrainScale !== undefined) uniforms.phosphorGrainScale.value = Math.max(0.01, phosphorGrainScale);
+    if (vchromaHetAmt   !== undefined) uniforms.vchromaHetAmt.value   = Math.max(0, vchromaHetAmt);
+    if (vchromaFreq     !== undefined) uniforms.vchromaFreq.value     = Math.max(0.1, vchromaFreq);
+    if (vchromaDrift    !== undefined) uniforms.vchromaDrift.value    = vchromaDrift;
+    if (vhsLumaBlur     !== undefined) uniforms.vhsLumaBlur.value     = Math.max(0, vhsLumaBlur);
+    if (vhsChromaVBlend !== undefined) uniforms.vhsChromaVBlend.value = Math.min(1, Math.max(0, vhsChromaVBlend));
+    if (vhsSwitchStr    !== undefined) uniforms.vhsSwitchStr.value    = Math.min(1, Math.max(0, vhsSwitchStr));
+    if (vhsSwitchLines  !== undefined) uniforms.vhsSwitchLines.value  = Math.max(1, vhsSwitchLines);
+    if (vhsSwitchOffset !== undefined) uniforms.vhsSwitchOffset.value = Math.min(0.1, Math.max(0, vhsSwitchOffset));
+    // Effect 6: Video amplifier group delay — CPU-side FIR mapping only, no GPU uniform for the
+    // physics params themselves. vidAmpFreq/vidAmpDamp/vidAmpPixelClock map to ringDecay/ringFreq.
+    // Physical: video amplifier 2nd-order rolloff causes ringing at its resonant frequency.
+    // vidAmpFreq: resonant frequency in MHz (default 7.0 = typical discrete transistor amp stage)
+    // vidAmpDamp: damping ratio 0.3–1.2 (Q = 1/(2*damp)); lower = more ringing (0.7 = Butterworth)
+    // vidAmpPixelClock: pixel clock in MHz (default 14.3 = NTSC Y-bandwidth 4.2 MHz * 3.4)
+    if (vidAmpFreq !== undefined || vidAmpDamp !== undefined || vidAmpPixelClock !== undefined) {
+      const _vaf = vidAmpFreq       !== undefined ? vidAmpFreq       : 7.0;
+      const _vad = vidAmpDamp       !== undefined ? vidAmpDamp       : 0.7;
+      const _vpc = vidAmpPixelClock !== undefined ? vidAmpPixelClock : 14.3;
+      // Convert resonant frequency to normalised cycles/sample (0..0.5).
+      const normFreq = _vaf / _vpc;  // 0 .. 0.5 (Nyquist)
+      // Map damping to ringDecay: higher damping = faster decay = higher alpha.
+      // Physical: alpha = exp(-pi * damp / sqrt(1-damp^2)) for underdamped; clamped at 0.98.
+      const dampClamped = Math.max(0.1, Math.min(1.2, _vad));
+      const sqrtTerm = Math.sqrt(Math.max(0.01, 1.0 - dampClamped * dampClamped));
+      const derivedRingDecay = Math.min(0.98, Math.exp(-Math.PI * dampClamped / sqrtTerm));
+      // ringFreq maps to normFreq * 2 (the existing shader convention is 0..1 = 0..pi rad/sample).
+      const derivedRingFreq  = Math.min(0.499, normFreq * 2.0);
+      uniforms.ringDecay.value = derivedRingDecay;
+      uniforms.ringFreq.value  = derivedRingFreq;
+    }
+    if (afterglowStr    !== undefined) uniforms.afterglowStr.value    = Math.min(1, Math.max(0, afterglowStr));
+    if (domingAmt       !== undefined) uniforms.domingAmt.value       = Math.max(0, domingAmt);
+    if (domingThermalTau !== undefined) uniforms.domingThermalTau.value = Math.max(0.1, domingThermalTau);
+    if (phosphorSatAmt     !== undefined) uniforms.phosphorSatAmt.value     = Math.min(1.0, Math.max(0, phosphorSatAmt));
+    if (phosphorXtalkAmt   !== undefined) uniforms.phosphorXtalkAmt.value   = Math.min(0.10, Math.max(0, phosphorXtalkAmt));
+    if (phosphorXtalkRadius !== undefined) uniforms.phosphorXtalkRadius.value = Math.min(2.0, Math.max(0.1, phosphorXtalkRadius));
+    if (phosphorAge        !== undefined) uniforms.phosphorAge.value        = Math.min(1.0, Math.max(0, phosphorAge));
     // P0-A: warn once when haloRadius/haloStr are set but GaussianBlurNode is unavailable.
     // No rebuild needed when only the value changes (zero-strength is discarded by the GPU).
     // A rebuild is only needed when haloActive flips (crossing the > 0.001 / > 0.1 thresholds).
@@ -2267,7 +2982,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
 
   /**
    * Swap or clear the video source at runtime.
-   * Disposes the old VideoTexture, creates a new one, and hot-swaps the material map.
+   * Disposes the old CanvasTexture, creates a new one, and hot-swaps the material map.
    * Has no effect if opts.videoSource was not provided at init — logs a warning instead.
    * @param {HTMLVideoElement | null} videoEl  New video element, or null to render black.
    */
@@ -2278,11 +2993,21 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       return;
     }
 
-    // 1. Remove old listener and dispose old texture
+    // 1. Remove old listeners and dispose old texture
+    if (canPlayHandler && currentVideoEl) {
+      currentVideoEl.removeEventListener('canplay', canPlayHandler);
+      canPlayHandler = null;
+    }
     if (loadedMetaHandler && currentVideoEl) {
       currentVideoEl.removeEventListener('loadedmetadata', loadedMetaHandler);
       loadedMetaHandler = null;
     }
+    if (videoRafCbId && currentVideoEl) {
+      try { currentVideoEl.cancelVideoFrameCallback(videoRafCbId); } catch (_) {}
+      videoRafCbId = 0;
+    }
+    videoCanvas = null;
+    videoCtx    = null;
     if (videoTexture) {
       try { videoTexture.dispose(); } catch (_) {}
       videoTexture = null;
@@ -2290,23 +3015,63 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
 
     // 2. Create new texture or 1×1 black DataTexture placeholder
     currentVideoEl = videoEl;
-    _videoCanvas   = null;
-    _videoCtx      = null;
-    _lastVideoTime = -1;  // force redraw on first frame of new source
     if (videoEl) {
-      // Build the OffscreenCanvas proxy — draw the first frame immediately so the
-      // CanvasTexture has valid content before the bind group is created.
-      const vw = videoEl.videoWidth  || 1;
-      const vh = videoEl.videoHeight || 1;
-      _videoCanvas = new OffscreenCanvas(vw, vh);
-      _videoCtx    = _videoCanvas.getContext('2d');
-      _videoCtx.drawImage(videoEl, 0, 0, vw, vh);
+      // Helper: constructs the CanvasTexture and hot-swaps the material map.
+      // Deferred to canplay when the video has no decoded frames yet.
+      const activateVideoTexture = () => {
+        if (destroyed || currentVideoEl !== videoEl) return;
+        if (canPlayHandler) {
+          videoEl.removeEventListener('canplay', canPlayHandler);
+          canPlayHandler = null;
+        }
+        if (videoRafCbId && currentVideoEl) {
+          try { currentVideoEl.cancelVideoFrameCallback(videoRafCbId); } catch (_) {}
+          videoRafCbId = 0;
+        }
+        const w = videoEl.videoWidth  || 2;
+        const h = videoEl.videoHeight || 2;
+        videoCanvas = document.createElement('canvas'); videoCanvas.width = w; videoCanvas.height = h;
+        videoCtx    = videoCanvas.getContext('2d');
+        const vt = new THREE.CanvasTexture(videoCanvas);
+        vt.minFilter       = THREE.LinearFilter;
+        vt.magFilter       = THREE.LinearFilter;
+        vt.colorSpace      = THREE.SRGBColorSpace;
+        vt.generateMipmaps = false;
+        vt.flipY           = false;  // QuadGeometry(false) V=0→screen-top; no UNPACK_FLIP_Y needed
+        if (videoTexture && !videoTexture.isCanvasTexture) {
+          try { videoTexture.dispose(); } catch (_) {}
+        }
+        videoTexture = vt;
+        videoMesh.material.map = videoTexture;
+        videoMesh.material.needsUpdate = true;
+        if ('requestVideoFrameCallback' in videoEl) {
+          const drawFrame = () => {
+            if (destroyed || currentVideoEl !== videoEl || !videoCtx) return;
+            if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+              if (videoCanvas.width !== videoEl.videoWidth || videoCanvas.height !== videoEl.videoHeight) {
+                videoCanvas.width  = videoEl.videoWidth;
+                videoCanvas.height = videoEl.videoHeight;
+              }
+              videoCtx.drawImage(videoEl, 0, 0);
+              if (videoTexture && videoTexture.isCanvasTexture) videoTexture.needsUpdate = true;
+            }
+            videoRafCbId = videoEl.requestVideoFrameCallback(drawFrame);
+          };
+          videoRafCbId = videoEl.requestVideoFrameCallback(drawFrame);
+        }
+      };
 
-      videoTexture = new THREE.CanvasTexture(_videoCanvas);
-      videoTexture.minFilter = THREE.LinearFilter;
-      videoTexture.magFilter = THREE.LinearFilter;
-      videoTexture.colorSpace = THREE.SRGBColorSpace;
+      // Start with a 1×1 black placeholder so the mesh renders black until ready
+      const blackData = new Uint8Array([0, 0, 0, 255]);
+      videoTexture = new THREE.DataTexture(blackData, 1, 1);
       videoTexture.needsUpdate = true;
+
+      if (videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        activateVideoTexture();
+      } else {
+        canPlayHandler = activateVideoTexture;
+        videoEl.addEventListener('canplay', canPlayHandler, { once: true });
+      }
 
       if (videoEl.readyState >= HTMLMediaElement.HAVE_METADATA) {
         fitPlane(videoMesh, videoEl);
@@ -2352,11 +3117,29 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     try { _dummyPrevRT.dispose(); } catch (_) {}
     prevTexNode = null;
 
+    // Feedback dummy RT (not managed by disposeCurrentPP — it's the permanent placeholder)
+    try { _dummyFeedbackRT.dispose(); } catch (_) {}
+    feedbackTexNode = null;
+
+    // Afterglow dummy RT (not managed by disposeCurrentPP — it's the permanent placeholder)
+    try { _dummyAfterglowRT.dispose(); } catch (_) {}
+    _afterglowTexNode = null;
+
     // Video source cleanup
+    if (canPlayHandler && currentVideoEl) {
+      currentVideoEl.removeEventListener('canplay', canPlayHandler);
+      canPlayHandler = null;
+    }
     if (loadedMetaHandler && currentVideoEl) {
       currentVideoEl.removeEventListener('loadedmetadata', loadedMetaHandler);
       loadedMetaHandler = null;
     }
+    if (videoRafCbId && currentVideoEl) {
+      try { currentVideoEl.cancelVideoFrameCallback(videoRafCbId); } catch (_) {}
+      videoRafCbId = 0;
+    }
+    videoCanvas = null;
+    videoCtx    = null;
     if (videoTexture) {
       try { videoTexture.dispose(); } catch (_) {}
       videoTexture = null;
@@ -2370,13 +3153,23 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       videoMesh = null;
     }
     currentVideoEl = null;
-    _videoCanvas   = null;
-    _videoCtx      = null;
 
     // Null internal refs to aid GC and prevent accidental use after destroy
     scratchTexture   = null;
     scratchTexNode   = null;
     osdTexNode       = null;
+  }
+
+  /**
+   * Trigger a tension wire shimmer event (E. Trinitron aperture-grille wire resonance).
+   * Resets shimmerPhase to 0 and starts the phase-increment driver in renderFrame.
+   * shimmerPhase advances 0 → 1.5 s; WGSL applies sin(phase*freq*2π)*exp(-phase*8).
+   * Amplitude is controlled by the `shimmerAmt` uniform (via setShader).
+   */
+  function triggerWireShimmer() {
+    _shimmerPhase  = 0.0;
+    _shimmerActive = true;
+    uniforms.shimmerPhase.value = 0.0;
   }
 
   return {
@@ -2389,8 +3182,55 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     setOSD,
     setVideoSource,
     renderFrame,
+    triggerWireShimmer,
     destroy,
     get effectiveSourceW() { return uniforms.sourceSizeX.value; },
     get effectiveSourceH() { return uniforms.sourceSizeY.value; },
+    // Bridge-mode API (used by buildCRTNodesFromSource)
+    get _outputNode() { return postProcessing?.outputNode ?? null; },
+    _tick,
+    _postRender,
+    _setSourceNode,
+  };
+}
+
+/**
+ * Build the CRT post-processing node chain on top of an externally-provided
+ * source node. Used by integration bridges where the scene has already been
+ * rendered and post-processed by another library.
+ *
+ * Call only after renderer.init() has resolved.
+ *
+ * @param {THREE.WebGPURenderer} renderer   Initialised renderer
+ * @param {object}               sourceNode TSL node — vec4 RGBA to apply CRT on top of
+ * @param {object}               [opts]     Same opts as initTelescreenCRTWebGPU, except
+ *                                          videoSource and autoRender are not applicable.
+ * @returns {{
+ *   outputNode: object,
+ *   setShader(params: object): void,
+ *   setGlitch(enabled: boolean, ...): void,
+ *   setBloom(params: object): void,
+ *   tick(ts: number): { skipRender: boolean, newOutputNode: object|null },
+ *   postRender(renderer: object): void,
+ *   setSourceNode(node: object): void,
+ * }}
+ */
+export function buildCRTNodesFromSource(renderer, sourceNode, opts = {}) {
+  if (sourceNode == null) {
+    throw new Error('buildCRTNodesFromSource: sourceNode is null');
+  }
+  const instance = initTelescreenCRTWebGPU(renderer, null, null, {
+    ...opts,
+    autoRender: false,
+    _externalSource: sourceNode,
+  });
+  return {
+    get outputNode() { return instance._outputNode; },
+    setShader:       instance.setShader,
+    setGlitch:       instance.setGlitch,
+    setBloom:        instance.setBloom,
+    tick:            (ts) => instance._tick(ts),
+    postRender:      (rdr) => instance._postRender(rdr),
+    setSourceNode:   (node) => instance._setSourceNode(node),
   };
 }

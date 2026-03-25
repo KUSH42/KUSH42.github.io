@@ -34,7 +34,7 @@ export const PRESETS = {
     maskType: 0, maskStr: 0.85, maskScale: 3.91, maskSmooth: 0.12, apertureW: 1.0,
     warpMult: 0.20, hardPix: -2.5, hardScan: -8.0,
     brightBoost: 0.55, colorTempStr: 0.65,
-    halationStr: 2.0, halationSharp: -0.85, halationWarm: 0.40,
+    halationStr: 2.0, halationSharp: -0.85, halationWarm: 0.40, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.018, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 1.0,
@@ -48,13 +48,19 @@ export const PRESETS = {
     // Flat Trinitron panel, late-model AR coating — low scatter.
     glassBlurEnabled: true, glassBlurStr: 0.008, glassBlurRadius: 0.002,
     warpAniso: 0.90,
-    interlace: true,
+    interlace: false,  // 240p progressive (console/retro game source); toggle true for 480i broadcast
     // Interference — zeroed; signal source preset sets these
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.08, phosphorAge: 0.00, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
     sourceSizeX: 320, sourceSizeY: 240,
   },
 
@@ -67,16 +73,16 @@ export const PRESETS = {
     maskType: 1, maskStr: 0.55, maskScale: 3.16, maskSmooth: 0.05, apertureW: 0.67,
     warpMult: 0.45, hardPix: -2.0, hardScan: -7.0,
     brightBoost: 0.60, colorTempStr: 0.45,
-    halationStr: 2.5, halationSharp: -0.65, halationWarm: 0.0,
+    halationStr: 2.5, halationSharp: -0.65, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.028, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.80,
     grainAmt: 0.020, snowAmt: 0.05, swimAmt: 0.25,
-    defocusAmt: 0.50, defocusAniso: 0.0, scratchStr: 0.025, scrollRate: 0.06,
+    defocusAmt: 0.38, defocusAniso: 0.0, scratchStr: 0.025, scrollRate: 0.06,
     blackLevel: 0.0003, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 50.0,
-    flickerTauR: 0.0004, flickerTauG: 0.006, flickerTauB: 0.00008,
+    flickerTauR: 0.0004, flickerTauG: 0.0003, flickerTauB: 0.00008,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // 14" consumer, no AR coating — moderate scatter.
     glassBlurEnabled: true, glassBlurStr: 0.010, glassBlurRadius: 0.002,
@@ -85,8 +91,14 @@ export const PRESETS = {
     humAmt: 0.0, humBars: 1.0, humRate: 0.05,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.08, phosphorAge: 0.00, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
     sourceSizeX: 384, sourceSizeY: 272,
   },
 
@@ -99,7 +111,7 @@ export const PRESETS = {
     maskType: 2, maskStr: 0.30, maskScale: 2.63, maskSmooth: 0.0, apertureW: 0.67,
     warpMult: 0.05, hardPix: -3.0, hardScan: -9.0,
     brightBoost: 0.65, colorTempStr: 0.0,
-    halationStr: 1.0, halationSharp: -1.5, halationWarm: 0.0,
+    halationStr: 1.0, halationSharp: -1.5, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.006, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.85,
@@ -117,8 +129,14 @@ export const PRESETS = {
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.05, phosphorAge: 0.00, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
     sourceSizeX: 0, sourceSizeY: 0,
   },
 
@@ -132,12 +150,12 @@ export const PRESETS = {
     maskType: 1, maskStr: 0.70, maskScale: 4.51, maskSmooth: 0.0, apertureW: 0.67,
     warpMult: 0.35, hardPix: -2.0, hardScan: -6.0,
     brightBoost: 0.80, colorTempStr: 0.50,
-    halationStr: 3.0, halationSharp: -0.55, halationWarm: 0.0,
+    halationStr: 3.0, halationSharp: -0.55, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.040, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.75,
     grainAmt: 0.008, snowAmt: 0.01, swimAmt: 0.40,
-    defocusAmt: 0.55, defocusAniso: 0.0, scratchStr: 0.04, scrollRate: 0.08,
+    defocusAmt: 0.41, defocusAniso: 0.0, scratchStr: 0.04, scrollRate: 0.08,
     blackLevel: 0.0002, p22Str: 0.45, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
@@ -150,9 +168,15 @@ export const PRESETS = {
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
-    sourceSizeX: 256, sourceSizeY: 224, cornerFade: 0.026,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.10, phosphorAge: 0.20, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
+    sourceSizeX: 256, sourceSizeY: 224,
   },
 
   /**
@@ -164,16 +188,16 @@ export const PRESETS = {
     maskType: 1, maskStr: 0.60, maskScale: 3.91, maskSmooth: 0.08, apertureW: 0.67,
     warpMult: 0.55, hardPix: -1.5, hardScan: -7.0,
     brightBoost: 0.58, colorTempStr: 0.0,
-    halationStr: 2.8, halationSharp: -0.55, halationWarm: 0.0,
+    halationStr: 2.8, halationSharp: -0.55, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.030, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.80,
     grainAmt: 0.030, snowAmt: 0.07, swimAmt: 0.30,
-    defocusAmt: 0.55, defocusAniso: 0.0, scratchStr: 0.030, scrollRate: 0.05,
+    defocusAmt: 0.41, defocusAniso: 0.0, scratchStr: 0.030, scrollRate: 0.05,
     blackLevel: 0.0003, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 50.0,
-    flickerTauR: 0.0004, flickerTauG: 0.006, flickerTauB: 0.00008,
+    flickerTauR: 0.0004, flickerTauG: 0.0003, flickerTauB: 0.00008,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Large 25" tube, thick curved glass, light AR — noticeable scatter.
     glassBlurEnabled: true, glassBlurStr: 0.012, glassBlurRadius: 0.002,
@@ -182,29 +206,36 @@ export const PRESETS = {
     humAmt: 0.0, humBars: 1.0, humRate: 0.05,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
-    sourceSizeX: 720, sourceSizeY: 576, cornerFade: 0.028,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.10, phosphorAge: 0.30, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
+    sourceSizeX: 720, sourceSizeY: 576,
   },
 
   /**
    * RCA XL-100 CTC-74 (1975 NTSC) — early solid-state color television.
    * Delta-gun shadow mask 0.70 mm pitch, non-calibrated warm color temp,
-   * significant convergence error (manual adjustment), 59.94 Hz interlaced NTSC.
+   * significant convergence error (manual adjustment), 59.94 Hz NTSC.
    * Reference: RCA XL-100 service data; SMPTE RP-37 P22 phosphor spec.
    * maskScale = 0.70 mm × 7.52 = 5.26. convAspect near 0 — delta gun has
    * radial (not H-only) convergence errors at screen periphery.
+   * Configured for 240p game/console source; set interlace: true for 480i broadcast.
    */
   rca1975: {
     maskType: 1, maskStr: 0.78, maskScale: 5.26, maskSmooth: 0.15, apertureW: 0.67,
     warpMult: 0.65, hardPix: -1.4, hardScan: -6.5,
     brightBoost: 0.65, colorTempStr: 0.20,
-    halationStr: 3.8, halationSharp: -0.40, halationWarm: 0.0,
+    halationStr: 3.8, halationSharp: -0.40, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.055, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.15,
     grainAmt: 0.022, snowAmt: 0.03, swimAmt: 0.55,
-    defocusAmt: 0.50, defocusAniso: 0.0, scratchStr: 0.040, scrollRate: 0.08,
+    defocusAmt: 0.38, defocusAniso: 0.0, scratchStr: 0.040, scrollRate: 0.08,
     blackLevel: 0.0005, p22Str: 0.45, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
@@ -213,32 +244,39 @@ export const PRESETS = {
     // Old thick borosilicate, no AR coating — heavy scatter.
     glassBlurEnabled: true, glassBlurStr: 0.022, glassBlurRadius: 0.003,
     warpAniso: 0.0,
-    interlace: true,
+    interlace: false,  // 240p game source; toggle true for 480i broadcast
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
-    sourceSizeX: 320, sourceSizeY: 240, cornerFade: 0.032,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.12, phosphorAge: 0.40, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
+    sourceSizeX: 320, sourceSizeY: 240,
   },
 
   /**
    * Emerson MS250R (1988 NTSC) — budget 13″ consumer portable.
    * Coarse PIL shadow mask 0.62 mm pitch, uncalibrated warm-pushed color,
-   * heavy barrel warp, 59.94 Hz interlaced. Represents the cheap dorm-room /
+   * heavy barrel warp, 59.94 Hz NTSC. Represents the cheap dorm-room /
    * kitchen TV that was the dominant NTSC viewing device in the late 1980s.
    * maskScale = 0.62 mm × 7.52 = 4.66.
+   * Configured for 240p game/console source; set interlace: true for 480i broadcast.
    */
   emerson88: {
     maskType: 1, maskStr: 0.68, maskScale: 4.66, maskSmooth: 0.10, apertureW: 0.67,
     warpMult: 0.65, hardPix: -1.7, hardScan: -7.0,
     brightBoost: 0.62, colorTempStr: 0.30,
-    halationStr: 3.3, halationSharp: -0.50, halationWarm: 0.0,
+    halationStr: 3.3, halationSharp: -0.50, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.050, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.78,
     grainAmt: 0.020, snowAmt: 0.03, swimAmt: 0.42,
-    defocusAmt: 0.60, defocusAniso: 0.0, scratchStr: 0.030, scrollRate: 0.07,
+    defocusAmt: 0.45, defocusAniso: 0.0, scratchStr: 0.030, scrollRate: 0.07,
     blackLevel: 0.0004, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
@@ -247,13 +285,19 @@ export const PRESETS = {
     // Budget 13" consumer, no AR coating — moderate scatter.
     glassBlurEnabled: true, glassBlurStr: 0.014, glassBlurRadius: 0.002,
     warpAniso: 0.0,
-    interlace: true,
+    interlace: false,  // 240p game source; toggle true for 480i broadcast
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
-    sourceSizeX: 320, sourceSizeY: 240, cornerFade: 0.028,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.10, phosphorAge: 0.35, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
+    sourceSizeX: 320, sourceSizeY: 240,
   },
 
   /**
@@ -269,7 +313,7 @@ export const PRESETS = {
     maskType: 1, maskStr: 0.15, maskScale: 1.88, maskSmooth: 0.0, apertureW: 0.67,
     warpMult: 0.04, hardPix: -4.0, hardScan: -10.0,
     brightBoost: 0.75, colorTempStr: 0.0,
-    halationStr: 0.30, halationSharp: -2.0, halationWarm: 0.0,
+    halationStr: 0.30, halationSharp: -2.0, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.003, convStaticX: 0.0, convStaticY: 0.0,
     convBX: 0.0, convBY: 0.0, convAspect: 0.5,
@@ -287,8 +331,14 @@ export const PRESETS = {
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
     ghostTintR: 1.0, ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     agcAmt: 0.0, agcRate: 1.2,
     dotCrawlAmt: 0.0, glitchBurstLoss: 0.70, vbiStr: 0.0, vbiLines: 3.0,
+    // Novel CRT physics — zeroed per preset; enable individually via setShader
+    ehtRippleAmt: 0.0, ehtDecayRate: 4.0, astigAmt: 0.0, astigRadial: 0.5, astigTangential: 0.15,
+    glassTintStr: 0.0, glassTintProfile: 0.0, phosphorGrainAmt: 0.0, phosphorGrainScale: 0.5,
+    afterglowStr: 0.0, domingAmt: 0.0, domingThermalTau: 3.0,
+    phosphorSatAmt: 0.05, phosphorAge: 0.00, phosphorXtalkAmt: 0.0, phosphorXtalkRadius: 0.5,
     sourceSizeX: 0, sourceSizeY: 0,
   },
 
@@ -323,10 +373,16 @@ export const SIGNAL_PRESETS = {
     humAmt: 0.0,   humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0,  ghostStr: 0.0,
     ghostTintR: 1.0,   ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     dotCrawlAmt: 0.0,
     glitchBurstLoss: 0.70,
     vbiStr: 0.0,   vbiLines: 3.0,
     agcAmt: 0.0,   agcRate: 1.2,
+    ringAmt: 0.0, chromaBlur: 0.0, ycDelay: 0.0, chromaAMNoise: 0.0, chromaPMNoise: 0.0, crossColorAmt: 0.0,
+    ntscCompositeMode: 0.0, ycSeparatorQ: 0.4,
+    tapeDropoutRate: 0.0, tapeFlutterAmt: 0.0, tapeChromaAmt: 0.0,
+    vchromaHetAmt: 0.0, vchromaFreq: 4.0, vchromaDrift: 0.3,
+    vhsLumaBlur: 0.0, vhsChromaVBlend: 0.0, vhsSwitchStr: 0.0, vhsSwitchLines: 8.0, vhsSwitchOffset: 0.03,
   },
 
   /**
@@ -338,10 +394,17 @@ export const SIGNAL_PRESETS = {
     humAmt: 0.003, humBars: 1.0, humRate: 0.06,
     ghostOffset: 4.0,  ghostStr: 0.06,
     ghostTintR: 1.0,   ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     dotCrawlAmt: 0.05,
     glitchBurstLoss: 0.60,
     vbiStr: 0.04,  vbiLines: 2.0,
     agcAmt: 0.005, agcRate: 0.8,
+    // IF ringing and mild chroma bandwidth limiting (NTSC composite demodulation)
+    ringAmt: 0.08, chromaBlur: 1.2, ycDelay: 0.5, chromaAMNoise: 0.0, chromaPMNoise: 0.0, crossColorAmt: 0.08,
+    ntscCompositeMode: 0.0, ycSeparatorQ: 0.4,
+    tapeDropoutRate: 0.0, tapeFlutterAmt: 0.0, tapeChromaAmt: 0.0,
+    vchromaHetAmt: 0.0, vchromaFreq: 4.0, vchromaDrift: 0.3,
+    vhsLumaBlur: 0.0, vhsChromaVBlend: 0.0, vhsSwitchStr: 0.0, vhsSwitchLines: 8.0, vhsSwitchOffset: 0.03,
   },
 
   /**
@@ -354,10 +417,20 @@ export const SIGNAL_PRESETS = {
     humAmt: 0.008, humBars: 1.0, humRate: 0.06,
     ghostOffset: 8.0,  ghostStr: 0.18,
     ghostTintR: 1.0,   ghostTintG: 0.94, ghostTintB: 0.90,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     dotCrawlAmt: 0.12,
     glitchBurstLoss: 0.40,
     vbiStr: 0.07,  vbiLines: 3.0,
     agcAmt: 0.022, agcRate: 1.2,
+    // VHS tape signal degradation: IF ringing, heavy chroma blur + Y/C delay, cross-color
+    ringAmt: 0.18, chromaBlur: 2.5, ycDelay: 1.2, chromaAMNoise: 0.0, chromaPMNoise: 0.0, crossColorAmt: 0.18,
+    ntscCompositeMode: 0.0, ycSeparatorQ: 0.4,
+    // Tape transport artifacts: flutter, FM chroma noise, occasional dropout
+    tapeDropoutRate: 0.004, tapeFlutterAmt: 0.08, tapeFlutterRate: 2.3, tapeChromaAmt: 0.12,
+    // VHS 629kHz heterodyne beat: slowly-sweeping iridescent colour mottling from capstan wow
+    vchromaHetAmt: 0.08, vchromaFreq: 4.0, vchromaDrift: 0.3,
+    // VHS signal processing (SPEC-vhs-signal-artifacts)
+    vhsLumaBlur: 1.0, vhsChromaVBlend: 1.0, vhsSwitchStr: 0.6, vhsSwitchLines: 8.0, vhsSwitchOffset: 0.02,
   },
 
   /**
@@ -370,10 +443,17 @@ export const SIGNAL_PRESETS = {
     humAmt: 0.022, humBars: 1.0, humRate: 0.06,
     ghostOffset: 12.0, ghostStr: 0.12,
     ghostTintR: 1.0,   ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     dotCrawlAmt: 0.09,
     glitchBurstLoss: 0.55,
     vbiStr: 0.05,  vbiLines: 3.0,
     agcAmt: 0.012, agcRate: 1.2,
+    // Fringe-signal ringing and chroma degradation (weaker than VHS)
+    ringAmt: 0.12, chromaBlur: 1.5, ycDelay: 0.8, chromaAMNoise: 0.0, chromaPMNoise: 0.0, crossColorAmt: 0.12,
+    ntscCompositeMode: 0.0, ycSeparatorQ: 0.4,
+    tapeDropoutRate: 0.0, tapeFlutterAmt: 0.0, tapeChromaAmt: 0.0,
+    vchromaHetAmt: 0.0, vchromaFreq: 4.0, vchromaDrift: 0.3,
+    vhsLumaBlur: 0.0, vhsChromaVBlend: 0.0, vhsSwitchStr: 0.0, vhsSwitchLines: 8.0, vhsSwitchOffset: 0.03,
   },
 
   /**
@@ -386,10 +466,18 @@ export const SIGNAL_PRESETS = {
     humAmt: 0.025, humBars: 1.0, humRate: 0.05,
     ghostOffset: 8.0,  ghostStr: 0.132,
     ghostTintR: 1.0,   ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     dotCrawlAmt: 0.03,
     glitchBurstLoss: 0.50,
     vbiStr: 0.06,  vbiLines: 3.0,
     agcAmt: 0.015, agcRate: 1.0,
+    // PAL: slightly wider chroma bandwidth than NTSC, mild ringing, very low cross-color
+    // (PAL phase alternation largely cancels cross-color vs NTSC)
+    ringAmt: 0.10, chromaBlur: 1.0, ycDelay: 0.6, chromaAMNoise: 0.0, chromaPMNoise: 0.0, crossColorAmt: 0.04,
+    ntscCompositeMode: 0.0, ycSeparatorQ: 0.4,
+    tapeDropoutRate: 0.0, tapeFlutterAmt: 0.0, tapeChromaAmt: 0.0,
+    vchromaHetAmt: 0.0, vchromaFreq: 4.0, vchromaDrift: 0.3,
+    vhsLumaBlur: 0.0, vhsChromaVBlend: 0.0, vhsSwitchStr: 0.0, vhsSwitchLines: 8.0, vhsSwitchOffset: 0.03,
   },
 
   /**
@@ -401,10 +489,17 @@ export const SIGNAL_PRESETS = {
     humAmt: 0.001, humBars: 1.0, humRate: 0.06,
     ghostOffset: 3.0,  ghostStr: 0.02,
     ghostTintR: 1.0,   ghostTintG: 0.97, ghostTintB: 0.97,
+    ghost2Offset: 0.0, ghost2Str: 0.0, ghost2TintR: 1.0, ghost2TintG: 0.97, ghost2TintB: 0.97,
     dotCrawlAmt: 0.0,
     glitchBurstLoss: 0.70,
     vbiStr: 0.01,  vbiLines: 2.0,
     agcAmt: 0.002, agcRate: 0.6,
+    // Component video: no composite ringing or chroma smearing; trace Y/C delay on long cable
+    ringAmt: 0.0, chromaBlur: 0.0, ycDelay: 0.2, chromaAMNoise: 0.0, chromaPMNoise: 0.0, crossColorAmt: 0.0,
+    ntscCompositeMode: 0.0, ycSeparatorQ: 0.4,
+    tapeDropoutRate: 0.0, tapeFlutterAmt: 0.0, tapeChromaAmt: 0.0,
+    vchromaHetAmt: 0.0, vchromaFreq: 4.0, vchromaDrift: 0.3,
+    vhsLumaBlur: 0.0, vhsChromaVBlend: 0.0, vhsSwitchStr: 0.0, vhsSwitchLines: 8.0, vhsSwitchOffset: 0.03,
   },
 
 };

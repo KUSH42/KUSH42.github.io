@@ -15,6 +15,11 @@
  *   ghostFn                                       -- multipath ghost UV offset sampler (wgslFn, P0-A)
  *   vbiFn                                         -- VBI bleed top-of-frame noise (wgslFn, P2-C)
  *   dotCrawlFn                                    -- NTSC dot crawl edge artifact (wgslFn, P2-A)
+ *   signalProcessFn                               -- combined pre-kernel signal chain: ringing, chroma blur, cross-color, dropout (wgslFn, SPEC-analog-artifacts)
+ *   tapeFlutterFn                                 -- post-gamma tape flutter brightness oscillation (wgslFn, SPEC-analog-artifacts D-1)
+ *   tapeChromaFn                                  -- post-gamma coarse per-field chroma noise (wgslFn, SPEC-analog-artifacts D-2)
+ *   buildTensionWireNode(posNode, sizeNode, u)     -- aperture-grille tension wire attenuation (pure TSL, SPEC-analog-artifacts E)
+ *   afterglowAccumFn                              -- differential phosphor afterglow accumulation (wgslFn, SPEC-novel-crt-physics Effect 7)
  */
 
 import {
@@ -292,7 +297,7 @@ fn analyticalMaskTap(k: i32, r: i32, maskType: i32, maskSmooth: f32) -> vec3f {
 //    Returns vec3f offset in [-grainAmt, +grainAmt] per channel.
 // ---------------------------------------------------------------------------
 export const grainFn = wgslFn(/* wgsl */`
-fn grainFn(pixelCoord: vec2f, t: f32, grainAmt: f32) -> vec3f {
+fn grainFn(pixelCoord: vec2f, t: f32, grainAmt: f32, col: vec3f) -> vec3f {
   // Single vec3->vec3 hash (IQ hash33 pattern): one traversal produces all three
   // independent R/G/B noise fields -- ~1.3x cheaper than three separate vec2 hashes.
   // Spatial decorrelation across channels is provided by the three different scale
@@ -307,7 +312,13 @@ fn grainFn(pixelCoord: vec2f, t: f32, grainAmt: f32) -> vec3f {
   var q: vec3f = fract(vec3f(pixelCoord.x, pixelCoord.y, tOff) * vec3f(0.1031, 0.1030, 0.0973));
   q = q + dot(q, q.yxz + 33.33);
   let n = fract((q.xxy + q.yxx) * q.zyx) * 2.0 - 1.0;
-  return n * grainAmt;
+  // Signal-dependent grain amplitude: Poisson shot noise gives sigma_display proportional
+  // to luma^(-(gamma-1)/2) = luma^(-0.75) at gamma=2.5 (grainFn is called post-gamma).
+  // Normalised by MIDGRAY_NORM = 0.5^(-0.75) so grainAmt retains its midgray meaning.
+  // Shadows get ~2x more grain; highlights slightly less (physically correct).
+  let luma      = dot(col, vec3f(0.2126, 0.7152, 0.0722));
+  let shotScale = clamp(pow(max(luma, 0.01), -0.75) / 1.6818, 0.6, 6.0);
+  return n * grainAmt * shotScale;
 }
 `);
 
@@ -449,32 +460,27 @@ export function buildP22MatrixNode(colNode, p22StrNode) {
 //      B' =  0.0076*R + 0.0272*G + 1.3021*B
 //    Luminance of white is preserved (Y = 0.2126*R + 0.7152*G + 0.0722*B ~= 1.0).
 //
-//    P1-D: Applied post-gamma (display/gamma-encoded space) to reduce blue-channel
-//    clipping artifacts. In linear light, B' = 1.3021*B exceeds 1.0 for B_linear > 0.748.
-//    Post-gamma application shifts the clip threshold to B_gamma > 0.748 (B_linear > 0.484
-//    at γ=2.5; DR-15 P1-D corrects prior comment that used γ=2.2 yielding 0.419),
-//    which clips more mid-tone values in linear terms but produces perceptually less objectionable
-//    results: compressed mid-tones retain visible colour, whereas linear-space clips yield flat
-//    hard-white regions in near-white content. White clips in both paths.
+//    PC-M5 (SPEC-deep-review-22): Now applied pre-gamma (linear-light cone space) between
+//    the P22 matrix and CRT gamma encode — the physically correct domain for chromatic
+//    adaptation. In linear light, B' = 1.3021*B clips for B_linear > 0.748 (near-white).
+//    The prior post-gamma path (P1-D) applied the matrix in gamma-encoded space, giving an
+//    effective linear-light blue boost of M[B]^γ at mid-tones instead of the matrix-specified
+//    M[B]=1.3021. Blue clips in both paths at near-white; pre-gamma is physically accurate.
 //    Normalising the matrix to prevent all clipping would scale rows by 1/1.3369, reducing
 //    white luminance by ~25% — an unacceptable brightness loss.
-//    Matches the Guest Advanced CRT-NTSC approach; physical accuracy cost is applying the
-//    CAT in gamma space (< 5% colour rotation, imperceptible in practice).
 //    See specs/SPEC-color-temperature.md for full derivation.
 // ---------------------------------------------------------------------------
 
 /**
  * Bradford D65->9300K chromatic adaptation transform.
- * P1-D: Applied post-gamma (display space) to reduce blue-channel clipping for mid-tones
- * (white clips in both pre- and post-gamma paths; see section comment above for analysis).
- * @param {Node} colNode        -- vec3 gamma-encoded colour (post-gamma, display space)
+ * PC-M5 (SPEC-deep-review-22): Applied pre-gamma (linear-light cone space), between the P22
+ * matrix and CRT gamma encode — the physically correct domain for chromatic adaptation
+ * (Bradford 1985, Lam 1985). Effective linear-light boost equals the matrix element at any
+ * signal level. The former post-gamma path (P1-D) yielded M[B]^γ at mid-tones, deviating
+ * from the Bradford matrix value. Blue clips at B_lin > 0.748 in both paths.
+ * @param {Node} colNode        -- vec3 linear-light colour (pre-gamma)
  * @param {Node} colorTempNode  -- float blend factor (0 = D65, 1 = full 9300K)
- * @returns {Node} vec3 colour with 9300K white-point shift applied
- * @note The blend `mix(col, col_9300K, colorTempStr)` is linear in display-encoded space.
- * Because Bradford is applied post-gamma (P1-D), the blue channel boost is amplified by γ
- * in the first half of the slider range, giving a non-linear perceptual response. The
- * first ~50% of the range shifts dramatically toward blue; the second 50% is compressed.
- * This is an aesthetic property of the control — no code change is needed.
+ * @returns {Node} vec3 linear-light colour with 9300K white-point shift applied
  */
 export function buildColorTempNode(colNode, colorTempNode) {
   // Bradford D65->9300K chromatic adaptation matrix -- unnormalised.
@@ -665,9 +671,7 @@ fn dotCrawlEntry(
   );
   let left = textureLoad(tex, iCoord, 0).rgb;
   // Detect horizontal luminance edge (gradient magnitude in luma/source-pixel units).
-  // DR-7 P3-A: input is post-buildGammaNode (gamma-encoded), so these are Y' coefficients
-  // operating on gamma-encoded R', G', B' -- correct for NTSC composite signal simulation.
-  // Intentionally different from bloom threshold, which decodes to linear (photon domain).
+  // Pre-kernel position: col is linear RGB. BT.709 linear-light luma coefficients.
   let Y  = dot(col,  vec3f(0.2126, 0.7152, 0.0722));
   let Yl = dot(left, vec3f(0.2126, 0.7152, 0.0722));
 
@@ -698,22 +702,500 @@ fn dotCrawlEntry(
                      + uv.y * effectiveSrcY * 0.5 * 6.28318
                      - crawlPhase;
 
-  // NTSC YIQ chroma modulation: I (orange-cyan) and Q (green-magenta).
-  // DR-9 P3-A: Q was -cos(subPhase) -- 90deg offset from standard NTSC demodulation convention
-  // (I = A*cos(phi), Q = A*sin(phi)). The minus sign shifted dominant crawl colour from orange-cyan
-  // (I-axis, correct for sharp vertical edges) to green-magenta (Q-axis). Fixed: Q = +cos(subPhase).
-  // NTSC bandwidth: I-axis 1.3 MHz (orange/cyan), Q-axis 0.5 MHz (green/magenta).
-  // Ratio I/Q = 2.6. Normalised so sqrt(I^2+Q^2) peak ~= 0.25: k_I ~= 0.228, k_Q ~= 0.088.
-  let Ic =  sin(subPhase) * 0.228;   // I-axis: orange/cyan dominant
-  let Qc =  cos(subPhase) * 0.088;   // Q-axis: green/magenta subdominant
-
-  // YIQ -> RGB (approximate; only chroma at edges).
-  let cr =  Ic * 0.956 + Qc * 0.621;
-  let cg = -Ic * 0.272 - Qc * 0.647;
-  let cb = -Ic * 1.106 + Qc * 1.703;
-
   // Edge mask: apply crawl only where luma gradient is significant.
   let edgeMask = smoothstep(0.05, 0.30, grad);
-  return clamp(col + vec3f(cr, cg, cb) * edgeMask * amt, vec3f(0.0), vec3f(1.0));
+  // Luma-domain leakage: Y_leaked = Cb·cos(subPhase) + Cr·sin(subPhase).
+  // Cb = B - Y (blue component offset from luma).
+  // Cr = R - Y (red component offset from luma).
+  // leakY is added equally to all channels → pure luminance modulation (achromatic dots).
+  // Amplitude scales with local chroma sqrt(Cb²+Cr²): zero on desaturated content.
+  let Cb    = col.b - Y;
+  let Cr    = col.r - Y;
+  let leakY = (Cb * cos(subPhase) + Cr * sin(subPhase)) * edgeMask * amt;
+  return clamp(col + vec3f(leakY), vec3f(0.0), vec3f(1.0));
+}
+`);
+
+// ---------------------------------------------------------------------------
+// 13. Combined pre-kernel signal processing -- wgslFn (SPEC-analog-artifacts)
+//     One single-pass RTT that applies up to four signal-chain impairments:
+//       A. Horizontal ringing   -- two-scale Laplacian (IF filter overshoot)
+//       B. Chroma blur + Y/C delay -- NTSC composite bandwidth limiting
+//       G. Cross-color          -- false chroma on high-frequency luma edges
+//       D-3. Tape dropout       -- line-segment replacement from previous line
+//     All stages read from the same source texture (parallel model); chroma
+//     blur uses luma from the ringed result for a physically reasonable cascade.
+//     Early-exit when all amounts are at their zero threshold (no-op path).
+//     Entry function first per CLAUDE.md wgslFn source ordering rule.
+// ---------------------------------------------------------------------------
+export const signalProcessFn = wgslFn(/* wgsl */`
+fn signalProcessFn(
+  tex: texture_2d<f32>, uv: vec2f,
+  svmAmt: f32,
+  ringAmt: f32,
+  ringDecay: f32,
+  ringFreq: f32,
+  chromaBlur: f32, ycDelay: f32,
+  chromaAMNoise: f32, chromaPMNoise: f32,
+  crossColorAmt: f32, crossColorFreq: f32,
+  ntscCompositeMode: f32, ycSeparatorQ: f32,
+  tapeDropoutRate: f32, fieldCount: f32,
+  srcW: f32, srcH: f32,
+  t: f32, flickerRate: f32,
+  vchromaHetAmt: f32, vchromaFreq: f32, vchromaDrift: f32,
+  vhsLumaBlur: f32,
+  vhsChromaVBlend: f32,
+  vhsSwitchStr: f32,
+  vhsSwitchLines: f32,
+  vhsSwitchOffset: f32
+) -> vec3f {
+  let texSize = vec2f(textureDimensions(tex, 0));
+  let iy_base = clamp(i32(floor(uv.y * texSize.y)), 0, i32(texSize.y) - 1);
+  var iy      = iy_base;
+  let tapUV   = 1.0 / max(srcW, 1.0);
+
+  // D-3. Tape dropout: replace scan line segment with the line above.
+  // One dropout decision per 8-source-pixel segment per field.
+  if (tapeDropoutRate > 0.0001) {
+    let srcY   = floor(uv.y * max(srcH, 1.0));
+    let srcSeg = floor(uv.x * max(srcW, 1.0) / 8.0);
+    let fw     = fract(fieldCount / 9973.0) * 9973.0;
+    let h      = fract(sin(srcY * 7919.0 + srcSeg * 317.3 + fw * 1.3) * 43758.5453);
+    if (h < tapeDropoutRate) { iy = max(iy - 1, 0); }
+  }
+
+  // SVM: horizontal scan velocity modulation -- warp u by local luma gradient.
+  var sampleU = uv.x;
+  if (svmAmt > 0.0001) {
+    let svmL = sigFetch(tex, texSize, iy, uv.x - tapUV);
+    let svmR = sigFetch(tex, texSize, iy, uv.x + tapUV);
+    let yL   = dot(svmL, vec3f(0.2126, 0.7152, 0.0722));
+    let yR   = dot(svmR, vec3f(0.2126, 0.7152, 0.0722));
+    sampleU  = uv.x + svmAmt * (yR - yL);
+  }
+  var result = sigFetch(tex, texSize, iy, sampleU);
+
+  // D-4: VHS head switching noise.
+  // Horizontal displacement of lines at bottom of frame during head changeover.
+  // Power-law settling profile; strongest at switch line, zero at vhsSwitchLines below.
+  // Source: ntsc-rs HeadSwitchingSettings; BAVC AV Artifact Atlas.
+  // Guard srcH > 0.5: single-pass mode sets srcH = 0; skip effect.
+  // Skip when ntscCompositeMode active: NTSC chain replaces the source fetch.
+  if (vhsSwitchStr > 0.001 && srcH > 0.5 && ntscCompositeMode < 0.5) {
+    let switchStart = 1.0 - vhsSwitchLines / srcH - vhsSwitchOffset;
+    let lineZ = (uv.y - switchStart) * srcH;
+    if (lineZ >= 0.0 && lineZ < vhsSwitchLines) {
+      let t_sw = lineZ / vhsSwitchLines;
+      let shift = vhsSwitchStr * (72.0 / 720.0) * pow(max(0.0, 1.0 - t_sw), 1.5);
+      let lineNoise = fract(sin(lineZ * 127.1 + fieldCount * 73.0)
+                            * 43758.5453) * 0.006 - 0.003;
+      let shiftedX = uv.x - shift - lineNoise;
+      result = sigFetch(tex, texSize, iy, clamp(shiftedX, 0.0, 1.0));
+      if (lineZ < 1.0) {
+        let spike = vhsSwitchStr * 0.15 * (1.0 - lineZ) * step(0.90, uv.x);
+        result = clamp(result + vec3f(spike), vec3f(0.0), vec3f(1.0));
+      }
+    }
+  }
+
+  // H. NTSC composite encode/Y-C-separate/demodulate chain.
+  // Replaces blocks A (ringing on RGB) and G (cross-color) with emergent physics.
+  // ringAmt/ringDecay/ringFreq: IF filter. ycSeparatorQ: Y/C separator quality.
+  if (ntscCompositeMode > 0.5) {
+    // H-1. Fetch 8 additional taps (center already in 'result' as c0).
+    let cm4 = sigFetch(tex, texSize, iy, sampleU - 4.0*tapUV);
+    let cm3 = sigFetch(tex, texSize, iy, sampleU - 3.0*tapUV);
+    let cm2 = sigFetch(tex, texSize, iy, sampleU - 2.0*tapUV);
+    let cm1 = sigFetch(tex, texSize, iy, sampleU - 1.0*tapUV);
+    let cp1 = sigFetch(tex, texSize, iy, sampleU + 1.0*tapUV);
+    let cp2 = sigFetch(tex, texSize, iy, sampleU + 2.0*tapUV);
+    let cp3 = sigFetch(tex, texSize, iy, sampleU + 3.0*tapUV);
+    let cp4 = sigFetch(tex, texSize, iy, sampleU + 4.0*tapUV);
+
+    // H-2. Subcarrier phase at center and offsets.
+    let SC       = 6.28318 * 0.2625;
+    let crawlPhi = fract(t * 0.5 * flickerRate / max(srcH, 1.0)) * 6.28318;
+    let phi0     = SC * (sampleU * srcW) + crawlPhi;
+    let cSC  = cos(SC);
+    let sSC  = sin(SC);
+    let cSC2 = cos(2.0*SC);
+    let sSC2 = sin(2.0*SC);
+    let cSC3 = cos(3.0*SC);
+    let sSC3 = sin(3.0*SC);
+    let cSC4 = cos(4.0*SC);
+    let sSC4 = sin(4.0*SC);
+    let c0phi = cos(phi0);
+    let s0phi = sin(phi0);
+    let cosM4 = c0phi*cSC4 + s0phi*sSC4;
+    let sinM4 = s0phi*cSC4 - c0phi*sSC4;
+    let cosM3 = c0phi*cSC3 + s0phi*sSC3;
+    let sinM3 = s0phi*cSC3 - c0phi*sSC3;
+    let cosM2 = c0phi*cSC2 + s0phi*sSC2;
+    let sinM2 = s0phi*cSC2 - c0phi*sSC2;
+    let cosM1 = c0phi*cSC  + s0phi*sSC;
+    let sinM1 = s0phi*cSC  - c0phi*sSC;
+    let cosP1 = c0phi*cSC  - s0phi*sSC;
+    let sinP1 = s0phi*cSC  + c0phi*sSC;
+    let cosP2 = c0phi*cSC2 - s0phi*sSC2;
+    let sinP2 = s0phi*cSC2 + c0phi*sSC2;
+    let cosP3 = c0phi*cSC3 - s0phi*sSC3;
+    let sinP3 = s0phi*cSC3 + c0phi*sSC3;
+    let cosP4 = c0phi*cSC4 - s0phi*sSC4;
+    let sinP4 = s0phi*cSC4 + c0phi*sSC4;
+
+    // H-3. YIQ coefficients (NTSC I/Q axes; BT.709 luma for Y consistency).
+    let Icoef = vec3f( 0.5959, -0.2746, -0.3213);
+    let Qcoef = vec3f( 0.2115, -0.5227,  0.3112);
+    let Ycoef = vec3f(0.2126,  0.7152,  0.0722);
+
+    // H-4. Encode 9 taps to composite scalar.
+    let Sm4 = dot(cm4,Ycoef) + dot(cm4,Icoef)*cosM4 + dot(cm4,Qcoef)*sinM4;
+    let Sm3 = dot(cm3,Ycoef) + dot(cm3,Icoef)*cosM3 + dot(cm3,Qcoef)*sinM3;
+    let Sm2 = dot(cm2,Ycoef) + dot(cm2,Icoef)*cosM2 + dot(cm2,Qcoef)*sinM2;
+    let Sm1 = dot(cm1,Ycoef) + dot(cm1,Icoef)*cosM1 + dot(cm1,Qcoef)*sinM1;
+    let S0  = dot(result,Ycoef) + dot(result,Icoef)*c0phi + dot(result,Qcoef)*s0phi;
+    let Sp1 = dot(cp1,Ycoef) + dot(cp1,Icoef)*cosP1 + dot(cp1,Qcoef)*sinP1;
+    let Sp2 = dot(cp2,Ycoef) + dot(cp2,Icoef)*cosP2 + dot(cp2,Qcoef)*sinP2;
+    let Sp3 = dot(cp3,Ycoef) + dot(cp3,Icoef)*cosP3 + dot(cp3,Qcoef)*sinP3;
+    let Sp4 = dot(cp4,Ycoef) + dot(cp4,Icoef)*cosP4 + dot(cp4,Qcoef)*sinP4;
+
+    // H-5. IF bandlimit: causal FIR on composite S (same h[n] as block A, composite domain).
+    var Sf0 = S0;
+    if (ringAmt > 0.001) {
+      let rd = max(ringDecay, 0.05);
+      let rf = ringFreq * 3.14159265;
+      let w1 = exp(-1.0*rd)*sin(1.0*rf);
+      let w2 = exp(-2.0*rd)*sin(2.0*rf);
+      let w3 = exp(-3.0*rd)*sin(3.0*rf);
+      let w4 = exp(-4.0*rd)*sin(4.0*rf);
+      Sf0 += ((S0-Sm1)*w1 + (S0-Sm2)*w2 + (S0-Sm3)*w3 + (S0-Sm4)*w4) * ringAmt;
+    }
+    let Sf1  = Sp1;
+    let Sfm1 = Sm1;
+    let Sf2  = Sp2;
+    let Sfm2 = Sm2;
+
+    // H-6. Y/C separator: Gaussian lowpass on filtered composite.
+    let sepSig  = max(2.5 - 1.7*ycSeparatorQ, 0.5);
+    let sw1     = exp(-1.0 / (2.0*sepSig*sepSig));
+    let sw2     = exp(-4.0 / (2.0*sepSig*sepSig));
+    let swSum   = 1.0 + 2.0*sw1 + 2.0*sw2;
+    let Ysep0   = (Sf0 + (Sfm1+Sf1)*sw1 + (Sfm2+Sf2)*sw2) / swSum;
+    let Sfm2sep = (Sfm2 + (Sm3+Sm1)*sw1 + (Sm4+S0)*sw2) / swSum;
+    let Sfm1sep = (Sfm1 + (Sm2+S0)*sw1  + (Sm3+Sp1)*sw2) / swSum;
+    let Sf1sep  = (Sf1  + (S0+Sp2)*sw1  + (Sm1+Sp3)*sw2) / swSum;
+    let Sf2sep  = (Sf2  + (Sp1+Sp3)*sw1 + (S0+Sp4)*sw2)  / swSum;
+    let Cm2 = Sfm2 - Sfm2sep;
+    let Cm1 = Sfm1 - Sfm1sep;
+    let C0  = Sf0  - Ysep0;
+    let C1  = Sf1  - Sf1sep;
+    let C2  = Sf2  - Sf2sep;
+
+    // H-7. Chroma demodulate: 5-tap Gaussian lowpass on C*cos and C*sin.
+    let csig  = max(chromaBlur, 0.8);
+    let cw1   = exp(-1.0 / (2.0*csig*csig));
+    let cw2   = exp(-4.0 / (2.0*csig*csig));
+    let cwSum = 1.0 + 2.0*cw1 + 2.0*cw2;
+    let Iprime = 2.0*(C0*c0phi  + (Cm1*cosM1+C1*cosP1)*cw1 + (Cm2*cosM2+C2*cosP2)*cw2) / cwSum;
+    let Qprime = 2.0*(C0*s0phi  + (Cm1*sinM1+C1*sinP1)*cw1 + (Cm2*sinM2+C2*sinP2)*cw2) / cwSum;
+
+    // H-8. Reconstruct RGB from Y_sep, I', Q'.
+    let R_out = Ysep0 + 0.9563*Iprime + 0.6210*Qprime;
+    let G_out = Ysep0 - 0.2721*Iprime - 0.6474*Qprime;
+    let B_out = Ysep0 - 1.1070*Iprime + 1.7046*Qprime;
+    result = clamp(vec3f(R_out, G_out, B_out), vec3f(0.0), vec3f(1.0));
+  }
+
+  // A. Ringing -- causal 4-tap FIR: h[n] = exp(-n*ringDecay) * sin(n*ringFreq*PI), n=1..4.
+  // Taps at left-of-centre (past samples in scan order): uv.x - n*tapUV.
+  // Physically: causal impulse response of a 2nd-order IF bandpass filter.
+  // ringDecay = alpha: Q-factor via alpha = PI*omega0/Q. Higher Q = smaller alpha = more rings.
+  // ringFreq = omega (cycles/sample): NTSC IF ~4.2 MHz / 13.5 MHz ADC = 0.31 cycles/sample.
+  if (ringAmt > 0.001 && ntscCompositeMode < 0.5) {
+    let rd = max(ringDecay, 0.05);
+    let rf = ringFreq * 3.14159265;
+    let w1 = exp(-1.0 * rd) * sin(1.0 * rf);
+    let w2 = exp(-2.0 * rd) * sin(2.0 * rf);
+    let w3 = exp(-3.0 * rd) * sin(3.0 * rf);
+    let w4 = exp(-4.0 * rd) * sin(4.0 * rf);
+    let p1 = sigFetch(tex, texSize, iy, uv.x - 1.0 * tapUV);
+    let p2 = sigFetch(tex, texSize, iy, uv.x - 2.0 * tapUV);
+    let p3 = sigFetch(tex, texSize, iy, uv.x - 3.0 * tapUV);
+    let p4 = sigFetch(tex, texSize, iy, uv.x - 4.0 * tapUV);
+    let causalRing = (result - p1) * w1 + (result - p2) * w2
+                   + (result - p3) * w3 + (result - p4) * w4;
+    result = max(result + causalRing * ringAmt, vec3f(0.0));
+  }
+
+  // B. Chroma blur + Y/C delay.
+  // Luma (Y) from ringed result; chroma from 5-tap Gaussian on source at delayed position.
+  // Y is preserved sharp; only Cb/Cr are bandwidth-limited, matching composite demodulation.
+  if (chromaBlur > 0.001 || abs(ycDelay) > 0.001) {
+    let Y    = dot(result, vec3f(0.2126, 0.7152, 0.0722));
+    let sig2 = max(chromaBlur, 0.1);
+    let w0   = 1.0;
+    let w1   = exp(-1.0 / (2.0 * sig2 * sig2));
+    let w2   = exp(-4.0 / (2.0 * sig2 * sig2));
+    let wSum = w0 + 2.0 * w1 + 2.0 * w2;
+    let du   = uv.x + ycDelay * tapUV;
+    let c0   = sigFetch(tex, texSize, iy, du);
+    let cm1  = sigFetch(tex, texSize, iy, du - tapUV);
+    let cm2  = sigFetch(tex, texSize, iy, du - 2.0 * tapUV);
+    let cp1  = sigFetch(tex, texSize, iy, du + tapUV);
+    let cp2  = sigFetch(tex, texSize, iy, du + 2.0 * tapUV);
+    let Cb   = (sigCb(c0)*w0 + (sigCb(cm1)+sigCb(cp1))*w1 + (sigCb(cm2)+sigCb(cp2))*w2) / wSum;
+    let Cr   = (sigCr(c0)*w0 + (sigCr(cm1)+sigCr(cp1))*w1 + (sigCr(cm2)+sigCr(cp2))*w2) / wSum;
+    result   = max(vec3f(Y + Cr, Y - 0.2973*Cr - 0.1009*Cb, Y + Cb), vec3f(0.0));
+  }
+
+  // F. Chroma AM + PM noise.
+  if (chromaAMNoise > 0.001 || chromaPMNoise > 0.001) {
+    let Y  = dot(result, vec3f(0.2126, 0.7152, 0.0722));
+    let Cb = result.b - Y;
+    let Cr = result.r - Y;
+    let gx = floor(uv.x * srcW * 0.5);
+    let gy = floor(uv.y * srcH);
+    let ft = floor(t * flickerRate);
+    let n1 = fract(sin(gx * 127.1 + gy * 311.7 + ft *  74.3) * 43758.5453) * 2.0 - 1.0;
+    let n2 = fract(sin(gx * 271.9 + gy * 461.3 + ft *  53.1 + 1.73) * 43758.5453) * 2.0 - 1.0;
+    let amp   = 1.0 + chromaAMNoise * n1;
+    let phase = chromaPMNoise * n2;
+    let cosP  = cos(phase);
+    let sinP  = sin(phase);
+    let Cb_n  = Cb * amp * cosP - Cr * amp * sinP;
+    let Cr_n  = Cb * amp * sinP + Cr * amp * cosP;
+    result = max(vec3f(Y + Cr_n, Y - 0.2973*Cr_n - 0.1009*Cb_n, Y + Cb_n), vec3f(0.0));
+  }
+
+  // A-ext: VHS luma bandwidth limiting.
+  // SP: ~2.4 MHz = sigma ~1.0 src-px. Blurs Y only; chroma separately limited by chromaBlur.
+  // Source: ntsc-rs VHSTapeParams luma_cut: 2,400,000 Hz.
+  // BT.601 luma weights (VHS standard). Normalized chroma: Cr_n=(R-Y)/1.402, Cb_n=(B-Y)/1.772.
+  // Guard srcW > 0.5: single-pass mode sets srcW = 0; skip effect.
+  // Skip when ntscCompositeMode active: NTSC chain replaces VHS luma processing.
+  if (vhsLumaBlur > 0.001 && srcW > 0.5 && ntscCompositeMode < 0.5) {
+    let dx_lb = 1.0 / srcW;
+    let s2_lb = vhsLumaBlur * vhsLumaBlur;
+    let w1_lb = exp(-0.5 / s2_lb);
+    let w2_lb = exp(-2.0 / s2_lb);
+    let wsum_lb = 1.0 + 2.0 * (w1_lb + w2_lb);
+    let bt601 = vec3f(0.299, 0.587, 0.114);
+    let Yl2 = dot(sigFetch(tex, texSize, iy, clamp(uv.x - 2.0*dx_lb, 0.0, 1.0)), bt601);
+    let Yl1 = dot(sigFetch(tex, texSize, iy, clamp(uv.x -     dx_lb, 0.0, 1.0)), bt601);
+    let Yr1 = dot(sigFetch(tex, texSize, iy, clamp(uv.x +     dx_lb, 0.0, 1.0)), bt601);
+    let Yr2 = dot(sigFetch(tex, texSize, iy, clamp(uv.x + 2.0*dx_lb, 0.0, 1.0)), bt601);
+    let Y_orig_lb = dot(result, bt601);
+    let Y_blur = (w2_lb*Yl2 + w1_lb*Yl1 + Y_orig_lb + w1_lb*Yr1 + w2_lb*Yr2) / wsum_lb;
+    let Cr_n_lb = (result.r - Y_orig_lb) / 1.402;
+    let Cb_n_lb = (result.b - Y_orig_lb) / 1.772;
+    result = clamp(vec3f(Y_blur + 1.402*Cr_n_lb,
+                         Y_blur - 0.714136*Cr_n_lb - 0.344136*Cb_n_lb,
+                         Y_blur + 1.772*Cb_n_lb), vec3f(0.0), vec3f(1.0));
+  }
+
+  // B-ext: VHS chroma 1H delay-line averaging.
+  // Hardware: colour-under recovery averages chroma[y] with chroma[y-1] to suppress
+  // inter-track phase error. Halves vertical chroma resolution.
+  // Source: ntsc-rs chroma_vert_blend.
+  // BT.601 luma weights; normalized chroma convention matches tapeChromaFn.
+  // Guard srcH > 0.5: single-pass mode sets srcH = 0 (no source RT); skip effect.
+  // Skip when ntscCompositeMode active: VHS-specific hardware artifact, not present in NTSC chain.
+  if (vhsChromaVBlend > 0.001 && srcH > 0.5 && ntscCompositeMode < 0.5) {
+    let bt601_vb = vec3f(0.299, 0.587, 0.114);
+    let iy_prev = max(iy - 1, 0);
+    let prevLine = sigFetch(tex, texSize, iy_prev, uv.x);
+    let Y_vb      = dot(result,   bt601_vb);
+    let Y_prev_vb = dot(prevLine, bt601_vb);
+    let Cr_n_vb      = (result.r   - Y_vb)      / 1.402;
+    let Cb_n_vb      = (result.b   - Y_vb)      / 1.772;
+    let Cr_n_prev_vb = (prevLine.r - Y_prev_vb) / 1.402;
+    let Cb_n_prev_vb = (prevLine.b - Y_prev_vb) / 1.772;
+    let Cr_b = mix(Cr_n_vb, (Cr_n_vb + Cr_n_prev_vb) * 0.5, vhsChromaVBlend);
+    let Cb_b = mix(Cb_n_vb, (Cb_n_vb + Cb_n_prev_vb) * 0.5, vhsChromaVBlend);
+    result = clamp(vec3f(Y_vb + 1.402*Cr_b,
+                         Y_vb - 0.714136*Cr_b - 0.344136*Cb_b,
+                         Y_vb + 1.772*Cb_b), vec3f(0.0), vec3f(1.0));
+  }
+
+  // G. Cross-color -- false chroma on high-frequency luma.
+  // NTSC subcarrier misread as chroma on fine horizontal patterns (stripes, checks).
+  // Magnitude gated by Laplacian so only high-frequency content shows colour.
+  // Phase matches dotCrawlFn convention: fsc/fs = 0.262 cycles/active-sample for NTSC
+  // (3.579545 MHz / 13.5 MHz sampling rate). crossColorFreq scales as MHz: 0.0733 = 0.262/3.58.
+  // Vertical phase reversal (+0.5 cycle per source line) reproduces the diagonal fringe pattern.
+  if (crossColorAmt > 0.001 && ntscCompositeMode < 0.5) {
+    let cm1x  = sigFetch(tex, texSize, iy, uv.x - tapUV);
+    let cp1x  = sigFetch(tex, texSize, iy, uv.x + tapUV);
+    let Yc    = dot(result, vec3f(0.2126, 0.7152, 0.0722));
+    let Ym1   = dot(cm1x,   vec3f(0.2126, 0.7152, 0.0722));
+    let Yp1   = dot(cp1x,   vec3f(0.2126, 0.7152, 0.0722));
+    let hfMag = abs(2.0 * Yc - Ym1 - Yp1);
+    let srcX  = uv.x * max(srcW, 1.0);
+    let srcY  = uv.y * max(srcH, 1.0);
+    // Spatial phase: fsc/fs = crossColorFreq * 0.0733 cycles/pixel (NTSC: 3.58*0.0733=0.262).
+    // Vertical: 180 deg/line phase reversal (subcarrier alternates each source line).
+    // Temporal: same 0.5-line/frame crawl as dotCrawlFn — cross-color and dot crawl are
+    // the same NTSC subcarrier aliasing and must animate at the same rate.
+    let crawlPhase = fract(t * 0.5 * flickerRate / max(srcH, 1.0)) * 6.28318;
+    let phase = (srcX * crossColorFreq * 0.0733 + srcY * 0.5) * 6.28318 - crawlPhase;
+    let PI23  = 2.094395;
+    let chroma = vec3f(cos(phase), cos(phase + PI23), cos(phase - PI23));
+    result    = result + chroma * hfMag * crossColorAmt;
+  }
+
+  // I. VHS chroma heterodyne noise: random saturation jitter from VHS chroma FM heterodyne.
+  // Physical: VHS records chroma at a downconverted carrier (~629 kHz for VHS SP);
+  // playback heterodyne mixes residual carrier noise onto chroma, causing per-line
+  // random saturation and hue variation. Here modelled as a low-spatial-frequency
+  // random modulation on Cb/Cr, correlated within a line and varying between lines.
+  if (vchromaHetAmt > 0.001) {
+    let srcY  = floor(uv.y * max(srcH, 1.0));
+    let phase = fract(t * vchromaDrift + srcY * vchromaFreq * 0.0137) * 6.28318;
+    let h1    = fract(sin(srcY * 3137.0 + t * 17.3) * 43758.5453);
+    let h2    = fract(sin(srcY * 7919.0 + t *  8.7) * 43758.5453);
+    let satMod  = 1.0 + vchromaHetAmt * (cos(phase) * 0.5 + (h1 - 0.5) * 0.5);
+    let hueMod  = vchromaHetAmt * (h2 - 0.5) * 0.3;
+    let luma    = dot(result, vec3f(0.2126, 0.7152, 0.0722));
+    var chroma2 = result - vec3f(luma);
+    let cb2     = chroma2.b - chroma2.r * 0.5 - chroma2.g * 0.5;
+    let cr2     = chroma2.r - chroma2.b * 0.5 - chroma2.g * 0.5;
+    let cosH    = cos(hueMod);
+    let sinH    = sin(hueMod);
+    let cb2r    = cb2 * cosH - cr2 * sinH;
+    let cr2r    = cb2 * sinH + cr2 * cosH;
+    chroma2     = vec3f(cr2r * 0.667, -(cb2r + cr2r) * 0.333, cb2r * 0.667);
+    result = vec3f(luma) + chroma2 * satMod;
+  }
+
+  return result;
+}
+
+fn sigFetch(tex: texture_2d<f32>, texSize: vec2f, iy: i32, u: f32) -> vec3f {
+  // Horizontal bilinear interpolation at row iy. Clamped at texture edges.
+  let gx  = u * texSize.x - 0.5;
+  let ix0 = clamp(i32(floor(gx)),     0, i32(texSize.x) - 1);
+  let ix1 = clamp(i32(floor(gx)) + 1, 0, i32(texSize.x) - 1);
+  let c0  = textureLoad(tex, vec2i(ix0, iy), 0).rgb;
+  let c1  = textureLoad(tex, vec2i(ix1, iy), 0).rgb;
+  return mix(c0, c1, fract(gx));
+}
+
+fn sigCb(c: vec3f) -> f32 {
+  return c.b - dot(c, vec3f(0.2126, 0.7152, 0.0722));
+}
+
+fn sigCr(c: vec3f) -> f32 {
+  return c.r - dot(c, vec3f(0.2126, 0.7152, 0.0722));
+}
+`);
+
+// ---------------------------------------------------------------------------
+// 14. Tape flutter -- wgslFn (SPEC-analog-artifacts D-1)
+//     Post-gamma gain oscillation modelling tape-transport speed variation.
+//     Two incommensurate flutter rates beat to produce non-periodic variation.
+//     Applied post-gamma in buildPostProcessing (like grain -- signal-domain).
+// ---------------------------------------------------------------------------
+export const tapeFlutterFn = wgslFn(/* wgsl */`
+fn tapeFlutterFn(col: vec3f, uv: vec2f, flutterNoise: f32,
+                 tapeFlutterAmt: f32, tapeFlutterRate: f32) -> vec3f {
+  if (tapeFlutterAmt < 0.0001) { return col; }
+  // Spatial envelope: two incommensurate Y-frequency bands give per-scanline banding.
+  // Temporal variation driven by CPU-side OU process (flutterNoise in [-1, 1]),
+  // producing 1/f^2 spectrum above the OU bandwidth (physically: capstan servo).
+  let f1   = sin(uv.y * 1.73) * 0.6;
+  let f2   = sin(uv.y * 2.91) * 0.4;
+  let gain = 1.0 + (f1 + f2) * flutterNoise * tapeFlutterAmt;
+  return col * max(gain, 0.0);
+}
+`);
+
+// ---------------------------------------------------------------------------
+// 15. Tape chroma noise -- wgslFn (SPEC-analog-artifacts D-2)
+//     Coarse per-field colour noise modelling VHS chroma FM carrier instability.
+//     Operates in YCbCr: adds noise only to Cb/Cr, leaving Y (luma) unchanged.
+//     Spatially coarse (40x30 grid) and changes each field -- distinct from
+//     electronic snow (fine, per-pixel luma) and grain (display-layer texture).
+//     Applied post-gamma in buildPostProcessing alongside flutter.
+// ---------------------------------------------------------------------------
+export const tapeChromaFn = wgslFn(/* wgsl */`
+fn tapeChromaFn(col: vec3f, uv: vec2f, fieldCount: f32, tapeChromaAmt: f32) -> vec3f {
+  if (tapeChromaAmt < 0.001) { return col; }
+  let gx  = floor(uv.x * 40.0);
+  let gy  = floor(uv.y * 240.0); // VHS chroma varies per helical scan track (~240 lines/field)
+  // Pre-wrap fieldCount to keep f32 multiplications within exact-integer range.
+  let fw  = fract(fieldCount / 7919.0) * 7919.0;
+  let h1  = fract(sin(gx * 317.3 + gy * 1277.7 + fw * 1.3) * 43758.5453);
+  let h3  = fract(sin(gx * 911.1 + gy * 6131.3 + fw * 0.9) * 43758.5453);
+  let Cb_noise = (h3 - 0.5) * tapeChromaAmt;
+  let Cr_noise = (h1 - 0.5) * tapeChromaAmt;
+  // BT.601 YCbCr→RGB differential: perturb Cb/Cr only, luma unchanged.
+  // dR = 1.402*Cr, dG = -0.714136*Cr - 0.344136*Cb, dB = 1.772*Cb
+  return max(col + vec3f(1.402*Cr_noise, -0.714136*Cr_noise - 0.344136*Cb_noise, 1.772*Cb_noise), vec3f(0.0));
+}
+`);
+
+// ---------------------------------------------------------------------------
+// 16. Tension wire attenuation -- pure TSL (SPEC-analog-artifacts E)
+//     Simulates the two thin horizontal wires crossing Sony Trinitron and other
+//     aperture-grille CRTs at ~33% and ~67% screen height. Wires block the
+//     electron beam, producing faint dark horizontal lines on bright content.
+//     When shimmerAmt > 0 and renderFrame drives shimmerPhase forward, both
+//     wires oscillate vertically at shimmerFreq Hz with exponential decay.
+//     Returns a float scalar [0..1]: 0 = fully dark (at wire centre), 1 = unattenuated.
+// ---------------------------------------------------------------------------
+export function buildTensionWireNode(posNode, sizeNode, uniforms) {
+  return Fn(() => {
+    const y   = posNode.y;
+    const px  = float(1.0).div(sizeNode.y);             // 1 output pixel in UV
+    const hw  = uniforms.tensionWireWidth.mul(px);       // wire half-width in UV
+
+    // Shimmer: decaying sinusoidal vertical oscillation driven by CPU shimmerPhase.
+    // exp(-shimmerPhase * 8) decays to 1/e at 125 ms, imperceptible at ~1.5 s.
+    const shimmer = uniforms.shimmerAmt
+      .mul(uniforms.shimmerPhase.mul(uniforms.shimmerFreq).mul(6.2832).sin())
+      .mul(uniforms.shimmerPhase.negate().mul(8.0).exp());
+
+    const w1y  = uniforms.tensionWireY1.add(shimmer);
+    const w2y  = uniforms.tensionWireY2.add(shimmer);
+
+    const d1   = y.sub(w1y).abs();
+    const d2   = y.sub(w2y).abs();
+    // smoothstep(0, hw, d): 0 at wire centre, 1 outside half-width.
+    const att1 = smoothstep(float(0.0), hw, d1);
+    const att2 = smoothstep(float(0.0), hw, d2);
+
+    // mix(1, att, str): str=0 → no attenuation; str=1 → full darkness at centre.
+    return mix(float(1.0), att1, uniforms.tensionWireStr)
+          .mul(mix(float(1.0), att2, uniforms.tensionWireStr));
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// 17. Differential phosphor afterglow accumulation -- wgslFn
+//     (SPEC-novel-crt-physics Effect 7)
+//
+//     Per-channel inter-frame accumulation modelling P22 phosphor persistence.
+//     R decays slowest (~1-6 ms), G fastest (~100-300 µs), B effectively zero
+//     at 60 Hz. Result: fast-moving bright objects leave a reddish afterimage.
+//
+//     Output is the NEW accumulation buffer value (copy back to _afterglowRT).
+//     Caller also computes: residual = max(0, newAccum - current) * afterglowStr
+//     and adds it to the display output.
+//
+//     Formula per channel:
+//       accum[t] = accum[t-1] * decay + current * (1 - decay)
+//     where decay = exp(-dt / flickerTauX), computed CPU-side and passed as
+//     decayR/G/B uniforms.
+// ---------------------------------------------------------------------------
+export const afterglowAccumFn = wgslFn(/* wgsl */`
+fn afterglowAccumFn(
+  prevAfterglow: vec3f,
+  current: vec3f,
+  decayR: f32,
+  decayG: f32,
+  decayB: f32
+) -> vec3f {
+  let decay = vec3f(decayR, decayG, decayB);
+  return prevAfterglow * decay + current * (vec3f(1.0) - decay);
 }
 `);

@@ -63,6 +63,15 @@ fn Gaus(pos: f32, sharp: f32) -> f32 {
   return exp2(sharp * pos * pos);
 }
 
+// Bi-exponential PSF: Gaussian core (electron backscatter) + exponential tail (phosphor scatter).
+// PSF(dx) = coreBlend * exp2(sharp*dx^2) + (1-coreBlend) * exp(-|dx|/tailSigma).
+// At coreBlend=1.0: pure Gaussian (backward compatible with halation Gaus() path).
+fn BiExp(dx: f32, sharp: f32, tailSigma: f32, coreBlend: f32) -> f32 {
+  let core = exp2(sharp * dx * dx);
+  let tail = exp(-abs(dx) / max(tailSigma, 0.01));
+  return coreBlend * core + (1.0 - coreBlend) * tail;
+}
+
 // Approximate error function (Abramowitz & Stegun 7.1.26, max |err| < 1.5e-7).
 fn Erf(x: f32) -> f32 {
   let t = 1.0 / (1.0 + 0.3275911 * abs(x));
@@ -159,12 +168,12 @@ fn FetchConv(tex: texture_2d<f32>, pos: vec2f, off: vec2f, res: vec2f, scale: ve
   var r: f32;
   var b: f32;
   if (max(abs(rPos.x - 0.5), abs(rPos.y - 0.5)) > 0.5) {
-    r = center.r;
+    r = 0.0;  // Outside raster: no phosphor illumination (blanking interval).
   } else {
     r = Fetch(tex, rPos, off, res, scale).r;
   }
   if (max(abs(bPos.x - 0.5), abs(bPos.y - 0.5)) > 0.5) {
-    b = center.b;
+    b = 0.0;  // Outside raster: no phosphor illumination (blanking interval).
   } else {
     b = Fetch(tex, bPos, off, res, scale).b;
   }
@@ -258,7 +267,7 @@ fn Horz5G(tex: texture_2d<f32>, pos: vec2f, off: f32, scale: vec2f, res: vec2f, 
 // decodes back to linear light for the rest of the pipeline.
 // P1-C: Dist() is computed ONCE here and dx/dy passed to all Horz calls,
 // eliminating 4 redundant Dist().x evaluations (saves ~32 ALU ops/px).
-fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, hardPix: f32, hardScan: f32, scrollPhase: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, apertureW: f32, apertureH: f32, gammaFast: f32) -> vec3f {
+fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, hardPix: f32, hardScan: f32, scrollPhase: f32, conv: f32, convStaticX: f32, convStaticY: f32, convBX: f32, convBY: f32, convAspect: f32, kernelGamma: f32, apertureW: f32, apertureH: f32, gammaFast: f32, beamAlpha: f32) -> vec3f {
   // P1-C: compute Dist() once -- both dx and dy -- before any Horz calls.
   let dist_val   = Dist(pos, src, scrollPhase);
   let dx         = dist_val.x;
@@ -273,14 +282,15 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
   // Gamma-encoded luma overestimates mid-tone values by ~52% at gamma=2.5, causing over-wide beams.
   let centerLinear = select(pow(max(centerGamma, vec3f(0.0)), vec3f(kernelGamma)), centerGamma * centerGamma, gammaFast > 0.5);
   let luma         = clamp(Luma(centerLinear), 0.0, 1.0);
-  // Power-law beam softening: dynHardPix broadens with luminance via sqrt(luma).
-  // Physical motivation: at high beam current, electrostatic and aberration effects
-  // increase spot size. The exact power law is not cleanly derivable from CRT electron
-  // optics; luma^0.5 is an empirically tuned approximation that produces natural-looking
-  // scanline edges (CRT-Royale uses luma^0.33; both are empirical).
+  // Power-law beam softening: sigma_sc ~ I^(2/3) per Langmuir-Child space-charge law.
+  // At high beam current, the electron cloud's self-repulsive space-charge force partially
+  // un-focuses the beam before the focusing electrode. Because focusing voltage is fixed,
+  // bright areas receive a wider spot. Beam current ∝ linear display light (not gamma voltage).
   // Using linear luma (decoded from gamma) is correct: beam current is proportional to
   // display light output in linear domain, not gamma-encoded voltage.
-  let beamW      = sqrt(luma);  // empirical sigma broadening: sigma ~ luma^0.5
+  // luma=1: identical to sqrt. Mid-tones: slightly less softening (sharper by ~0.08 beamW).
+  // CRT-Royale uses luma^0.33; Langmuir-Child gives luma^0.667 as the upper physical bound.
+  let beamW      = pow(luma, beamAlpha);  // space-charge defocus: sigma_sc ~ I^alpha (Langmuir-Child at 0.667)
   // Clamp to -0.1 so beam-broadening at corners (defocusFac=0 -> hardPix->0) cannot
   // make dynHardPix zero or positive, which would produce NaN in sigmaR2.
   let dynHardPix = min(hardPix + mix(0.0, 1.5, beamW), -0.1);
@@ -330,7 +340,7 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
 // is always in cycles/output-screen-height. Single-pass and halation pass 1.0 (unchanged);
 // crtHorzPassFn passes outputSizeY / max(srcH, 1.0) to correct the two-pass mismatch.
 // WGSL forward reference: hSwimNorm() is declared later in this source string (valid at module scope).
-fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32, t: f32, swimYScale: f32) -> vec2f {
+fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32, swimNoise: f32, swimYScale: f32) -> vec2f {
   // 1. Voltage sag: shrink image toward centre (max 4% at sagPhase=1.0)
   let sagMag   = sagPhase * 0.04;
   var p        = vec2f(0.5) + (pos - vec2f(0.5)) * (1.0 - sagMag);
@@ -345,7 +355,7 @@ fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32
   p = vec2f(p.x + hookShift, wrappedY);
   // 4. H-swim: per-scanline horizontal drift from deflection oscillator instability.
   // DR-14 P3-B: normalise y by swimYScale before computing swim displacement.
-  p = vec2f(p.x + hSwimNorm(p.y * swimYScale, t) * swimAmt, p.y);
+  p = vec2f(p.x + hSwimNorm(p.y * swimYScale, swimNoise) * swimAmt, p.y);
   return p;
 }
 
@@ -362,10 +372,13 @@ fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32
 // y_norm = uv.y * (outputH / srcH) from crtHorzPassFn so spatial frequency is in
 // cycles/output-screen-height regardless of source resolution.
 // Single-pass and halation callers pass y_norm = uv.y * 1.0 (unchanged).
-fn hSwimNorm(y_norm: f32, t: f32) -> f32 {
-  let s1 = sin(y_norm * 1.73 + t * 0.37) * 0.00075;  // 0.275 cycles/screen (1.73 rad/screen), slow drift
-  let s2 = sin(y_norm * 2.91 - t * 0.61) * 0.00040;  // 0.463 cycles/screen (2.91 rad/screen), slow drift
-  return s1 + s2;
+fn hSwimNorm(y_norm: f32, swimNoise: f32) -> f32 {
+  // Spatial envelope: two incommensurate Y-frequency bands give per-scanline character.
+  // Temporal variation driven by CPU-side OU process (swimNoise in [-1, 1]),
+  // producing 1/f^2 temporal spectrum above the AFC bandwidth (~5 Hz).
+  let s1 = sin(y_norm * 1.73) * 0.00075;
+  let s2 = sin(y_norm * 2.91) * 0.00040;
+  return (s1 + s2) * swimNoise;
 }
 `;
 
@@ -420,7 +433,21 @@ fn crtKernel(
   interlaceField: f32,
   apertureW: f32,
   apertureH: f32,
-  gammaFast: f32
+  gammaFast: f32,
+  beamAlpha: f32,
+  swimNoise: f32,
+  ehtRippleAmt: f32,
+  ehtDecayRate: f32,
+  astigAmt: f32,
+  astigRadial: f32,
+  astigTangential: f32,
+  phosphorGrainAmt: f32,
+  phosphorGrainScale: f32,
+  domingAmt: f32,
+  domingThermalTau: f32,
+  phosphorSatAmt: f32,
+  phosphorXtalkAmt: f32,
+  phosphorXtalkRadius: f32
 ) -> vec3f {
   // Resolve source resolution: 0 -> use output resolution (backward-compatible).
   // src is the virtual CRT pixel grid (e.g. 320x240 for a lo-res source).
@@ -433,7 +460,7 @@ fn crtKernel(
 
   // --- UV distortions: sag -> rollbar -> hook -> swim (via shared helper) ---
   // DR-14 P3-B: swimYScale=1.0 — single-pass uses output UV directly (no normalisation needed).
-  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, t, 1.0);
+  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, 1.0);
 
   // Edge defocus: both hardPix and hardScan soften toward screen corners.
   // DR-9 P0-B: previously only dynHardPix was reduced; dynHardScan was missing, leaving corners
@@ -447,7 +474,7 @@ fn crtKernel(
 
   // Gamma-domain scanline reconstruction: horizontal Gaussian blending in
   // voltage domain matches real CRT electron-optics; decoded back to linear after.
-  var col = TriG(tex, p, src, scale, res, dynHardPix, dynHardScan, scrollPhase, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, apertureW, apertureH, gammaFast);
+  var col = TriG(tex, p, src, scale, res, dynHardPix, dynHardScan, scrollPhase, convergence, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, apertureW, apertureH, gammaFast, beamAlpha);
 
   // RGB split: re-sample shifted R and B channels in gamma domain for consistency.
   if (rgbSplitPx > 0.001) {
@@ -461,7 +488,7 @@ fn crtKernel(
     // col is post-TriG linear light; use its luma to reproduce TriG's dynHardPix so
     // R/B channels use the same beam width as the G channel at this luminance level.
     let splitLuma           = clamp(Luma(col), 0.0, 1.0);
-    let splitBeamW          = sqrt(splitLuma);
+    let splitBeamW          = pow(splitLuma, beamAlpha);  // space-charge I^alpha, matches main TriG path
     let dynHardPixBroadened = min(dynHardPix + mix(0.0, 1.5, splitBeamW), -0.1);
     let sigmaR2Split        = sqrt(-1.0 / (2.0 * dynHardPixBroadened * 0.693147)) * 1.41421356;
     let halfAperSplit        = apertureW * 0.5;
@@ -481,6 +508,111 @@ fn crtKernel(
   if (flickerAmt > 0.001) {
     let decayRGB = phosphorDecayRGB(p.y, src.y, t, flickerRate, flickerTauR, flickerTauG, flickerTauB, scrollPhase);
     col = col * mix(vec3f(1.0), decayRGB, flickerAmt);
+  }
+
+  // Effect 1: EHT ripple -- exponential brightness decay from left edge.
+  // Physical: extra-high-tension power supply sags under beam load as the electron
+  // gun scans left-to-right; later in the scan line (higher p.x) the HV is lower,
+  // reducing beam focus and brightness. The left-edge spike models the brief recovery
+  // overshoot when the beam returns to x=0 (blanking interval -> active scan).
+  if (ehtRippleAmt > 0.001) {
+    let ehtDecay    = 1.0 - ehtRippleAmt * (1.0 - exp(-ehtDecayRate * p.x));
+    let ehtLeftEdge = ehtRippleAmt * 0.3 * exp(-p.x * 20.0);
+    col = col * (ehtDecay + ehtLeftEdge);
+  }
+
+  // Effect 2: position-dependent beam astigmatism.
+  // Physical: off-axis electrons in the magnetic deflection yoke experience unequal
+  // focusing forces in H and V: tangential (azimuthal) beam dimension enlarges
+  // toward screen edges while radial remains near-constant (for shadow-mask geometry).
+  // p already distorted; use p for radius from screen centre.
+  if (astigAmt > 0.001) {
+    let astigDir  = p - vec2f(0.5);
+    let astigR2   = dot(astigDir, astigDir) * 4.0;
+    // Tangential: enlarges perpendicular to radial direction (mostly vertical at left/right edges).
+    // Radial:     enlarges along the radius (mostly horizontal at top/bottom edges).
+    let astigTangFac = 1.0 + astigAmt * astigTangential * astigR2;
+    let astigRadFac  = 1.0 + astigAmt * astigRadial     * astigR2;
+    // Apply by modifying the reconstructed col through a secondary single-tap softening:
+    // blend col toward a spatially blurred version weighted by astig factors.
+    // Tangential maps to H-softening (clamp dynHardPix toward -0.1), radial to V.
+    // Implementation: re-fetch center-row at ±1 source pixel, blend by astigTangFac.
+    let astigSoftH = FetchConvGamma(tex, p, vec2f(-1.0, 0.0), res, scale,
+                                    convergence, convStaticX, convStaticY, convBX, convBY,
+                                    convAspect, kernelGamma, gammaFast)
+                   + FetchConvGamma(tex, p, vec2f( 1.0, 0.0), res, scale,
+                                    convergence, convStaticX, convStaticY, convBX, convBY,
+                                    convAspect, kernelGamma, gammaFast);
+    let astigLinH = select(pow(max(astigSoftH * 0.5, vec3f(0.0)), vec3f(kernelGamma)),
+                            astigSoftH * astigSoftH * 0.25, gammaFast > 0.5);
+    col = mix(col, astigLinH, clamp((astigTangFac - 1.0) * 0.5, 0.0, 0.5));
+
+    let astigSoftV0 = FetchConvGamma(tex, p, vec2f(0.0, -1.0), res, scale,
+                                     convergence, convStaticX, convStaticY, convBX, convBY,
+                                     convAspect, kernelGamma, gammaFast);
+    let astigSoftV1 = FetchConvGamma(tex, p, vec2f(0.0,  1.0), res, scale,
+                                     convergence, convStaticX, convStaticY, convBX, convBY,
+                                     convAspect, kernelGamma, gammaFast);
+    let astigLinV = select(pow(max((astigSoftV0 + astigSoftV1) * 0.5, vec3f(0.0)), vec3f(kernelGamma)),
+                            (astigSoftV0 + astigSoftV1) * (astigSoftV0 + astigSoftV1) * 0.25,
+                            gammaFast > 0.5);
+    col = mix(col, astigLinV, clamp((astigRadFac - 1.0) * 0.5, 0.0, 0.5));
+  }
+
+  // Effect 8: shadow mask thermal doming (single-frame phase A approximation).
+  // Physical: bright regions heat the shadow mask, causing it to dome outward and shift
+  // the mask apertures relative to the phosphor stripes. This causes local desaturation
+  // (nearby phosphor colours mix) in bright areas. Here approximated as luma-dependent
+  // blend toward greyscale proportional to the brightness difference from neighbours.
+  if (domingAmt > 0.001) {
+    let centerLuma   = dot(col, vec3f(0.2126, 0.7152, 0.0722));
+    let n1 = FetchConvGamma(tex, p, vec2f(4.0, 0.0), res, scale,
+                             convergence, convStaticX, convStaticY, convBX, convBY,
+                             convAspect, kernelGamma, gammaFast);
+    let n2 = FetchConvGamma(tex, p, vec2f(-4.0, 0.0), res, scale,
+                             convergence, convStaticX, convStaticY, convBX, convBY,
+                             convAspect, kernelGamma, gammaFast);
+    let n1Lin = select(pow(max(n1, vec3f(0.0)), vec3f(kernelGamma)), n1 * n1, gammaFast > 0.5);
+    let n2Lin = select(pow(max(n2, vec3f(0.0)), vec3f(kernelGamma)), n2 * n2, gammaFast > 0.5);
+    let neighborLuma = dot((n1Lin + n2Lin) * 0.5, vec3f(0.2126, 0.7152, 0.0722));
+    let domingBias   = domingAmt * max(0.0, centerLuma - neighborLuma);
+    let luma         = dot(col, vec3f(0.2126, 0.7152, 0.0722));
+    col = mix(col, vec3f(luma), domingBias * 0.5);
+  }
+
+  // Effect 4: phosphor granularity -- fixed spatial hash (no time variable).
+  // Physical: photolithographic phosphor deposition leaves dot-to-dot brightness
+  // variation of ~2-5% due to uneven phosphor particle packing density.
+  // Hash is purely spatial (screen UV) so it is stable between frames (no flicker).
+  if (phosphorGrainAmt > 0.001) {
+    let grainCoord  = floor(p * res * phosphorGrainScale);
+    let grainHash   = fract(sin(dot(grainCoord, vec2f(127.1, 311.7))) * 43758.5453);
+    let grainFactor = 1.0 + phosphorGrainAmt * (grainHash * 2.0 - 1.0);
+    col = col * grainFactor;
+  }
+
+  // Shrader-Leverenz phosphor saturation: η(J) = η₀ / (1 + J × k)
+  // P22G/P22B (ZnS) saturate more aggressively than P22R (Y₂O₂S:Eu).
+  // At high brightness: G and B compress more → highlights shift warm.
+  // Source: Shrader 1946; Li & Lin 2014 low-voltage CL review.
+  if (phosphorSatAmt > 0.001) {
+    let kR = 0.5 * phosphorSatAmt;
+    let kG = 1.0 * phosphorSatAmt;
+    let kB = 0.8 * phosphorSatAmt;
+    col.r = col.r / (1.0 + col.r * kR);
+    col.g = col.g / (1.0 + col.g * kG);
+    col.b = col.b / (1.0 + col.b * kB);
+  }
+
+  // Inter-phosphor cross-talk: secondary electrons and optical scatter cause ~1-3%
+  // colour contamination from adjacent phosphor stripes/dots.
+  // Modeled as a Gaussian 3-tap horizontal colour average.
+  // Source: den Engelsen et al. 2015 (secondary electron range ~50-100 µm).
+  if (phosphorXtalkAmt > 0.001) {
+    let left    = Fetch(tex, p, vec2f(-phosphorXtalkRadius, 0.0), res, scale);
+    let right   = Fetch(tex, p, vec2f( phosphorXtalkRadius, 0.0), res, scale);
+    let blended = left * 0.25 + col * 0.5 + right * 0.25;
+    col = mix(col, blended, phosphorXtalkAmt);
   }
 
   return col;
@@ -519,15 +651,19 @@ fn crtHorzPass(
   defocusAniso: f32,
   apertureW: f32,
   outputSizeY: f32,
-  gammaFast: f32
+  gammaFast: f32,
+  beamAlpha: f32,
+  swimNoise: f32,
+  astigAmt: f32,
+  astigRadial: f32,
+  astigTangential: f32
 ) -> vec3f {
   // Apply UV distortions at source resolution (sag -> rollbar -> hook -> swim).
-  // tWrapped (not t) used for H-swim: consistent with the time wrapping in renderFrame.
   // DR-14 P3-B: normalise uv.y by (outputSizeY / srcRes.y) so hSwim spatial frequency
   // is in cycles/output-screen-height. Without this, at srcH=240 and outputH=1080 the
   // effective swim frequency is 1.73 * 240/1080 = 0.384 cycles/screen (4.5x too low).
   let swimYScale = outputSizeY / max(srcRes.y, 1.0);
-  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, tWrapped, swimYScale);
+  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, swimYScale);
 
   // Edge defocus: soften hardPix toward screen corners (matches crtKernel single-pass).
   // defocusAniso=0: isotropic; =1: V-only (cylindrical tube).
@@ -541,14 +677,14 @@ fn crtHorzPass(
   // Without this, two-pass mode produces systematically crisper horizontals than single-pass
   // at the same settings: bright horizontal lines are too narrow because Pass A ran at the
   // minimum beam width (no broadening) while Pass B correctly broadens the vertical.
-  // Power-law beam softening: sigma ~ luma^0.5 (empirical, matches TriG / crtVertPassFn).
+  // Power-law beam softening: sigma_sc ~ I^(2/3) (Langmuir-Child), matches TriG / crtVertPassFn.
   // scale = vec2f(1.0) at source resolution -- FetchConvGamma args match crtHorzPass context.
   let cGamma  = FetchConvGamma(tex, p, vec2f(0.0, 0.0), vec2f(1.0), srcRes,
                                conv, convStaticX, convStaticY, convBX, convBY,
                                convAspect, kernelGamma, gammaFast);
   let cLinear = select(pow(max(cGamma, vec3f(0.0)), vec3f(kernelGamma)), cGamma * cGamma, gammaFast > 0.5);
   let luma    = clamp(Luma(cLinear), 0.0, 1.0);
-  let beamW   = sqrt(luma);
+  let beamW   = pow(luma, beamAlpha);  // space-charge I^alpha
   // Clamp to -0.1: defocusFac=0 at corners makes dynHardPixBase=0, then beam
   // broadening can push it positive -> NaN in sigmaR2.
   let dynHardPix = min(dynHardPixBase + mix(0.0, 1.5, beamW), -0.1);
@@ -606,7 +742,17 @@ fn crtVertPass(
   interlace: f32,
   interlaceField: f32,
   apertureH: f32,
-  gammaFast: f32
+  gammaFast: f32,
+  ehtRippleAmt: f32,
+  ehtDecayRate: f32,
+  astigAmt: f32,
+  astigRadial: f32,
+  astigTangential: f32,
+  phosphorGrainAmt: f32,
+  phosphorGrainScale: f32,
+  phosphorSatAmt: f32,
+  phosphorXtalkAmt: f32,
+  phosphorXtalkRadius: f32
 ) -> vec3f {
   // kernelSrcW/H are the actual kernel RT dimensions set by renderFrame.
   // These always match kernelRT (e.g. 640x360) so textureLoad coordinates
@@ -702,6 +848,52 @@ fn crtVertPass(
     let decayRGB = phosphorDecayRGB(pos.y, src.y, t, flickerRate, flickerTauR, flickerTauG, flickerTauB, scrollPhase);
     col = col * mix(vec3f(1.0), decayRGB, flickerAmt);
   }
+
+  // Effect 1 (EHT ripple): apply in vert pass for two-pass path using pos.x.
+  // Same physics as crtKernel single-pass: HV sag across horizontal scan.
+  if (ehtRippleAmt > 0.001) {
+    let ehtDecay    = 1.0 - ehtRippleAmt * (1.0 - exp(-ehtDecayRate * pos.x));
+    let ehtLeftEdge = ehtRippleAmt * 0.3 * exp(-pos.x * 20.0);
+    col = col * (ehtDecay + ehtLeftEdge);
+  }
+
+  // Effect 2 (astigmatism) V-component: apply radial blending from vertical neighbours.
+  // In two-pass, vertical blending already happened above; astig V uses the loaded rows a/c.
+  if (astigAmt > 0.001) {
+    let astigDir = pos - vec2f(0.5);
+    let astigR2  = dot(astigDir, astigDir) * 4.0;
+    let astigRadFac = 1.0 + astigAmt * astigRadial * astigR2;
+    let aLin = select(pow(max(a, vec3f(0.0)), vec3f(kernelGamma)), a * a, gammaFast > 0.5);
+    let cLin = select(pow(max(c, vec3f(0.0)), vec3f(kernelGamma)), c * c, gammaFast > 0.5);
+    let astigLinV = (aLin + cLin) * 0.5;
+    col = mix(col, astigLinV, clamp((astigRadFac - 1.0) * 0.5, 0.0, 0.5));
+  }
+
+  // Effect 4 (phosphor granularity): fixed spatial hash on source-pixel grid.
+  if (phosphorGrainAmt > 0.001) {
+    let grainCoord = floor(vec2f(ipos) * phosphorGrainScale);
+    let grainHash  = fract(sin(dot(grainCoord, vec2f(127.1, 311.7))) * 43758.5453);
+    col = col * (1.0 + phosphorGrainAmt * (grainHash * 2.0 - 1.0));
+  }
+
+  // Effect A (phosphor saturation): Shrader-Leverenz efficiency roll-off.
+  if (phosphorSatAmt > 0.001) {
+    col.r = col.r / (1.0 + col.r * 0.5 * phosphorSatAmt);
+    col.g = col.g / (1.0 + col.g * 1.0 * phosphorSatAmt);
+    col.b = col.b / (1.0 + col.b * 0.8 * phosphorSatAmt);
+  }
+
+  // Effect C (inter-phosphor cross-talk): secondary-electron and optical scatter.
+  // kernelTex stores gamma-encoded H-pass output; decode neighbours to linear before blend.
+  if (phosphorXtalkAmt > 0.001) {
+    let xtalkOff  = max(1, i32(round(phosphorXtalkRadius)));
+    let leftG     = textureLoad(kernelTex, clamp(ipos + vec2i(-xtalkOff, 0), vec2i(0), srcDims - vec2i(1)), 0).rgb;
+    let rightG    = textureLoad(kernelTex, clamp(ipos + vec2i( xtalkOff, 0), vec2i(0), srcDims - vec2i(1)), 0).rgb;
+    let leftLin   = select(pow(max(leftG,  vec3f(0.0)), vec3f(kernelGamma)), leftG  * leftG,  gammaFast > 0.5);
+    let rightLin  = select(pow(max(rightG, vec3f(0.0)), vec3f(kernelGamma)), rightG * rightG, gammaFast > 0.5);
+    col = mix(col, leftLin * 0.25 + col * 0.5 + rightLin * 0.25, phosphorXtalkAmt);
+  }
+
   return col;
 }
 `, [crtKernelFn]);
@@ -771,7 +963,11 @@ fn crtHalation(
   halationSharp: f32,
   hardScan: f32,
   kernelGamma: f32,
-  accurateHalation: f32
+  accurateHalation: f32,
+  halationTailSigma: f32,
+  halationCoreBlend: f32,
+  swimNoise: f32,
+  halationSpectra: f32
 ) -> vec4f {
   // accurateHalation: 0 = legacy mode, raw outer taps weighted by vw (scanline Gaussian);
   //                   1 = post-kernel RTT mode, tapW forced to 1 (no inter-scanline inflation).
@@ -786,76 +982,105 @@ fn crtHalation(
   // via the shared helper. Ensures dy is computed from the same distorted p
   // that the kernel used, so halation tracks the scanline rows correctly.
   // DR-14 P3-B: swimYScale=1.0 — halation uses output UV directly (same as crtKernelFn).
-  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, t, 1.0);
+  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, 1.0);
 
   let d   = Dist(p, src, scrollPhase);
   let dy  = d.y;
   let dx  = d.x;
 
-  // Separable 2D halation: H-pass (7 taps from tex) x V-pass (Gaus(dy)).
-  // Raw H-taps are attenuated by the scanline vertical Gaussian (Gaus(dy, hardScan))
-  // to approximate the post-scanline signal at neighbouring H positions. Without this,
-  // raw taps retain full luminance in inter-scanline gaps, inflating halation ~4x.
-  // The centre tap (scannedColor) already has the full kernel weight embedded.
-  // 7 taps (±3) vs 5 taps (±2): at halationSharp=-0.4, Gaus(±2,-0.4)≈33% of peak;
-  // ±3 taps reduce truncation error and correctly represent the diffuse halo profile.
-  let wh_3 = Gaus(dx - 3.0, halationSharp);
-  let wh_2 = Gaus(dx - 2.0, halationSharp);
-  let wh_1 = Gaus(dx - 1.0, halationSharp);
-  let wh0  = Gaus(dx,        halationSharp);
-  let wh1  = Gaus(dx + 1.0, halationSharp);
-  let wh2  = Gaus(dx + 2.0, halationSharp);
-  let wh3  = Gaus(dx + 3.0, halationSharp);
-  let whSum = wh_3 + wh_2 + wh_1 + wh0 + wh1 + wh2 + wh3;
-
-  // Vertical scanline weight for raw taps -- matches the attenuation already baked
-  // into scannedColor, so all 5 taps have consistent vertical weighting.
-  // In two-pass mode (sourceSizeX > 0.5), tex is kernelRT which stores gamma-encoded
-  // values from Pass A. Decode to linear before halation blending to match scannedColor
-  // (which is already linear from crtVertPassFn's pow(blended, kernelGamma) step).
+  // Vertical scanline weight for raw taps.
+  // P1-A accurateHalation: when true, outer taps read from a post-kernel RTT where gaps are
+  // already dark — no vw correction needed. When false, vw corrects inter-scanline inflation.
   let vw = Gaus(dy, hardScan);
-  // P1-A accurateHalation: when true, outer taps read from a post-kernel RTT (gamma-encoded
-  // scanned output) where gaps are already dark. No vw correction needed — the scanline
-  // Gaussian is already baked in. When false, outer taps read from raw scene (legacy path)
-  // and vw corrects the inter-scanline inflation from ~4× to ~1.5×.
   let tapW = select(vw, 1.0, accurateHalation > 0.5);
   let isTwoPass = sourceSizeX > 0.5;
-  // Outer taps need gamma decode when:
-  //   a) two-pass: tex is Pass A H-kernel RT (gamma-encoded)
-  //   b) accurateHalation: caller encoded linear col to gamma before the RTT
-  // Single-pass legacy (accurateHalation=0): tex is raw scene (linear) — no decode needed.
+  // Outer taps need gamma decode when: a) two-pass: tex is Pass A H-kernel RT (gamma-encoded)
+  // b) accurateHalation: caller encoded linear col to gamma before the RTT.
   let needsDecode = isTwoPass || (accurateHalation > 0.5);
   let gammaVec = vec3f(select(1.0, kernelGamma, needsDecode));
-  // P1-B: in two-pass mode horzRttNode is indexed by output UV (pos), not distorted UV (p).
-  // Pass A baked all distortions into RT content while storing at output-space coordinates.
-  // Reading the RT at p (distorted) would double-apply rollbar/sag/swim -> wrong scanline row.
-  // dy still uses p (distorted space) so halation height tracks the kernel's scanline alignment.
-  // In single-pass mode tex is the raw scene: p (distorted UV) is correct.
+  // P1-B: in two-pass mode read RT at output UV (pos), not distorted UV (p), to avoid
+  // double-applying rollbar/sag/swim. dy still uses p so halation tracks scanline alignment.
   let fetchBase = select(p, pos, isTwoPass);
-  // DR-13 P2-B: outer H-taps read from tex (single-pass: raw scene pre-kernel; two-pass:
-  // H-kernel RT). With accurateHalation=true (default), tex is post-kernel RTT (post-mask),
-  // so all taps read physically correct emitted-light signal.
+
   let c_3 = pow(max(Fetch(tex, fetchBase, vec2f(-3.0, 0.0), res, scale), vec3f(0.0)), gammaVec) * tapW;
   let c_2 = pow(max(Fetch(tex, fetchBase, vec2f(-2.0, 0.0), res, scale), vec3f(0.0)), gammaVec) * tapW;
   let c_1 = pow(max(Fetch(tex, fetchBase, vec2f(-1.0, 0.0), res, scale), vec3f(0.0)), gammaVec) * tapW;
-  // DR-5 P2-B + DR-6 P0-A: center tap uses scannedColor (post-scanline reconstruction).
-  // The halo should radiate from phosphor-emitted light (which carries scanline structure).
-  // scannedColor is always linear (crtVertPassFn decodes before returning in two-pass mode).
-  // No * vw -- scannedColor already has the kernel's full vertical Gaussian baked in from
-  // TriG/crtVertPassFn. Multiplying by vw again would double-weight the vertical Gaussian
-  // at the center relative to the outer raw taps (each of which is Fetch x vw x halation).
+  // DR-5 P2-B: center tap uses scannedColor (post-scanline, linear). No * vw — vertical
+  // Gaussian is already baked in by TriG/crtVertPassFn.
   let c0  = scannedColor;
   let c1  = pow(max(Fetch(tex, fetchBase, vec2f( 1.0, 0.0), res, scale), vec3f(0.0)), gammaVec) * tapW;
   let c2  = pow(max(Fetch(tex, fetchBase, vec2f( 2.0, 0.0), res, scale), vec3f(0.0)), gammaVec) * tapW;
   let c3  = pow(max(Fetch(tex, fetchBase, vec2f( 3.0, 0.0), res, scale), vec3f(0.0)), gammaVec) * tapW;
 
-  let hBlur = (c_3*wh_3 + c_2*wh_2 + c_1*wh_1 + c0*wh0 + c1*wh1 + c2*wh2 + c3*wh3) / whSum;
+  // BiExp: Gaussian core (electron backscatter) + exponential tail (phosphor scatter).
+  // Fast path: halationSpectra < 0.001 — single achromatic PSF, identical to pre-spec behaviour.
+  if (halationSpectra < 0.001) {
+    let wh_3 = BiExp(dx - 3.0, halationSharp, halationTailSigma, halationCoreBlend);
+    let wh_2 = BiExp(dx - 2.0, halationSharp, halationTailSigma, halationCoreBlend);
+    let wh_1 = BiExp(dx - 1.0, halationSharp, halationTailSigma, halationCoreBlend);
+    let wh0  = BiExp(dx,        halationSharp, halationTailSigma, halationCoreBlend);
+    let wh1  = BiExp(dx + 1.0, halationSharp, halationTailSigma, halationCoreBlend);
+    let wh2  = BiExp(dx + 2.0, halationSharp, halationTailSigma, halationCoreBlend);
+    let wh3  = BiExp(dx + 3.0, halationSharp, halationTailSigma, halationCoreBlend);
+    let whSum = wh_3 + wh_2 + wh_1 + wh0 + wh1 + wh2 + wh3;
+    let hBlur = (c_3*wh_3 + c_2*wh_2 + c_1*wh_1 + c0*wh0 + c1*wh1 + c2*wh2 + c3*wh3) / whSum;
+    let halo_rgb = hBlur * BiExp(dy, halationSharp, halationTailSigma, halationCoreBlend);
+    let grad = clamp(dx * 2.0, -1.0, 1.0);
+    return vec4f(halo_rgb, grad);
+  }
 
-  let halo_rgb = hBlur * Gaus(dy, halationSharp);
-  // w: normalised horizontal source-pixel offset dx mapped to [-1, 1].
-  // Currently unused at all JS call sites (.rgb only) — dead code until the anisotropic
-  // halo path is implemented. Do not remove: the encoding is load-bearing for that path.
-  // Formula: dx in [-0.5, 0.5] src-px; clamp(dx * 2, -1, 1) = full [-1, 1].
+  // Spectral path: per-channel PSF widths via Rayleigh lambda^-2 diffusion scaling.
+  // P22 phosphor peaks: R=625nm, G=530nm (reference channel), B=450nm (JEDEC JEP-133).
+  // k_R = (530/625)^2 = 0.7194;  k_B = (530/450)^2 = 1.3865
+  // sharp scales as 1/k^2 (tighter for R, wider for B); tail scales as k (narrower R, wider B).
+  // halationSpectra blends from achromatic (0) to full spectral separation (1).
+  let KR      = 0.7194;
+  let INV_KR2 = 1.9322;
+  let KB      = 1.3865;
+  let INV_KB2 = 0.5202;
+  let sharpR = mix(halationSharp, halationSharp * INV_KR2, halationSpectra);
+  let sharpB = mix(halationSharp, halationSharp * INV_KB2, halationSpectra);
+  let tailR  = mix(halationTailSigma, halationTailSigma * KR, halationSpectra);
+  let tailB  = mix(halationTailSigma, halationTailSigma * KB, halationSpectra);
+
+  let wR_3 = BiExp(dx - 3.0, sharpR, tailR, halationCoreBlend);
+  let wR_2 = BiExp(dx - 2.0, sharpR, tailR, halationCoreBlend);
+  let wR_1 = BiExp(dx - 1.0, sharpR, tailR, halationCoreBlend);
+  let wR0  = BiExp(dx,        sharpR, tailR, halationCoreBlend);
+  let wR1  = BiExp(dx + 1.0, sharpR, tailR, halationCoreBlend);
+  let wR2  = BiExp(dx + 2.0, sharpR, tailR, halationCoreBlend);
+  let wR3  = BiExp(dx + 3.0, sharpR, tailR, halationCoreBlend);
+  let wRSum = wR_3 + wR_2 + wR_1 + wR0 + wR1 + wR2 + wR3;
+
+  let wG_3 = BiExp(dx - 3.0, halationSharp, halationTailSigma, halationCoreBlend);
+  let wG_2 = BiExp(dx - 2.0, halationSharp, halationTailSigma, halationCoreBlend);
+  let wG_1 = BiExp(dx - 1.0, halationSharp, halationTailSigma, halationCoreBlend);
+  let wG0  = BiExp(dx,        halationSharp, halationTailSigma, halationCoreBlend);
+  let wG1  = BiExp(dx + 1.0, halationSharp, halationTailSigma, halationCoreBlend);
+  let wG2  = BiExp(dx + 2.0, halationSharp, halationTailSigma, halationCoreBlend);
+  let wG3  = BiExp(dx + 3.0, halationSharp, halationTailSigma, halationCoreBlend);
+  let wGSum = wG_3 + wG_2 + wG_1 + wG0 + wG1 + wG2 + wG3;
+
+  let wB_3 = BiExp(dx - 3.0, sharpB, tailB, halationCoreBlend);
+  let wB_2 = BiExp(dx - 2.0, sharpB, tailB, halationCoreBlend);
+  let wB_1 = BiExp(dx - 1.0, sharpB, tailB, halationCoreBlend);
+  let wB0  = BiExp(dx,        sharpB, tailB, halationCoreBlend);
+  let wB1  = BiExp(dx + 1.0, sharpB, tailB, halationCoreBlend);
+  let wB2  = BiExp(dx + 2.0, sharpB, tailB, halationCoreBlend);
+  let wB3  = BiExp(dx + 3.0, sharpB, tailB, halationCoreBlend);
+  let wBSum = wB_3 + wB_2 + wB_1 + wB0 + wB1 + wB2 + wB3;
+
+  let hBlurR = (c_3.r*wR_3 + c_2.r*wR_2 + c_1.r*wR_1 + c0.r*wR0 + c1.r*wR1 + c2.r*wR2 + c3.r*wR3) / wRSum;
+  let hBlurG = (c_3.g*wG_3 + c_2.g*wG_2 + c_1.g*wG_1 + c0.g*wG0 + c1.g*wG1 + c2.g*wG2 + c3.g*wG3) / wGSum;
+  let hBlurB = (c_3.b*wB_3 + c_2.b*wB_2 + c_1.b*wB_1 + c0.b*wB0 + c1.b*wB1 + c2.b*wB2 + c3.b*wB3) / wBSum;
+
+  let halo_rgb = vec3f(
+    hBlurR * BiExp(dy, sharpR,        tailR,             halationCoreBlend),
+    hBlurG * BiExp(dy, halationSharp, halationTailSigma, halationCoreBlend),
+    hBlurB * BiExp(dy, sharpB,        tailB,             halationCoreBlend)
+  );
+  // w: normalised horizontal source-pixel offset dx mapped to [-1, 1]. Load-bearing for
+  // future anisotropic halo path. Formula: clamp(dx * 2, -1, 1).
   let grad = clamp(dx * 2.0, -1.0, 1.0);
   return vec4f(halo_rgb, grad);
 }

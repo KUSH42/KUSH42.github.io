@@ -75,7 +75,7 @@ export function computeFlickerBoost(tauR, tauG, tauB, flickerAmt, flickerRate) {
 export function computeMaskBoost(maskType, maskSmooth, maskStr, maskScale = 1.0) {
   if (maskStr < 0.001) return 1.0;
 
-  //                        [AG    SM    Slot  AG+DW Delta VGA   HiAG  CGWG]
+  //                    [AG    SM    Slot  AG+DW Delta VGA   HiAG  CGWG]
   const avgBinaryBase = [0.40, 0.25, 0.31, 0.40, 0.25, 0.40, 0.40, 0.65];
   const avgSmoothBase = [0.25, 0.17, 0.20, 0.25, 0.17, 0.32, 0.25, 0.65];
   const floorMap      = [0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.30];
