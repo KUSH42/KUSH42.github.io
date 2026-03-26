@@ -638,29 +638,32 @@
     <div class="rr-sec rr-collapsible rr-open" data-target="ts-accuracy-body">Accuracy</div>
     <div id="ts-accuracy-body" class="rr-collapse-body rr-open">
       <label>
-        <span class="ln">Source preset</span>
+        <span class="ln">CRT resolution preset</span>
         <select id="ts-sourcePreset">
           <option value="">— pick —</option>
-          <option value="0,0">Auto (0×0)</option>
+          <option value="0,0">Auto</option>
           <option value="256,224">NES / Famicom (256×224)</option>
           <option value="320,200">CGA / EGA (320×200)</option>
           <option value="320,240">SD console / PSX (320×240)</option>
           <option value="512,224">SNES / Mega Drive (512×224)</option>
-          <option value="320,480">NTSC interlaced (320×480i)</option>
+          <option value="320,480,1">NTSC interlaced (320×480i)</option>
           <option value="384,288">PAL SD broadcast (384×288)</option>
           <option value="640,480">VGA / early 3D (640×480)</option>
           <option value="720,480">D1 NTSC broadcast (720×480)</option>
           <option value="720,576">D1 PAL broadcast (720×576)</option>
           <option value="800,600">SVGA (800×600)</option>
+          <option value="1280,720" selected>HD 720p (1280×720)</option>
+          <option value="1920,540,1">HD 1080i field (1920×540)</option>
+          <option value="1920,1080">HD 1080p (1920×1080)</option>
         </select>
       </label>
       <label>
-        <span class="ln">Source width (0=output)</span>
-        <input type="number" id="ts-sourceSizeX" min="0" max="3840" step="1" value="0" style="width:5em">
+        <span class="ln">CRT resolution width</span>
+        <input type="number" id="ts-sourceSizeX" min="0" max="3840" step="1" value="1280" style="width:5em">
       </label>
       <label>
-        <span class="ln">Source height (0=output)</span>
-        <input type="number" id="ts-sourceSizeY" min="0" max="2160" step="1" value="0" style="width:5em">
+        <span class="ln">CRT resolution height</span>
+        <input type="number" id="ts-sourceSizeY" min="0" max="2160" step="1" value="720" style="width:5em">
       </label>
       <label>
         <span class="ln">Interlace</span>
@@ -2552,16 +2555,41 @@
       applyPattern(0); // PM5544 default — sets geometry, texture, aspect, overlay, camera
 
       // ── Source resolution preset ───────────────────────────────────────────
+      const SOURCE_PRESET_SIGNALS = {
+        '256,224':     'compositeNtsc',  // NES/Famicom: RF modulated to composite
+        '320,200':     'cleanRgb',       // CGA/EGA: digital RGB monitor
+        '320,240':     'compositeNtsc',  // SD console/PSX: RCA composite
+        '512,224':     'compositeNtsc',  // SNES/Mega Drive: RCA composite
+        '320,480,1':   'offAirNtsc',     // NTSC 480i: antenna/broadcast
+        '384,288':     'offAirPal',      // PAL SD broadcast: aerial
+        '640,480':     'cleanRgb',       // VGA: analog RGB
+        '720,480':     'compositeNtsc',  // D1 NTSC: consumer path was RCA/S-Video
+        '720,576':     'offAirPal',      // D1 PAL: consumer path was aerial/SCART
+        '800,600':     'cleanRgb',       // SVGA: computer RGB monitor
+        '1280,720':    'cleanRgb',       // HD 720p: component/HDMI
+        '1920,540,1':  'cleanRgb',       // HD 1080i: component/HDMI
+        '1920,1080':   'cleanRgb',       // HD 1080p: HDMI
+      };
       document.getElementById('ts-sourcePreset').addEventListener('change', e => {
         if (!e.target.value) return;
-        const [w, h] = e.target.value.split(',').map(Number);
+        const [w, h, i] = e.target.value.split(',').map(Number);
         const xEl = document.getElementById('ts-sourceSizeX');
         const yEl = document.getElementById('ts-sourceSizeY');
+        const interlaceEl = document.getElementById('ts-interlace');
+        const sigEl = document.getElementById('ts-signalPreset');
         xEl.value = w;
         yEl.value = h;
-        // Fire change events so the controls module picks them up
         xEl.dispatchEvent(new Event('change'));
         yEl.dispatchEvent(new Event('change'));
+        if (interlaceEl && interlaceEl.checked !== !!i) {
+          interlaceEl.checked = !!i;
+          interlaceEl.dispatchEvent(new Event('change'));
+        }
+        const signal = SOURCE_PRESET_SIGNALS[e.target.value];
+        if (signal && sigEl && sigEl.value !== signal) {
+          sigEl.value = signal;
+          sigEl.dispatchEvent(new Event('change'));
+        }
       });
 
       // ── Stats.js (P key toggle) ─────────────────────────────────────────────
