@@ -1189,6 +1189,7 @@
       flip.width = w; flip.height = h;
       const fctx = flip.getContext('2d');
       function blit() {
+        fctx.clearRect(0, 0, w, h);
         fctx.setTransform(1, 0, 0, -1, 0, h);
         fctx.drawImage(srcCanvas, 0, 0);
         fctx.setTransform(1, 0, 0, 1, 0, 0);
