@@ -312,9 +312,9 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
   let aLinear = select(pow(max(a_g, vec3f(0.0)), vec3f(kernelGamma)), a_g * a_g, gammaFast > 0.5);
   let bLinear = select(pow(max(b_g, vec3f(0.0)), vec3f(kernelGamma)), b_g * b_g, gammaFast > 0.5);
   let cLinear = select(pow(max(c_g, vec3f(0.0)), vec3f(kernelGamma)), c_g * c_g, gammaFast > 0.5);
-  let dynScanA = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
-  let dynScanB = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
-  let dynScanC = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
+  let dynScanA = hardScan + mix(0.0, 4.0, pow(clamp(Luma(aLinear), 0.0, 1.0), beamAlpha));
+  let dynScanB = hardScan + mix(0.0, 4.0, pow(clamp(Luma(bLinear), 0.0, 1.0), beamAlpha));
+  let dynScanC = hardScan + mix(0.0, 4.0, pow(clamp(Luma(cLinear), 0.0, 1.0), beamAlpha));
 
   // Vertical blend: aperture-integrated ErfGausSR2 replaces point-sampled Gaus.
   // Fixes ~11% peak brightness overestimate at hardScan=-8 (SPEC-21 P3-F).
@@ -340,9 +340,9 @@ fn TriG(tex: texture_2d<f32>, pos: vec2f, src: vec2f, scale: vec2f, res: vec2f, 
 // is always in cycles/output-screen-height. Single-pass and halation pass 1.0 (unchanged);
 // crtHorzPassFn passes outputSizeY / max(srcH, 1.0) to correct the two-pass mismatch.
 // WGSL forward reference: hSwimNorm() is declared later in this source string (valid at module scope).
-fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32, swimNoise: f32, swimYScale: f32) -> vec2f {
+fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32, sagStrength: f32, rollbarHookAmt: f32, swimNoise: f32, swimYScale: f32) -> vec2f {
   // 1. Voltage sag: shrink image toward centre (max 4% at sagPhase=1.0)
-  let sagMag   = sagPhase * 0.04;
+  let sagMag   = sagPhase * 0.04 * sagStrength;
   var p        = vec2f(0.5) + (pos - vec2f(0.5)) * (1.0 - sagMag);
   // 2. Rollbar scroll: fract-wrap Y so the content seam tracks the CSS dark band.
   let wrappedY = fract(p.y - rollbarPhase);
@@ -350,8 +350,8 @@ fn applyUVDistortions(pos: vec2f, swimAmt: f32, rollbarPhase: f32, sagPhase: f32
   let isActive  = select(0.0, 1.0, rollbarPhase > 0.001);
   let hookFac   = clamp(1.0 - wrappedY / 0.07, 0.0, 1.0) * isActive;
   let scanHash  = fract(sin(wrappedY * 317.8 + rollbarPhase * 43.1) * 43758.54);
-  let hookShift = hookFac * hookFac * 0.035
-                + (scanHash * 2.0 - 1.0) * hookFac * 0.015;
+  let hookShift = hookFac * hookFac * 0.035 * rollbarHookAmt
+                + (scanHash * 2.0 - 1.0) * hookFac * 0.015 * rollbarHookAmt;
   p = vec2f(p.x + hookShift, wrappedY);
   // 4. H-swim: per-scanline horizontal drift from deflection oscillator instability.
   // DR-14 P3-B: normalise y by swimYScale before computing swim displacement.
@@ -420,6 +420,8 @@ fn crtKernel(
   swimAmt: f32,
   rollbarPhase: f32,
   sagPhase: f32,
+  sagStrength: f32,
+  rollbarHookAmt: f32,
   defocusAmt: f32,
   defocusAniso: f32,
   flickerRate: f32,
@@ -460,7 +462,7 @@ fn crtKernel(
 
   // --- UV distortions: sag -> rollbar -> hook -> swim (via shared helper) ---
   // DR-14 P3-B: swimYScale=1.0 — single-pass uses output UV directly (no normalisation needed).
-  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, 1.0);
+  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, sagStrength, rollbarHookAmt, swimNoise, 1.0);
 
   // Edge defocus: both hardPix and hardScan soften toward screen corners.
   // DR-9 P0-B: previously only dynHardPix was reduced; dynHardScan was missing, leaving corners
@@ -647,6 +649,8 @@ fn crtHorzPass(
   swimAmt: f32,
   rollbarPhase: f32,
   sagPhase: f32,
+  sagStrength: f32,
+  rollbarHookAmt: f32,
   defocusAmt: f32,
   defocusAniso: f32,
   apertureW: f32,
@@ -663,7 +667,7 @@ fn crtHorzPass(
   // is in cycles/output-screen-height. Without this, at srcH=240 and outputH=1080 the
   // effective swim frequency is 1.73 * 240/1080 = 0.384 cycles/screen (4.5x too low).
   let swimYScale = outputSizeY / max(srcRes.y, 1.0);
-  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, swimYScale);
+  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, sagStrength, rollbarHookAmt, swimNoise, swimYScale);
 
   // Edge defocus: soften hardPix toward screen corners (matches crtKernel single-pass).
   // defocusAniso=0: isotropic; =1: V-only (cylindrical tube).
@@ -743,6 +747,7 @@ fn crtVertPass(
   interlaceField: f32,
   apertureH: f32,
   gammaFast: f32,
+  beamAlpha: f32,
   ehtRippleAmt: f32,
   ehtDecayRate: f32,
   astigAmt: f32,
@@ -802,9 +807,9 @@ fn crtVertPass(
   let aLinear  = select(pow(max(a, vec3f(0.0)), vec3f(kernelGamma)), a * a, gammaFast > 0.5);
   let bLinear  = select(pow(max(b, vec3f(0.0)), vec3f(kernelGamma)), b * b, gammaFast > 0.5);
   let cLinear  = select(pow(max(c, vec3f(0.0)), vec3f(kernelGamma)), c * c, gammaFast > 0.5);
-  let dynScanA = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
-  let dynScanB = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
-  let dynScanC = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
+  let dynScanA = dynHardScan + mix(0.0, 4.0, pow(clamp(Luma(aLinear), 0.0, 1.0), beamAlpha));
+  let dynScanB = dynHardScan + mix(0.0, 4.0, pow(clamp(Luma(bLinear), 0.0, 1.0), beamAlpha));
+  let dynScanC = dynHardScan + mix(0.0, 4.0, pow(clamp(Luma(cLinear), 0.0, 1.0), beamAlpha));
 
   // Vertical blend: aperture-integrated ErfGausSR2 replaces point-sampled Gaus (SPEC-21 P3-F).
   let halfApertureH = apertureH * 0.5;
@@ -958,6 +963,8 @@ fn crtHalation(
   swimAmt: f32,
   rollbarPhase: f32,
   sagPhase: f32,
+  sagStrength: f32,
+  rollbarHookAmt: f32,
   sourceSizeX: f32,
   sourceSizeY: f32,
   halationSharp: f32,
@@ -982,7 +989,7 @@ fn crtHalation(
   // via the shared helper. Ensures dy is computed from the same distorted p
   // that the kernel used, so halation tracks the scanline rows correctly.
   // DR-14 P3-B: swimYScale=1.0 — halation uses output UV directly (same as crtKernelFn).
-  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, 1.0);
+  var p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, sagStrength, rollbarHookAmt, swimNoise, 1.0);
 
   let d   = Dist(p, src, scrollPhase);
   let dy  = d.y;

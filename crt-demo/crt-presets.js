@@ -43,7 +43,7 @@ export const PRESETS = {
     blackLevel: 0.0001, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
-    flickerTauR: 0.00015, flickerTauG: 0.0001, flickerTauB: 0.00015,
+    flickerTauR: 0.0005, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Flat Trinitron panel, late-model AR coating — low scatter.
     glassBlurEnabled: true, glassBlurStr: 0.008, glassBlurRadius: 0.002,
@@ -82,7 +82,7 @@ export const PRESETS = {
     blackLevel: 0.0003, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 50.0,
-    flickerTauR: 0.0004, flickerTauG: 0.0003, flickerTauB: 0.00008,
+    flickerTauR: 0.0004, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // 14" consumer, no AR coating — moderate scatter.
     glassBlurEnabled: true, glassBlurStr: 0.010, glassBlurRadius: 0.002,
@@ -103,28 +103,29 @@ export const PRESETS = {
   },
 
   /**
-   * Sony PVM-14L2 (1991, broadcast monitor) — professional studio monitor.
-   * Fine slot mask 0.35 mm, D65 factory calibration, minimal warp.
-   * Reference: Sony PVM-14L2 service manual.
+   * Sony PVM-14L2 (2002, broadcast monitor) — professional studio monitor.
+   * Aperture grille 0.25 mm (Sony Trinitron M34KBE11X tube), D65 factory calibration, minimal warp.
+   * Same Trinitron technology as KV-27XBR: cylindrical screen, H-only convergence errors.
+   * Reference: CRT Database / crtdatabase.com, Sony PVM-14L2 specifications.
    */
   pvm14: {
-    maskType: 2, maskStr: 0.30, maskScale: 2.63, maskSmooth: 0.0, apertureW: 0.67,
+    maskType: 0, maskStr: 0.30, maskScale: 1.88, maskSmooth: 0.0, apertureW: 1.0,
     warpMult: 0.05, hardPix: -3.0, hardScan: -9.0,
     brightBoost: 0.65, colorTempStr: 0.0,
     halationStr: 1.0, halationSharp: -1.5, halationWarm: 0.0, halationSpectra: 0.0,
     haloRadius: 0.0, haloStr: 0.0,
     convergence: 0.006, convStaticX: 0.0, convStaticY: 0.0,
-    convBX: 0.0, convBY: 0.0, convAspect: 0.85,
+    convBX: 0.0, convBY: 0.0, convAspect: 1.0,
     grainAmt: 0.005, snowAmt: 0.0, swimAmt: 0.05,
-    defocusAmt: 0.15, defocusAniso: 0.0, scratchStr: 0.005, scrollRate: 0.02,
+    defocusAmt: 0.15, defocusAniso: 0.85, scratchStr: 0.005, scrollRate: 0.02,
     blackLevel: 0.0001, p22Str: 0.0, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
-    flickerTauR: 0.00015, flickerTauG: 0.0001, flickerTauB: 0.00015,
+    flickerTauR: 0.0005, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Professional AR coating, 14" — minimal scatter.
     glassBlurEnabled: true, glassBlurStr: 0.002, glassBlurRadius: 0.001,
-    warpAniso: 0.0,
+    warpAniso: 0.90,
     interlace: false,
     humAmt: 0.0, humBars: 1.0, humRate: 0.06,
     ghostOffset: 0.0, ghostStr: 0.0,
@@ -159,7 +160,7 @@ export const PRESETS = {
     blackLevel: 0.0002, p22Str: 0.45, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
-    flickerTauR: 0.00015, flickerTauG: 0.0001, flickerTauB: 0.00015,
+    flickerTauR: 0.0005, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Thick uncoated glass, high-brightness arcade tube — strong scatter.
     glassBlurEnabled: true, glassBlurStr: 0.018, glassBlurRadius: 0.003,
@@ -197,7 +198,7 @@ export const PRESETS = {
     blackLevel: 0.0003, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 50.0,
-    flickerTauR: 0.0004, flickerTauG: 0.0003, flickerTauB: 0.00008,
+    flickerTauR: 0.0004, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Large 25" tube, thick curved glass, light AR — noticeable scatter.
     glassBlurEnabled: true, glassBlurStr: 0.012, glassBlurRadius: 0.002,
@@ -239,7 +240,7 @@ export const PRESETS = {
     blackLevel: 0.0005, p22Str: 0.45, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
-    flickerTauR: 0.00015, flickerTauG: 0.0001, flickerTauB: 0.00015,
+    flickerTauR: 0.0005, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Old thick borosilicate, no AR coating — heavy scatter.
     glassBlurEnabled: true, glassBlurStr: 0.022, glassBlurRadius: 0.003,
@@ -280,7 +281,7 @@ export const PRESETS = {
     blackLevel: 0.0004, p22Str: 0.40, kernelGamma: 2.5,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 59.94,
-    flickerTauR: 0.00015, flickerTauG: 0.0001, flickerTauB: 0.00015,
+    flickerTauR: 0.0005, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Budget 13" consumer, no AR coating — moderate scatter.
     glassBlurEnabled: true, glassBlurStr: 0.014, glassBlurRadius: 0.002,
@@ -322,7 +323,7 @@ export const PRESETS = {
     blackLevel: 0.0001, p22Str: 0.0, kernelGamma: 2.2,
     bloomCoreRadius: 0.35, bloomCoreStrength: 0.6,
     flickerRate: 85.0,
-    flickerTauR: 0.00015, flickerTauG: 0.0001, flickerTauB: 0.00015,
+    flickerTauR: 0.0005, flickerTauG: 0.0001, flickerTauB: 0.00005,
     flickerAmt: 0.0, persistence: 0.0, persistenceTau: 0.0,
     // Good AR coating, flat/thin glass PC monitor — near-negligible scatter.
     glassBlurEnabled: true, glassBlurStr: 0.004, glassBlurRadius: 0.001,

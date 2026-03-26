@@ -50,10 +50,15 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     scratchOpacity:  0.015,
     vignetteEnabled: true,
     vignetteOpacity: 0.25,
-    scanlinesEnabled: true,
+    vignetteRadius:      45,
+    vignetteHardness:    55,
+    vignetteMaxOpacity:  0.75,
+    scanlinesEnabled: false,
     phaseEnabled:    true,
     sagEnabled:      true,
+    sagStrength:     1.0,
     rollbarEnabled:  true,
+    rollbarHookAmt:  1.0,
     // CRT shader
     warpMult:    0.20,
     warpAniso:   0.0,
@@ -115,11 +120,11 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     glassBlurStr:       0.08,  // faceplate scatter strength (pipeline rebuild on 0↔nonzero)
     glassBlurRadius:    0.002, // scatter radius — 3×3 grid tap spacing as UV fraction of width
     // Private state — underscore prefix; excluded from JSON export
-    _preset:            'necMultisync', // currently selected CRT archetype key
-    _signalPreset:      'offAirPal',    // currently selected signal source key
+    _preset:            'trinitron',    // currently selected CRT archetype key
+    _signalPreset:      'compositeNtsc', // currently selected signal source key
     // Accuracy pass
-    sourceSizeX:        0,     // 0 = use output resolution (backward-compatible)
-    sourceSizeY:        0,
+    sourceSizeX:        1280,
+    sourceSizeY:        720,
     interlace:          false,
     halationWarm:       0.0,
     haloRadius:         0.0,
@@ -255,12 +260,16 @@ export function initTelescreenCRTControls(crt, opts = {}) {
 
     // Merge preset into state, converting units where controls differ from shader.
     // tau values: preset is seconds; controls state is milliseconds.
-    const TAU_KEYS = ['flickerTau', 'flickerTauR', 'flickerTauG', 'flickerTauB'];
+    // hardPix/hardScan: presets store raw shader values (negative); state stores positive magnitude.
+    const TAU_KEYS   = ['flickerTau', 'flickerTauR', 'flickerTauG', 'flickerTauB'];
+    const NEGATE_KEYS = ['hardPix', 'hardScan'];
 
     for (const [k, v] of Object.entries(p)) {
       if (!(k in state)) continue;         // skip keys not tracked by controls
       if (TAU_KEYS.includes(k)) {
         state[k] = v * 1000;              // s → ms (controls store in ms)
+      } else if (NEGATE_KEYS.includes(k)) {
+        state[k] = -v;                    // shader value is negative; state stores positive
       } else {
         state[k] = v;
       }
@@ -291,6 +300,26 @@ export function initTelescreenCRTControls(crt, opts = {}) {
         if (activeSP[b.key] !== undefined) applyBinding(b, activeSP[b.key]);
       }
     }
+  }
+
+  // ── Vignette gradient helper ──────────────────────────────────
+  // Builds the radial-gradient CSS string from all four vignette state values and
+  // applies it to all vignette elements. Called by each vignette binding — fires
+  // once per bound control at init (4×), which is harmless.
+  //
+  // vignetteOpacity folds into the gradient alpha rather than el.style.opacity so
+  // vignetteMaxOpacity always represents the true perceived corner darkness:
+  //   effectiveAlpha = vignetteMaxOpacity × vignetteOpacity
+  // el.style.opacity is held at 1 — no hidden compounding multiplication.
+  function applyVignetteGradient() {
+    const innerStop     = state.vignetteRadius;
+    const darkStop      = Math.min(state.vignetteRadius + state.vignetteHardness, 100);
+    const effectiveAlpha = Math.min(1, state.vignetteMaxOpacity * state.vignetteOpacity);
+    const gradient      = `radial-gradient(ellipse at center, transparent ${innerStop}%, rgba(0,0,0,${effectiveAlpha.toFixed(3)}) ${darkStop}%)`;
+    tsVignetteEls.forEach(el => {
+      el.style.opacity    = '1';
+      el.style.background = gradient;
+    });
   }
 
   // ── Binding table ─────────────────────────────────────────────
@@ -335,7 +364,19 @@ export function initTelescreenCRTControls(crt, opts = {}) {
     { id: 'ts-vignetteOpacity', valId: 'ts-vVignetteOpacity', key: 'vignetteOpacity',
       toSlider: v => v * 100, fromSlider: v => v / 100,
       fmt: v => v.toFixed(2),
-      set: v => { tsVignetteEls.forEach(el => { el.style.opacity = v; }); } },
+      set: () => applyVignetteGradient() },
+    { id: 'ts-vignetteRadius', valId: 'ts-vVignetteRadius', key: 'vignetteRadius',
+      toSlider: v => v, fromSlider: v => +v,
+      fmt: v => v.toFixed(0) + '%',
+      set: () => applyVignetteGradient() },
+    { id: 'ts-vignetteHardness', valId: 'ts-vVignetteHardness', key: 'vignetteHardness',
+      toSlider: v => v, fromSlider: v => +v,
+      fmt: v => v.toFixed(0) + '% gap',
+      set: () => applyVignetteGradient() },
+    { id: 'ts-vignetteMaxOpacity', valId: 'ts-vVignetteMaxOpacity', key: 'vignetteMaxOpacity',
+      toSlider: v => Math.round(v * 100), fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: () => applyVignetteGradient() },
     { type: 'checkbox', id: 'ts-scanlinesEnabled', key: 'scanlinesEnabled',
       set: v => { tsScanlinesEls.forEach(el => { el.style.display = v ? 'block' : 'none'; }); } },
     { type: 'checkbox', id: 'ts-phaseEnabled', key: 'phaseEnabled',
@@ -345,11 +386,19 @@ export function initTelescreenCRTControls(crt, opts = {}) {
         tsSagEls.forEach(el => { el.style.display = v ? '' : 'none'; });
         crt.setShader({ sagGeom: v });
       } },
+    { id: 'ts-sagStrength', valId: 'ts-vSagStrength', key: 'sagStrength',
+      toSlider: v => Math.round(v * 100), fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => crt.setShader({ sagStrength: v }) },
     { type: 'checkbox', id: 'ts-rollbarEnabled', key: 'rollbarEnabled',
       set: v => {
         tsRollbarEls.forEach(el => { el.style.display = v ? '' : 'none'; });
         crt.setShader({ rollbarScroll: v });
       } },
+    { id: 'ts-rollbarHookAmt', valId: 'ts-vRollbarHookAmt', key: 'rollbarHookAmt',
+      toSlider: v => Math.round(v * 100), fromSlider: v => v / 100,
+      fmt: v => v.toFixed(2),
+      set: v => crt.setShader({ rollbarHookAmt: v }) },
 
     // ── CRT shader ──
     { id: 'ts-warp', valId: 'ts-vWarp', key: 'warpMult',

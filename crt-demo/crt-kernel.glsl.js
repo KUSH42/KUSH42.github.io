@@ -83,8 +83,7 @@ float Luma(vec3 c) {
 // Offsets are converted from source-pixel units to texel units via (texSize / res) * scale.
 // Clamp to valid texel range -- prevents OOB taps from darkening the Horz normaliser
 // while preserving correct reconstruction for the boundary source pixels.
-vec3 Fetch(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale) {
-  vec2 texSize  = vec2(textureSize(tex, 0));
+vec3 Fetch(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale, vec2 texSize) {
   vec2 texScale = texSize / max(res, vec2(1.0));
   vec2 iCoordF  = pos * texSize + off * scale * texScale;
   ivec2 iCoord  = clamp(ivec2(floor(iCoordF)), ivec2(0), ivec2(texSize) - ivec2(1));
@@ -108,11 +107,11 @@ vec3 Fetch(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale) {
 //     Real Trinitron: R and B guns displaced horizontally -> H-only misconvergence.
 vec3 FetchConv(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale,
                float conv, float convStaticX, float convStaticY, float convBX, float convBY,
-               float convAspect) {
+               float convAspect, vec2 texSize) {
   // Fast path: all convergence disabled -- single fetch, no extra reads.
   if (abs(conv) < 0.0001 && abs(convStaticX) < 0.0001 && abs(convStaticY) < 0.0001
       && abs(convBX) < 0.0001 && abs(convBY) < 0.0001) {
-    return Fetch(tex, pos, off, res, scale);
+    return Fetch(tex, pos, off, res, scale, texSize);
   }
   vec2 dir = pos - vec2(0.5);
   // P1-B: anisotropic convergence -- mix between radial (dot(dir,dir)) and H-only (dir.x^2).
@@ -127,18 +126,18 @@ vec3 FetchConv(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale,
   vec2 staticBUv = vec2(convBX, convBY) * scale / res;  // B uses its own independent static offset
   vec2 rPos = pos + dir *  mag + staticRUv;
   vec2 bPos = pos + dir * -mag + staticBUv;
-  vec3 center = Fetch(tex, pos, off, res, scale);
+  vec3 center = Fetch(tex, pos, off, res, scale, texSize);
   float r;
   float b;
   if (max(abs(rPos.x - 0.5), abs(rPos.y - 0.5)) > 0.5) {
     r = 0.0;  // Outside raster: no phosphor illumination (blanking interval).
   } else {
-    r = Fetch(tex, rPos, off, res, scale).r;
+    r = Fetch(tex, rPos, off, res, scale, texSize).r;
   }
   if (max(abs(bPos.x - 0.5), abs(bPos.y - 0.5)) > 0.5) {
     b = 0.0;  // Outside raster: no phosphor illumination (blanking interval).
   } else {
-    b = Fetch(tex, bPos, off, res, scale).b;
+    b = Fetch(tex, bPos, off, res, scale, texSize).b;
   }
   return vec3(r, center.g, b);
 }
@@ -152,8 +151,8 @@ vec3 FetchConv(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale,
 // P3-C: kernelGamma is user-configurable (default 2.5). 1/kernelGamma encodes to gamma space.
 vec3 FetchConvGamma(sampler2D tex, vec2 pos, vec2 off, vec2 res, vec2 scale,
                     float conv, float convStaticX, float convStaticY, float convBX, float convBY,
-                    float convAspect, float kernelGamma, float gammaFast) {
-  vec3 c = max(FetchConv(tex, pos, off, res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect), vec3(0.0));
+                    float convAspect, float kernelGamma, float gammaFast, vec2 texSize) {
+  vec3 c = max(FetchConv(tex, pos, off, res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, texSize), vec3(0.0));
   return (gammaFast > 0.5) ? sqrt(c) : pow(c, vec3(1.0 / kernelGamma));
 }
 
@@ -170,9 +169,10 @@ vec3 Horz3G(sampler2D tex, vec2 pos, float off, vec2 scale, vec2 res,
             float sigmaR2, float halfAper, float dx,
             float conv, float convStaticX, float convStaticY, float convBX, float convBY,
             float convAspect, float kernelGamma, float gammaFast) {
-  vec3 b = FetchConvGamma(tex, pos, vec2(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
-  vec3 c = FetchConvGamma(tex, pos, vec2( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
-  vec3 d = FetchConvGamma(tex, pos, vec2( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: one call for all 3 taps
+  vec3 b = FetchConvGamma(tex, pos, vec2(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
+  vec3 c = FetchConvGamma(tex, pos, vec2( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
+  vec3 d = FetchConvGamma(tex, pos, vec2( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
   float wb = ErfGausSR2(dx - 1.0, sigmaR2, halfAper);
   float wc = ErfGausSR2(dx + 0.0, sigmaR2, halfAper);
   float wd = ErfGausSR2(dx + 1.0, sigmaR2, halfAper);
@@ -184,11 +184,12 @@ vec3 Horz5G(sampler2D tex, vec2 pos, float off, vec2 scale, vec2 res,
             float sigmaR2, float halfAper, float dx,
             float conv, float convStaticX, float convStaticY, float convBX, float convBY,
             float convAspect, float kernelGamma, float gammaFast) {
-  vec3 a = FetchConvGamma(tex, pos, vec2(-2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
-  vec3 b = FetchConvGamma(tex, pos, vec2(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
-  vec3 c = FetchConvGamma(tex, pos, vec2( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
-  vec3 d = FetchConvGamma(tex, pos, vec2( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
-  vec3 e = FetchConvGamma(tex, pos, vec2( 2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast);
+  vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: one call for all 5 taps
+  vec3 a = FetchConvGamma(tex, pos, vec2(-2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
+  vec3 b = FetchConvGamma(tex, pos, vec2(-1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
+  vec3 c = FetchConvGamma(tex, pos, vec2( 0.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
+  vec3 d = FetchConvGamma(tex, pos, vec2( 1.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
+  vec3 e = FetchConvGamma(tex, pos, vec2( 2.0, off), res, scale, conv, convStaticX, convStaticY, convBX, convBY, convAspect, kernelGamma, gammaFast, texSize);
   float wa = ErfGausSR2(dx - 2.0, sigmaR2, halfAper);
   float wb = ErfGausSR2(dx - 1.0, sigmaR2, halfAper);
   float wc = ErfGausSR2(dx + 0.0, sigmaR2, halfAper);
@@ -229,9 +230,10 @@ vec3 TriG(sampler2D tex, vec2 pos, vec2 src, vec2 scale, vec2 res,
 
   // 1-tap center fetch for luma estimation -- used for dynHardPix (horizontal beam width).
   // Keeps the center-row 1-tap approach for sigmaR2/halfAper which must be known before the Horz calls.
+  vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: shared by center fetch; Horz* compute their own
   vec3 centerGamma = FetchConvGamma(tex, pos, vec2(0.0, 0.0), res, scale,
                                     conv, convStaticX, convStaticY, convBX, convBY,
-                                    convAspect, kernelGamma, gammaFast);
+                                    convAspect, kernelGamma, gammaFast, texSize);
   // DR-6 P1-A: decode to linear before computing luma (BT.709 coefficients require linear light).
   // Gamma-encoded luma overestimates mid-tone values by ~52% at gamma=2.5, causing over-wide beams.
   vec3 centerLinear = (gammaFast > 0.5) ? (centerGamma * centerGamma)
@@ -349,9 +351,9 @@ float hSwimNorm(float y_norm, float swimNoise) {
 // DR-14 P3-B: swimYScale normalises uv.y before hSwimNorm so spatial frequency of H-swim
 // is always in cycles/output-screen-height. Single-pass and halation pass 1.0 (unchanged);
 // crtHorzPassFn passes outputSizeY / max(srcH, 1.0) to correct the two-pass mismatch.
-vec2 applyUVDistortions(vec2 pos, float swimAmt, float rollbarPhase, float sagPhase, float swimNoise, float swimYScale) {
+vec2 applyUVDistortions(vec2 pos, float swimAmt, float rollbarPhase, float sagPhase, float sagStrength, float rollbarHookAmt, float swimNoise, float swimYScale) {
   // 1. Voltage sag: shrink image toward centre (max 4% at sagPhase=1.0).
-  float sagMag   = sagPhase * 0.04;
+  float sagMag   = sagPhase * 0.04 * sagStrength;
   vec2 p         = vec2(0.5) + (pos - vec2(0.5)) * (1.0 - sagMag);
   // 2. Rollbar scroll: fract-wrap Y so the content seam tracks the CSS dark band.
   float wrappedY = fract(p.y - rollbarPhase);
@@ -359,8 +361,8 @@ vec2 applyUVDistortions(vec2 pos, float swimAmt, float rollbarPhase, float sagPh
   float isActive = (rollbarPhase > 0.001) ? 1.0 : 0.0;
   float hookFac  = clamp(1.0 - wrappedY / 0.07, 0.0, 1.0) * isActive;
   float scanHash = fract(sin(wrappedY * 317.8 + rollbarPhase * 43.1) * 43758.54);
-  float hookShift = hookFac * hookFac * 0.035
-                  + (scanHash * 2.0 - 1.0) * hookFac * 0.015;
+  float hookShift = hookFac * hookFac * 0.035 * rollbarHookAmt
+                  + (scanHash * 2.0 - 1.0) * hookFac * 0.015 * rollbarHookAmt;
   p = vec2(p.x + hookShift, wrappedY);
   // 4. H-swim: per-scanline horizontal drift from deflection oscillator instability.
   // DR-14 P3-B: normalise y by swimYScale before computing swim displacement.
@@ -405,6 +407,8 @@ vec3 crtKernel(
   float swimAmt,
   float rollbarPhase,
   float sagPhase,
+  float sagStrength,
+  float rollbarHookAmt,
   float defocusAmt,
   float defocusAniso,
   float flickerRate,
@@ -445,7 +449,7 @@ vec3 crtKernel(
 
   // --- UV distortions: sag -> rollbar -> hook -> swim (via shared helper) ---
   // DR-14 P3-B: swimYScale=1.0 -- single-pass uses output UV directly (no normalisation needed).
-  vec2 p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, 1.0);
+  vec2 p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, sagStrength, rollbarHookAmt, swimNoise, 1.0);
 
   // Edge defocus: both hardPix and hardScan soften toward screen corners.
   // DR-9 P0-B: previously only dynHardPix was reduced; dynHardScan was missing, leaving corners
@@ -506,26 +510,27 @@ vec3 crtKernel(
 
   // Effect 2: position-dependent beam astigmatism.
   if (astigAmt > 0.001) {
+    vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: shared by all 4 taps
     vec2 astigDir  = p - vec2(0.5);
     float astigR2  = dot(astigDir, astigDir) * 4.0;
     float astigTangFac = 1.0 + astigAmt * astigTangential * astigR2;
     float astigRadFac  = 1.0 + astigAmt * astigRadial     * astigR2;
     vec3 astigSoftH = FetchConvGamma(tex, p, vec2(-1.0, 0.0), res, scale,
                                      convergence, convStaticX, convStaticY, convBX, convBY,
-                                     convAspect, kernelGamma, gammaFast)
+                                     convAspect, kernelGamma, gammaFast, texSize)
                     + FetchConvGamma(tex, p, vec2( 1.0, 0.0), res, scale,
                                      convergence, convStaticX, convStaticY, convBX, convBY,
-                                     convAspect, kernelGamma, gammaFast);
+                                     convAspect, kernelGamma, gammaFast, texSize);
     vec3 astigLinH = (gammaFast > 0.5) ? (astigSoftH * astigSoftH * 0.25)
                                        : pow(max(astigSoftH * 0.5, vec3(0.0)), vec3(kernelGamma));
     col = mix(col, astigLinH, clamp((astigTangFac - 1.0) * 0.5, 0.0, 0.5));
 
     vec3 astigSoftV0 = FetchConvGamma(tex, p, vec2(0.0, -1.0), res, scale,
                                       convergence, convStaticX, convStaticY, convBX, convBY,
-                                      convAspect, kernelGamma, gammaFast);
+                                      convAspect, kernelGamma, gammaFast, texSize);
     vec3 astigSoftV1 = FetchConvGamma(tex, p, vec2(0.0,  1.0), res, scale,
                                       convergence, convStaticX, convStaticY, convBX, convBY,
-                                      convAspect, kernelGamma, gammaFast);
+                                      convAspect, kernelGamma, gammaFast, texSize);
     vec3 astigLinV = (gammaFast > 0.5) ? ((astigSoftV0 + astigSoftV1) * (astigSoftV0 + astigSoftV1) * 0.25)
                                        : pow(max((astigSoftV0 + astigSoftV1) * 0.5, vec3(0.0)), vec3(kernelGamma));
     col = mix(col, astigLinV, clamp((astigRadFac - 1.0) * 0.5, 0.0, 0.5));
@@ -533,13 +538,14 @@ vec3 crtKernel(
 
   // Effect 8: shadow mask thermal doming (single-frame approximation).
   if (domingAmt > 0.001) {
+    vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: shared by both neighbor taps
     float centerLuma  = dot(col, vec3(0.2126, 0.7152, 0.0722));
     vec3 n1 = FetchConvGamma(tex, p, vec2( 4.0, 0.0), res, scale,
                               convergence, convStaticX, convStaticY, convBX, convBY,
-                              convAspect, kernelGamma, gammaFast);
+                              convAspect, kernelGamma, gammaFast, texSize);
     vec3 n2 = FetchConvGamma(tex, p, vec2(-4.0, 0.0), res, scale,
                               convergence, convStaticX, convStaticY, convBX, convBY,
-                              convAspect, kernelGamma, gammaFast);
+                              convAspect, kernelGamma, gammaFast, texSize);
     vec3 n1Lin = (gammaFast > 0.5) ? (n1 * n1) : pow(max(n1, vec3(0.0)), vec3(kernelGamma));
     vec3 n2Lin = (gammaFast > 0.5) ? (n2 * n2) : pow(max(n2, vec3(0.0)), vec3(kernelGamma));
     float neighborLuma = dot((n1Lin + n2Lin) * 0.5, vec3(0.2126, 0.7152, 0.0722));
@@ -574,8 +580,9 @@ vec3 crtKernel(
   // Modeled as a Gaussian 3-tap horizontal colour average.
   // Source: den Engelsen et al. 2015 (secondary electron range ~50-100 µm).
   if (phosphorXtalkAmt > 0.001) {
-    vec3 left    = Fetch(tex, p, vec2(-phosphorXtalkRadius, 0.0), res, scale);
-    vec3 right   = Fetch(tex, p, vec2( phosphorXtalkRadius, 0.0), res, scale);
+    vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: shared by both xtalk taps
+    vec3 left    = Fetch(tex, p, vec2(-phosphorXtalkRadius, 0.0), res, scale, texSize);
+    vec3 right   = Fetch(tex, p, vec2( phosphorXtalkRadius, 0.0), res, scale, texSize);
     vec3 blended = left * 0.25 + col * 0.5 + right * 0.25;
     col = mix(col, blended, phosphorXtalkAmt);
   }
@@ -613,6 +620,8 @@ vec3 crtHorzPass(
   float swimAmt,
   float rollbarPhase,
   float sagPhase,
+  float sagStrength,
+  float rollbarHookAmt,
   float defocusAmt,
   float defocusAniso,
   float apertureW,
@@ -629,7 +638,7 @@ vec3 crtHorzPass(
   // is in cycles/output-screen-height. Without this, at srcH=240 and outputH=1080 the
   // effective swim frequency is 1.73 * 240/1080 = 0.384 cycles/screen (4.5x too low).
   float swimYScale = outputSizeY / max(srcRes.y, 1.0);
-  vec2 p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, swimYScale);
+  vec2 p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, sagStrength, rollbarHookAmt, swimNoise, swimYScale);
 
   // Edge defocus: soften hardPix toward screen corners (matches crtKernel single-pass).
   // defocusAniso=0: isotropic; =1: V-only (cylindrical tube).
@@ -644,9 +653,10 @@ vec3 crtHorzPass(
   // at the same settings: bright lines are too narrow because Pass A ran at minimum beam width.
   // Power-law beam softening: sigma_sc ~ I^(2/3) (Langmuir-Child), matches TriG / crtVertPassFn.
   // scale = vec2(1.0) at source resolution -- FetchConvGamma args match crtHorzPass context.
+  vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: shared by center luma fetch; Horz5G computes its own
   vec3 cGamma  = FetchConvGamma(tex, p, vec2(0.0, 0.0), vec2(1.0), srcRes,
                                 conv, convStaticX, convStaticY, convBX, convBY,
-                                convAspect, kernelGamma, gammaFast);
+                                convAspect, kernelGamma, gammaFast, texSize);
   vec3 cLinear = (gammaFast > 0.5) ? (cGamma * cGamma)
                                    : pow(max(cGamma, vec3(0.0)), vec3(kernelGamma));
   float luma  = clamp(Luma(cLinear), 0.0, 1.0);
@@ -922,6 +932,8 @@ vec4 crtHalation(
   float swimAmt,
   float rollbarPhase,
   float sagPhase,
+  float sagStrength,
+  float rollbarHookAmt,
   float sourceSizeX,
   float sourceSizeY,
   float halationSharp,
@@ -946,7 +958,7 @@ vec4 crtHalation(
   // via the shared helper. Ensures dy is computed from the same distorted p
   // that the kernel used, so halation tracks the scanline rows correctly.
   // DR-14 P3-B: swimYScale=1.0 -- halation uses output UV directly (same as crtKernelFn).
-  vec2 p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, swimNoise, 1.0);
+  vec2 p = applyUVDistortions(pos, swimAmt, rollbarPhase, sagPhase, sagStrength, rollbarHookAmt, swimNoise, 1.0);
 
   vec2 d  = Dist(p, src, scrollPhase);
   float dy = d.y;
@@ -958,14 +970,15 @@ vec4 crtHalation(
   bool needsDecode = isTwoPass || (accurateHalation > 0.5);
   vec3 gammaVec = vec3(needsDecode ? kernelGamma : 1.0);
   vec2 fetchBase = isTwoPass ? pos : p;
+  vec2 texSize = vec2(textureSize(tex, 0));  // hoisted: shared by all 6 halation taps
 
-  vec3 c_3 = pow(max(Fetch(tex, fetchBase, vec2(-3.0, 0.0), res, scale), vec3(0.0)), gammaVec) * tapW;
-  vec3 c_2 = pow(max(Fetch(tex, fetchBase, vec2(-2.0, 0.0), res, scale), vec3(0.0)), gammaVec) * tapW;
-  vec3 c_1 = pow(max(Fetch(tex, fetchBase, vec2(-1.0, 0.0), res, scale), vec3(0.0)), gammaVec) * tapW;
+  vec3 c_3 = pow(max(Fetch(tex, fetchBase, vec2(-3.0, 0.0), res, scale, texSize), vec3(0.0)), gammaVec) * tapW;
+  vec3 c_2 = pow(max(Fetch(tex, fetchBase, vec2(-2.0, 0.0), res, scale, texSize), vec3(0.0)), gammaVec) * tapW;
+  vec3 c_1 = pow(max(Fetch(tex, fetchBase, vec2(-1.0, 0.0), res, scale, texSize), vec3(0.0)), gammaVec) * tapW;
   vec3 c0  = scannedColor;
-  vec3 c1  = pow(max(Fetch(tex, fetchBase, vec2( 1.0, 0.0), res, scale), vec3(0.0)), gammaVec) * tapW;
-  vec3 c2  = pow(max(Fetch(tex, fetchBase, vec2( 2.0, 0.0), res, scale), vec3(0.0)), gammaVec) * tapW;
-  vec3 c3  = pow(max(Fetch(tex, fetchBase, vec2( 3.0, 0.0), res, scale), vec3(0.0)), gammaVec) * tapW;
+  vec3 c1  = pow(max(Fetch(tex, fetchBase, vec2( 1.0, 0.0), res, scale, texSize), vec3(0.0)), gammaVec) * tapW;
+  vec3 c2  = pow(max(Fetch(tex, fetchBase, vec2( 2.0, 0.0), res, scale, texSize), vec3(0.0)), gammaVec) * tapW;
+  vec3 c3  = pow(max(Fetch(tex, fetchBase, vec2( 3.0, 0.0), res, scale, texSize), vec3(0.0)), gammaVec) * tapW;
 
   // BiExp: Gaussian core + exponential tail. At halationCoreBlend=1.0: pure Gaussian.
   // Fast path: halationSpectra < 0.001 — single achromatic PSF, identical to pre-spec behaviour.
@@ -973,7 +986,7 @@ vec4 crtHalation(
     float wh_3 = BiExp(dx - 3.0, halationSharp, halationTailSigma, halationCoreBlend);
     float wh_2 = BiExp(dx - 2.0, halationSharp, halationTailSigma, halationCoreBlend);
     float wh_1 = BiExp(dx - 1.0, halationSharp, halationTailSigma, halationCoreBlend);
-    float wh0  = BiExp(dx,        halationSharp, halationTailSigma, halationCoreBlend);
+    float wh0  = BiExp(dx,       halationSharp, halationTailSigma, halationCoreBlend);
     float wh1  = BiExp(dx + 1.0, halationSharp, halationTailSigma, halationCoreBlend);
     float wh2  = BiExp(dx + 2.0, halationSharp, halationTailSigma, halationCoreBlend);
     float wh3  = BiExp(dx + 3.0, halationSharp, halationTailSigma, halationCoreBlend);
@@ -1001,7 +1014,7 @@ vec4 crtHalation(
   float wR_3 = BiExp(dx - 3.0, sharpR, tailR, halationCoreBlend);
   float wR_2 = BiExp(dx - 2.0, sharpR, tailR, halationCoreBlend);
   float wR_1 = BiExp(dx - 1.0, sharpR, tailR, halationCoreBlend);
-  float wR0  = BiExp(dx,        sharpR, tailR, halationCoreBlend);
+  float wR0  = BiExp(dx,       sharpR, tailR, halationCoreBlend);
   float wR1  = BiExp(dx + 1.0, sharpR, tailR, halationCoreBlend);
   float wR2  = BiExp(dx + 2.0, sharpR, tailR, halationCoreBlend);
   float wR3  = BiExp(dx + 3.0, sharpR, tailR, halationCoreBlend);
@@ -1010,7 +1023,7 @@ vec4 crtHalation(
   float wG_3 = BiExp(dx - 3.0, halationSharp, halationTailSigma, halationCoreBlend);
   float wG_2 = BiExp(dx - 2.0, halationSharp, halationTailSigma, halationCoreBlend);
   float wG_1 = BiExp(dx - 1.0, halationSharp, halationTailSigma, halationCoreBlend);
-  float wG0  = BiExp(dx,        halationSharp, halationTailSigma, halationCoreBlend);
+  float wG0  = BiExp(dx,       halationSharp, halationTailSigma, halationCoreBlend);
   float wG1  = BiExp(dx + 1.0, halationSharp, halationTailSigma, halationCoreBlend);
   float wG2  = BiExp(dx + 2.0, halationSharp, halationTailSigma, halationCoreBlend);
   float wG3  = BiExp(dx + 3.0, halationSharp, halationTailSigma, halationCoreBlend);
@@ -1019,7 +1032,7 @@ vec4 crtHalation(
   float wB_3 = BiExp(dx - 3.0, sharpB, tailB, halationCoreBlend);
   float wB_2 = BiExp(dx - 2.0, sharpB, tailB, halationCoreBlend);
   float wB_1 = BiExp(dx - 1.0, sharpB, tailB, halationCoreBlend);
-  float wB0  = BiExp(dx,        sharpB, tailB, halationCoreBlend);
+  float wB0  = BiExp(dx,       sharpB, tailB, halationCoreBlend);
   float wB1  = BiExp(dx + 1.0, sharpB, tailB, halationCoreBlend);
   float wB2  = BiExp(dx + 2.0, sharpB, tailB, halationCoreBlend);
   float wB3  = BiExp(dx + 3.0, sharpB, tailB, halationCoreBlend);

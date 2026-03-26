@@ -261,6 +261,7 @@ vec3 ghostEntry(sampler2D tex, vec2 uv, float xOffset) {
   vec2 texSize = vec2(textureSize(tex, 0));
   float gx = ghostX * texSize.x - 0.5;
   int gy   = clamp(int(floor(uv.y * texSize.y)), 0, int(texSize.y) - 1);
+  gy = int(texSize.y) - 1 - gy;  // WebGL RT: Y=0 at bottom
   int ix0  = clamp(int(floor(gx)),     0, int(texSize.x) - 1);
   int ix1  = clamp(int(floor(gx)) + 1, 0, int(texSize.x) - 1);
   float fx = fract(gx);
@@ -319,6 +320,7 @@ vec3 dotCrawlEntry(
     ivec2(0),
     ivec2(texSize) - ivec2(1)
   );
+  iCoord.y = int(texSize.y) - 1 - iCoord.y;  // WebGL RT: Y=0 at bottom
   vec3 left = texelFetch(tex, iCoord, 0).rgb;
   // Pre-kernel position: col is linear RGB. BT.709 linear-light luma coefficients.
   float Y  = dot(col,  vec3(0.2126, 0.7152, 0.0722));
@@ -355,8 +357,9 @@ vec3 sigFetch(sampler2D tex, vec2 texSize, int iy, float u) {
   float gx  = u * texSize.x - 0.5;
   int ix0 = clamp(int(floor(gx)),     0, int(texSize.x) - 1);
   int ix1 = clamp(int(floor(gx)) + 1, 0, int(texSize.x) - 1);
-  vec3 c0  = texelFetch(tex, ivec2(ix0, iy), 0).rgb;
-  vec3 c1  = texelFetch(tex, ivec2(ix1, iy), 0).rgb;
+  int fy  = int(texSize.y) - 1 - iy;  // WebGL RT: Y=0 at bottom
+  vec3 c0  = texelFetch(tex, ivec2(ix0, fy), 0).rgb;
+  vec3 c1  = texelFetch(tex, ivec2(ix1, fy), 0).rgb;
   return mix(c0, c1, fract(gx));
 }
 

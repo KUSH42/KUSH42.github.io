@@ -426,11 +426,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     colorTempStr:   uniform(0.65),   // 9300K white point correction (0=D65, 1=full 9300K)
     rollbarPhase:   uniform(0.0),    // driven by renderFrame: 0=no scroll, 0→1 during rollbar sweep
     sagPhase:       uniform(0.0),    // driven by renderFrame: 0=none, bell-curve during sag event
+    sagStrength:    uniform(1.0),    // sag amplitude scale: 1=default 4% squeeze + 0.22 CSS opacity, 0=off
+    rollbarHookAmt: uniform(1.0),    // H-sync hook/flagging amplitude: 1=default (0.035 bow + 0.015 jitter)
     snowAmt:        uniform(0.02),   // electronic snow density (0=off)
     // Fidelity pass uniforms
-    maskScale:      uniform(4.0),    // phosphor mask pitch scale (manual override; auto-scale computes from sourceSizeX)
-                                     // Choose maskScale so (outputW / srcX / maskScale) is integer to avoid moiré.
-                                     // At 1920 output / 640 source: maskScale=4.0 → 480 exact periods, no beat.
+    maskScale:      uniform(4.0),    // phosphor mask pitch: output pixels per triad. Physical property of the
+                                     // CRT display (dot pitch / aperture grille spacing) — set by archetype preset.
     // P1-B: Convergence anisotropy — 0=radial (delta gun/shadow mask), 1=H-only (inline/Trinitron).
     convAspect:     uniform(1.0),    // default H-only for aperture grille (maskType=0, the default)
     // P3-C: CRT electron-gun gamma (typically 2.2–2.5). Affects kernel horizontal blending domain.
@@ -620,6 +621,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     burst: 0.01,            // max burst duration (seconds)
     rollbarScrollEnabled: true,  // GPU UV scroll synced to CSS rollbar animation
     sagGeomEnabled: true,        // GPU UV squeeze synced to CSS voltage sag animation
+    sagCSSPeakOpacity: 0.22,     // CSS sag overlay peak opacity at sagStrength=1
     // Interference pass config (SPEC-glitch-interference-v2)
     humRate: 0.06,          // P0-B hum bar scroll rate (NTSC beat: |60.000−59.94|=0.06 Hz)
     agcAmt:     0.012,      // P1-C AGC hunting oscillation amplitude (0=off, 0.05=subtle)
@@ -658,6 +660,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   }
   prefersReduced.addEventListener('change', syncReducedMotion);
   syncReducedMotion();
+
+  // ── Sag CSS elements — disable keyframe animation; opacity driven by updateSagPhase ──
+  // The CSS @keyframes ts-sag animation is replaced by JS-driven opacity so sagStrength
+  // can scale both the GPU geometry squeeze and the CSS darkening together each frame.
+  const tsSagEls = [...document.querySelectorAll('.s9-telescreen__sag')];
+  tsSagEls.forEach(el => { el.style.animation = 'none'; el.style.opacity = '0'; });
 
   // ── Scratch texture — 1×1 black placeholder; replaced when real image loads ──
   // RepeatWrapping is set here so the WebGPU sampler is compiled in repeat mode
@@ -758,13 +766,13 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         const h = videoOpt.videoHeight || 2;
         videoCanvas = document.createElement('canvas'); videoCanvas.width = w; videoCanvas.height = h;
         videoCtx    = videoCanvas.getContext('2d');
-        const vt = new THREE.CanvasTexture(videoCanvas);
+        const vt = new THREE.Texture(videoCanvas);  // THREE.Texture (not CanvasTexture) — matches makeCanvasTex pattern
         vt.minFilter      = THREE.LinearFilter;
         vt.magFilter      = THREE.LinearFilter;
         vt.colorSpace     = THREE.SRGBColorSpace;
         vt.generateMipmaps = false;
-        vt.flipY          = false;  // QuadGeometry(false) V=0→screen-top; no UNPACK_FLIP_Y needed
-        if (videoTexture && !videoTexture.isCanvasTexture) {
+        vt.flipY          = false;  // pre-flip drawn into canvas; no UNPACK_FLIP_Y needed
+        if (videoTexture && videoTexture.isDataTexture) {
           try { videoTexture.dispose(); } catch (_) {}
         }
         videoTexture = vt;
@@ -778,8 +786,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
                 videoCanvas.width  = videoOpt.videoWidth;
                 videoCanvas.height = videoOpt.videoHeight;
               }
+              videoCtx.save();
+              videoCtx.translate(0, videoCanvas.height);
+              videoCtx.scale(1, -1);
               videoCtx.drawImage(videoOpt, 0, 0);
-              if (videoTexture && videoTexture.isCanvasTexture) videoTexture.needsUpdate = true;
+              videoCtx.restore();
+              if (videoCanvas && videoTexture) videoTexture.needsUpdate = true;
             }
             videoRafCbId = videoOpt.requestVideoFrameCallback(drawFrame);
           };
@@ -930,6 +942,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.interlaceField,
           uniforms.apertureH,
           uniforms.gammaFast,
+          uniforms.beamAlpha,
           uniforms.ehtRippleAmt,
           uniforms.ehtDecayRate,
           uniforms.astigAmt,
@@ -961,6 +974,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           uniforms.swimAmt,
           uniforms.rollbarPhase,
           uniforms.sagPhase,
+          uniforms.sagStrength,
+          uniforms.rollbarHookAmt,
           uniforms.defocusAmt,
           uniforms.defocusAniso,
           uniforms.flickerRate,
@@ -1037,12 +1052,10 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       }
 
       // 5. Phosphor mask — Lanczos-resampled LUT (F-8 Moiré elimination).
-      // P0-A: Auto mask scale — when sourceSizeX > 0, the effective mask scale is
-      // outW/srcW (one triad per source pixel); else falls back to uniforms.maskScale.
-      // This makes the mask visible at 640→1920 upscale: 9 output pixels per triad.
-      const autoScale = outputSizeVec.x.div(uniforms.sourceSizeX.max(1.0));
-      const effectiveMaskScale = uniforms.sourceSizeX.greaterThan(0.5)
-        .select(autoScale, uniforms.maskScale);
+      // Mask pitch is a physical property of the CRT display (dot pitch / aperture grille
+      // spacing), not of the signal source. Always use uniforms.maskScale directly —
+      // set by the archetype preset to match the simulated tube's physical triad size.
+      const effectiveMaskScale = uniforms.maskScale;
       // Build Lanczos-resampled mask LUT: outputW × 4 texels, one row per vertical phase.
       // All parameters are TSL uniforms — changes take effect next frame without rebuild.
       // Matches the _horzRttNode rtt() pattern; NearestFilter prevents row-phase bleeding.
@@ -1161,6 +1174,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
           halationTex,
           maskedWithOSD, glitchedPos, outputSizeVec, uniforms.scrollPhase, uniforms.tWrapped,
           uniforms.swimAmt, uniforms.rollbarPhase, uniforms.sagPhase,
+          uniforms.sagStrength, uniforms.rollbarHookAmt,
           uniforms.sourceSizeX, uniforms.sourceSizeY,
           uniforms.halationSharp,
           uniforms.hardScan,
@@ -1472,7 +1486,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         uniforms.convergence, uniforms.convStaticX, uniforms.convStaticY,
         uniforms.convBX, uniforms.convBY, uniforms.convAspect,
         uniforms.kernelGamma, uniforms.swimAmt, uniforms.rollbarPhase,
-        uniforms.sagPhase, uniforms.defocusAmt, uniforms.defocusAniso, uniforms.apertureW,
+        uniforms.sagPhase, uniforms.sagStrength, uniforms.rollbarHookAmt,
+        uniforms.defocusAmt, uniforms.defocusAniso, uniforms.apertureW,
         uniforms.outputSizeY,
         uniforms.gammaFast,
         uniforms.beamAlpha,
@@ -1501,6 +1516,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         vec2(float(srcW), float(srcH)),
         uniforms.scrollPhase, uniforms.tWrapped,
         uniforms.swimAmt, uniforms.rollbarPhase, uniforms.sagPhase,
+        uniforms.sagStrength, uniforms.rollbarHookAmt,
         float(srcW), float(srcH),
         uniforms.halationSharp, uniforms.hardScan, uniforms.kernelGamma,
         float(1.0),
@@ -2083,6 +2099,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     } else {
       uniforms.sagPhase.value = 0.0;
     }
+    const cssOpacity = uniforms.sagPhase.value * cfg.sagCSSPeakOpacity;
+    tsSagEls.forEach(el => { el.style.opacity = cssOpacity.toFixed(4); });
   }
 
   // ── Glitch burst scheduler ────────────────────────────────────────────────
@@ -2118,7 +2136,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
 
     // Fallback for browsers without requestVideoFrameCallback.
     // rVFC-capable browsers drive canvas updates in the drawFrame closure above.
-    if (videoTexture && videoTexture.isCanvasTexture && videoCtx && currentVideoEl &&
+    if (videoCanvas && videoCtx && currentVideoEl &&
         !('requestVideoFrameCallback' in currentVideoEl) &&
         currentVideoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
         currentVideoEl.videoWidth > 0 && currentVideoEl.videoHeight > 0) {
@@ -2127,8 +2145,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         videoCanvas.width  = currentVideoEl.videoWidth;
         videoCanvas.height = currentVideoEl.videoHeight;
       }
+      videoCtx.save();
+      videoCtx.translate(0, videoCanvas.height);
+      videoCtx.scale(1, -1);
       videoCtx.drawImage(currentVideoEl, 0, 0);
-      videoTexture.needsUpdate = true;
+      videoCtx.restore();
+      if (videoTexture) videoTexture.needsUpdate = true;
     }
 
     const dt = lastTs !== null ? (ts - lastTs) / 1000 : 1.0 / 60.0;
@@ -2321,9 +2343,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     }
 
     {
-      const effectiveMaskScale = needsTwoPass
-        ? outW / Math.max(effectiveSrc, 1)
-        : uniforms.maskScale.value;
+      const effectiveMaskScale = uniforms.maskScale.value;
       if (Math.abs(effectiveMaskScale - _lastMaskScale) > 0.01) {
         updateMaskBoost(effectiveMaskScale);
         _lastMaskScale = effectiveMaskScale;
@@ -2368,9 +2388,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     {
       const lutType   = uniforms.maskType.value;
       const lutSmooth = uniforms.maskSmooth.value;
-      const lutScale  = uniforms.sourceSizeX.value > 0.5
-        ? renderer.domElement.width / Math.max(uniforms.sourceSizeX.value, 1)
-        : uniforms.maskScale.value;
+      const lutScale  = uniforms.maskScale.value;
       if (lutType   !== _maskLutCachedType   ||
           lutSmooth !== _maskLutCachedSmooth ||
           Math.abs(lutScale - _maskLutCachedScale) > 0.0001) {
@@ -2646,7 +2664,7 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
   function setShader({
     hardPix, hardScan, warpMult, maskStr, maskType, grainAmt,
     halationStr, halationSharp, convergence, scratchStr, scrollRate, brightBoost,
-    swimAmt, colorTempStr, snowAmt, rollbarScroll, sagGeom,
+    swimAmt, colorTempStr, snowAmt, rollbarScroll, sagGeom, sagStrength, rollbarHookAmt,
     maskScale, defocusAmt, defocusAniso, warpAniso, p22Str, flickerRate, flickerTau,
     flickerTauR, flickerTauG, flickerTauB,
     flickerAmt, blackLevel,
@@ -2753,8 +2771,14 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
       _savedSnowAmt = snowAmt;
       uniforms.snowAmt.value = prefersReduced.matches ? 0 : snowAmt;
     }
-    if (rollbarScroll !== undefined) cfg.rollbarScrollEnabled     = !!rollbarScroll;
-    if (sagGeom       !== undefined) cfg.sagGeomEnabled           = !!sagGeom;
+    if (rollbarScroll   !== undefined) cfg.rollbarScrollEnabled     = !!rollbarScroll;
+    if (sagGeom         !== undefined) cfg.sagGeomEnabled           = !!sagGeom;
+    if (sagStrength     !== undefined) {
+      uniforms.sagStrength.value = Math.max(0, sagStrength);
+      cfg.sagCSSPeakOpacity = 0.22 * Math.max(0, sagStrength);
+      // CSS opacity updated next frame in updateSagPhase()
+    }
+    if (rollbarHookAmt  !== undefined) uniforms.rollbarHookAmt.value = Math.max(0, rollbarHookAmt);
     if (defocusAmt    !== undefined) uniforms.defocusAmt.value    = Math.min(0.45, Math.max(0, defocusAmt));
     if (defocusAniso  !== undefined) uniforms.defocusAniso.value  = defocusAniso;
     if (warpAniso     !== undefined) uniforms.warpAniso.value     = Math.min(1, Math.max(0, warpAniso));
@@ -2772,11 +2796,6 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (flickerTauG   !== undefined) uniforms.flickerTauG.value   = flickerTauG;
     if (flickerTauB   !== undefined) uniforms.flickerTauB.value   = flickerTauB;
     if (flickerAmt !== undefined) {
-      if (flickerAmt > 0.05) console.warn(
-        `telescreen-crt-webgpu: flickerAmt=${flickerAmt} is above the recommended maximum of 0.05 ` +
-        `at ${uniforms.flickerRate.value} Hz with P22 phosphors. ` +
-        `Values above 0.05 cause visible overexposure. See flickerBoost uniform.`
-      );
       uniforms.flickerAmt.value = Math.max(0, Math.min(1, flickerAmt));
     }
     if (flickerRate !== undefined || flickerTau !== undefined ||
@@ -2808,12 +2827,6 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     if (sourceSizeX   !== undefined) {
       uniforms.sourceSizeX.value = sourceSizeX;
       _userSetSourceSize = sourceSizeX > 0.5;
-      // DR-14 P0-A: effective scale changed — recompute mask boost immediately.
-      if (sourceSizeX > 0.5) {
-        updateMaskBoost(renderer.domElement.width / sourceSizeX);
-      } else {
-        updateMaskBoost();
-      }
     }
     if (sourceSizeY   !== undefined) uniforms.sourceSizeY.value   = sourceSizeY;
     if (interlace !== undefined) {
@@ -3032,13 +3045,13 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
         const h = videoEl.videoHeight || 2;
         videoCanvas = document.createElement('canvas'); videoCanvas.width = w; videoCanvas.height = h;
         videoCtx    = videoCanvas.getContext('2d');
-        const vt = new THREE.CanvasTexture(videoCanvas);
+        const vt = new THREE.Texture(videoCanvas);  // THREE.Texture (not CanvasTexture) — matches makeCanvasTex pattern
         vt.minFilter       = THREE.LinearFilter;
         vt.magFilter       = THREE.LinearFilter;
         vt.colorSpace      = THREE.SRGBColorSpace;
         vt.generateMipmaps = false;
-        vt.flipY           = false;  // QuadGeometry(false) V=0→screen-top; no UNPACK_FLIP_Y needed
-        if (videoTexture && !videoTexture.isCanvasTexture) {
+        vt.flipY           = false;  // pre-flip drawn into canvas; no UNPACK_FLIP_Y needed
+        if (videoTexture && videoTexture.isDataTexture) {
           try { videoTexture.dispose(); } catch (_) {}
         }
         videoTexture = vt;
@@ -3052,8 +3065,12 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
                 videoCanvas.width  = videoEl.videoWidth;
                 videoCanvas.height = videoEl.videoHeight;
               }
+              videoCtx.save();
+              videoCtx.translate(0, videoCanvas.height);
+              videoCtx.scale(1, -1);
               videoCtx.drawImage(videoEl, 0, 0);
-              if (videoTexture && videoTexture.isCanvasTexture) videoTexture.needsUpdate = true;
+              videoCtx.restore();
+              if (videoCanvas && videoTexture) videoTexture.needsUpdate = true;
             }
             videoRafCbId = videoEl.requestVideoFrameCallback(drawFrame);
           };
@@ -3184,8 +3201,8 @@ export function initTelescreenCRTWebGPU(renderer, scene, camera, opts = {}) {
     renderFrame,
     triggerWireShimmer,
     destroy,
-    get effectiveSourceW() { return uniforms.sourceSizeX.value; },
-    get effectiveSourceH() { return uniforms.sourceSizeY.value; },
+    get effectiveSourceW() { return uniforms.sourceSizeX.value || renderer.domElement.width; },
+    get effectiveSourceH() { return uniforms.sourceSizeY.value || renderer.domElement.height; },
     // Bridge-mode API (used by buildCRTNodesFromSource)
     get _outputNode() { return postProcessing?.outputNode ?? null; },
     _tick,
