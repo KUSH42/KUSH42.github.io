@@ -2610,7 +2610,7 @@
       _statsInfo = { fps: '--', ms: '--', dc: '--' };
       (function statsLoop(ts) {
         const now = performance.now();
-        const dc  = renderer.info.render.calls;
+        const dc  = renderer.info.render.calls % 1000000;
         _sFpsFrames++;
         const elapsed = now - _sFpsWinStart;
         let fps = _statsInfo ? _statsInfo.fps : '--';
