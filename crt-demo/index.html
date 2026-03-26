@@ -1265,9 +1265,9 @@
         const sY  = Math.round(h * 0.13);           // safe inset from top warp edge
         const bgPad = Math.round(px * 0.4);
         const textW = ctx.measureText(statsText).width;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.88)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
         ctx.fillRect(sX - bgPad, sY - px, textW + bgPad * 2, px + bgPad);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.60)';
         ctx.strokeText(statsText, sX, sY);
         ctx.fillText(statsText,   sX, sY);
       }
@@ -2163,6 +2163,7 @@
         } else {
           drawOverlay(overlayCtx, overlayCanvas.width, overlayCanvas.height, recDot, overlayLabel, _statsInfo);
           overlayTex.needsUpdate = true;
+          overlayPlane.material.needsUpdate = true;
         }
       }
 
