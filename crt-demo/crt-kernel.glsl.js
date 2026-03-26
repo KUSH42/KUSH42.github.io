@@ -268,9 +268,9 @@ vec3 TriG(sampler2D tex, vec2 pos, vec2 src, vec2 scale, vec2 res,
   vec3 aLinear = (gammaFast > 0.5) ? (a_g * a_g) : pow(max(a_g, vec3(0.0)), vec3(kernelGamma));
   vec3 bLinear = (gammaFast > 0.5) ? (b_g * b_g) : pow(max(b_g, vec3(0.0)), vec3(kernelGamma));
   vec3 cLinear = (gammaFast > 0.5) ? (c_g * c_g) : pow(max(c_g, vec3(0.0)), vec3(kernelGamma));
-  float dynScanA = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
-  float dynScanB = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
-  float dynScanC = hardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
+  float dynScanA = hardScan + mix(0.0, 4.0, pow(clamp(Luma(aLinear), 0.0, 1.0), beamAlpha));
+  float dynScanB = hardScan + mix(0.0, 4.0, pow(clamp(Luma(bLinear), 0.0, 1.0), beamAlpha));
+  float dynScanC = hardScan + mix(0.0, 4.0, pow(clamp(Luma(cLinear), 0.0, 1.0), beamAlpha));
 
   // Vertical blend: aperture-integrated ErfGausSR2 replaces point-sampled Gaus.
   // Fixes ~11% peak brightness overestimate at hardScan=-8 (SPEC-21 P3-F).
@@ -721,6 +721,7 @@ vec3 crtVertPass(
   float interlaceField,
   float apertureH,
   float gammaFast,
+  float beamAlpha,
   float ehtRippleAmt,
   float ehtDecayRate,
   float astigAmt,
@@ -780,9 +781,9 @@ vec3 crtVertPass(
   vec3 aLinear = (gammaFast > 0.5) ? (a * a) : pow(max(a, vec3(0.0)), vec3(kernelGamma));
   vec3 bLinear = (gammaFast > 0.5) ? (b * b) : pow(max(b, vec3(0.0)), vec3(kernelGamma));
   vec3 cLinear = (gammaFast > 0.5) ? (c * c) : pow(max(c, vec3(0.0)), vec3(kernelGamma));
-  float dynScanA = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(aLinear), 0.0, 1.0)));
-  float dynScanB = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(bLinear), 0.0, 1.0)));
-  float dynScanC = dynHardScan + mix(0.0, 4.0, sqrt(clamp(Luma(cLinear), 0.0, 1.0)));
+  float dynScanA = dynHardScan + mix(0.0, 4.0, pow(clamp(Luma(aLinear), 0.0, 1.0), beamAlpha));
+  float dynScanB = dynHardScan + mix(0.0, 4.0, pow(clamp(Luma(bLinear), 0.0, 1.0), beamAlpha));
+  float dynScanC = dynHardScan + mix(0.0, 4.0, pow(clamp(Luma(cLinear), 0.0, 1.0), beamAlpha));
 
   // Vertical blend: aperture-integrated ErfGausSR2 replaces point-sampled Gaus (SPEC-21 P3-F).
   float halfApertureH = apertureH * 0.5;

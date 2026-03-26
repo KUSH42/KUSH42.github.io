@@ -1201,10 +1201,9 @@
       tex.generateMipmaps = false;
       tex.flipY           = false;
       // Shadow needsUpdate on the instance so callers don't need to call blit() manually.
-      const origDesc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(tex), 'needsUpdate');
       Object.defineProperty(tex, 'needsUpdate', {
         configurable: true,
-        set(v) { if (v) blit(); origDesc.set.call(tex, v); },
+        set(v) { if (v) { blit(); tex.version++; } },
       });
       tex.needsUpdate = true;
       return tex;
