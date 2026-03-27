@@ -4,6 +4,8 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+  repository_dispatch:
+    types: [matrix-rain-updated]
 
 permissions:
   contents: read
@@ -32,6 +34,12 @@ jobs:
         run: npm run build
         # Produces dist/ with the main site (index.html, assets/, data/, sonar-ping.mp3)
 
+      - name: Checkout matrix-rain
+        uses: actions/checkout@v4
+        with:
+          repository: KUSH42/matrix-rain
+          path: _matrix-rain
+
       - name: Assemble pages artifact
         run: |
           mkdir -p _site
@@ -40,6 +48,9 @@ jobs:
           # CRT demo — zero-build, CDN importmap, copy source directly
           mkdir -p _site/crt-demo
           cp -r crt-demo/. _site/crt-demo/
+          # Matrix rain WebGPU — zero-build, CDN importmap, copy source directly
+          mkdir -p _site/matrix-rain
+          cp -r _matrix-rain/. _site/matrix-rain/
 
       - uses: actions/upload-pages-artifact@v3
         with:
