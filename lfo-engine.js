@@ -144,6 +144,9 @@ export class LFOEngine {
     const toRemove = [];
     for (const [routeId, route] of this._routes) {
       if (route.sourceId === id) toRemove.push(routeId);
+      // Also remove incoming chain routes (this LFO is the target) so they
+      // don't linger as orphans leaking memory and leaving source widgets stale.
+      if (route.targetType === 'lfo' && route.target === id) toRemove.push(routeId);
     }
     for (const routeId of toRemove) this.removeRoute(routeId);
     this._lfos.delete(id);
@@ -254,7 +257,7 @@ export class LFOEngine {
   /**
    * Set a parameter on an LFO.
    * @param {string} lfoId
-   * @param {string} param   'shape'|'rate'|'depth'|'phase'|'offset'|'bipolar'
+   * @param {string} param   'shape'|'rate'|'depth'|'phase'|'offset'|'bipolar'|'baseRate'|'baseDepth'|'jitter'|'skew'
    * @param {*}      value
    */
   setParam(lfoId, param, value) {
@@ -387,7 +390,10 @@ export class LFOEngine {
     }
 
     let value = lfo.offset + lfo.depth * raw;
-    if (!lfo.bipolar) value = (value + 1) * 0.5; // remap to 0–1
+    // Remap bipolar [-1, 1] to nominal unipolar [0, 1]. Note: depth > 1 or a
+    // non-zero offset can push the result outside [0, 1] — intentional overdrive.
+    // Element route application (Pass 3) clamps to [meta.min, meta.max].
+    if (!lfo.bipolar) value = (value + 1) * 0.5;
 
     lfo.currentValue = value;
     return value;

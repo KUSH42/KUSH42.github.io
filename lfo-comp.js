@@ -32,6 +32,7 @@ export { LFOWidget, ModIndicator, injectStyles, LFO_COLORS };
 const _widgetByRoute = new Map();
 
 let _count = 0;
+let _colorCount = 0; // separate counter so color cycling advances on every createLFO call
 
 /**
  * Create a fully wired LFO widget.
@@ -65,11 +66,12 @@ export function createLFO(containerOrOpts = {}, opts = {}) {
     uiOpts     = containerOrOpts;
   }
 
+  const colorIdx = _colorCount++;
   if (!uiOpts.label) {
     uiOpts = { ...uiOpts, label: `LFO ${++_count}` };
   }
   if (!uiOpts.color) {
-    uiOpts = { ...uiOpts, color: LFO_COLORS[(_count - 1) % LFO_COLORS.length] };
+    uiOpts = { ...uiOpts, color: LFO_COLORS[colorIdx % LFO_COLORS.length] };
   }
 
   // Wrap caller callbacks to maintain _widgetByRoute registry.

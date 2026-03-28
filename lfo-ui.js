@@ -516,8 +516,9 @@ export class ModIndicator {
     const canvas = this._arcCanvas = document.createElement('canvas');
     canvas.className = 'lfo-range-arc';
     canvas.width = 0;
-    canvas.height = 6;
+    canvas.height = 5;
     document.body.appendChild(canvas);
+    this._arcCtx = canvas.getContext('2d');
   }
 
   _updateDepthLabel() {
@@ -538,6 +539,7 @@ export class ModIndicator {
   }
 
   _reposition() {
+    if (!this._badge) return;
     const r = this._element.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return;
     // Badge dimensions rarely change after first paint — read once and cache.
@@ -556,8 +558,8 @@ export class ModIndicator {
     if (bx < 4) bx = 4;
     if (by < 4) by = r.bottom + 4;
 
-    badge.style.left = `${bx}px`;
-    badge.style.top  = `${by}px`;
+    this._badge.style.left = `${bx}px`;
+    this._badge.style.top  = `${by}px`;
   }
 
   _updateArc() {
@@ -569,6 +571,8 @@ export class ModIndicator {
     canvas.style.top  = `${r.bottom + 1}px`;
     // Only reset canvas width when it actually changes — resizing clears the
     // canvas and is relatively expensive to do unconditionally at 60fps.
+    // Note: reassigning canvas.width does NOT invalidate the 2D context stored
+    // in this._arcCtx; the same context reference remains usable after resize.
     const newW = Math.round(r.width);
     if (canvas.width !== newW) {
       canvas.width = newW;
@@ -622,7 +626,7 @@ export class ModIndicator {
 
     const w = canvas.width;
     const h = canvas.height;
-    const ctx = canvas.getContext('2d');
+    const ctx = this._arcCtx;
     ctx.clearRect(0, 0, w, h);
 
     // Draw sweep range bar
@@ -687,6 +691,7 @@ export class LFOWidget {
         this._recordSample(value);
         this._updateLed(value);
         this._syncChainedSliders();
+        this._pruneDeadRoutes();
       }
     });
     this._rafHandle = null;
@@ -833,7 +838,9 @@ export class LFOWidget {
       valEl.replaceWith(editEl);
       editEl.select();
 
+      let cancelled = false;
       const commit = () => {
+        if (cancelled) return;
         const raw = parseFloat(editEl.value);
         if (!isNaN(raw)) {
           const clamped = Math.min(max, Math.max(min, raw));
@@ -847,7 +854,7 @@ export class LFOWidget {
       editEl.addEventListener('blur', commit);
       editEl.addEventListener('keydown', e => {
         if (e.key === 'Enter')  { e.preventDefault(); editEl.blur(); }
-        if (e.key === 'Escape') { editEl.replaceWith(valEl); }
+        if (e.key === 'Escape') { cancelled = true; editEl.replaceWith(valEl); }
       });
     });
 
@@ -916,6 +923,19 @@ export class LFOWidget {
     }
   }
 
+  /**
+   * Remove any indicators whose routes have been deleted externally — e.g. when
+   * the target LFO is destroyed and engine.destroyLFO cleans up incoming routes.
+   * Called each tick so stale badges are cleared within one frame.
+   */
+  _pruneDeadRoutes() {
+    for (const routeId of [...this._indicators.keys()]) {
+      if (!engine.getRoute(routeId)) {
+        this.disconnectRoute(routeId);
+      }
+    }
+  }
+
   _recordSample(currentValue) {
     this._latestValue = currentValue;
     const canvas = this._canvas;
@@ -932,6 +952,8 @@ export class LFOWidget {
       buf.height     = H;
       this._wfBuf    = buf;
       this._wfBufCtx = buf.getContext('2d', { willReadFrequently: true });
+      // W is canvas.width = 140 * devicePixelRatio, so the history array is
+      // always sized to match physical pixels — DPR scaling is baked in here.
       this._wfHistory   = new Float32Array(W).fill(currentValue);
       this._wfSubpx     = 0;
       this._wfLastTime  = now;
@@ -1102,25 +1124,32 @@ export class LFOWidget {
       }
     };
 
-    const end = (e) => {
-      if (!handle.hasPointerCapture(e.pointerId)) return;
-      handle.releasePointerCapture(e.pointerId);
+    // Shared teardown: remove wire + highlight without connecting.
+    // Called on both normal end and pointercancel (where capture is already
+    // revoked by the browser, so hasPointerCapture would return false).
+    const cleanup = () => {
       handle.classList.remove('dragging');
-      wire.remove();
+      wire?.remove();
       wire = null;
-
       if (currentHighlight) {
         currentHighlight.classList.remove('lfo-drag-target');
         currentHighlight.style.removeProperty('--lfo-drag-color');
-        this._connectTo(currentHighlight);
         currentHighlight = null;
       }
     };
 
-    handle.addEventListener('pointerdown', start);
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup',   end);
-    handle.addEventListener('pointercancel', end);
+    const end = (e) => {
+      if (!handle.hasPointerCapture(e.pointerId)) return;
+      handle.releasePointerCapture(e.pointerId);
+      const target = currentHighlight;
+      cleanup();
+      if (target) this._connectTo(target);
+    };
+
+    handle.addEventListener('pointerdown',   start);
+    handle.addEventListener('pointermove',   move);
+    handle.addEventListener('pointerup',     end);
+    handle.addEventListener('pointercancel', cleanup);
   }
 
   // ── Connection management ────────────────────────────────────────────────
