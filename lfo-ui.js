@@ -42,13 +42,14 @@ const SHAPE_LABELS = {
 const CSS = `
 /* ── Widget container ──────────────────────────────────────────── */
 .lfo-widget {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
+  flex: 1 1 200px;
   background: #0a0a12;
   border: 1px solid #222233;
   border-radius: 8px;
   padding: 10px;
-  min-width: 216px;
+  min-width: 200px;
   font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 11px;
   color: #888;
@@ -586,13 +587,16 @@ export class ModIndicator {
       const tgt = engine.getLFO(route.target);
       if (!tgt) return;
       if (route.targetParam === 'rate') {
-        const min = 0.01, max = 20, range = max - min;
+        // Rate slider is log-scaled (0.01–10 Hz). Normalise in log space to
+        // match slider position so the arc reflects the actual sweep range.
+        const min = 0.01, max = 10;
+        const logRange = Math.log(max / min);
+        const logNorm  = v => Math.max(0, Math.min(1, Math.log(Math.max(min, v) / min) / logRange));
         const base = tgt.baseRate;
-        centerNorm = (base - min) / range;
-        // Rate mod is multiplicative: effectiveRate = base × (1 + src × depth).
-        // Swing expressed in normalised units.
-        swingNorm  = (base * depth) / range;
-        curNorm    = Math.max(0, Math.min(1, (base * (1 + lfoVal * depth) - min) / range));
+        centerNorm = logNorm(base);
+        // Effective rate = base × (1 + src × depth) — compute high/low in log space.
+        swingNorm  = (logNorm(base * (1 + depth)) - logNorm(base * (1 - depth))) / 2;
+        curNorm    = logNorm(base * (1 + lfoVal * depth));
       } else if (route.targetParam === 'depth') {
         const base = tgt.baseDepth;
         centerNorm = base;
@@ -721,8 +725,9 @@ export class LFOWidget {
 
     const canvas = this._canvas = document.createElement('canvas');
     canvas.className = 'lfo-canvas';
-    canvas.width  = 140;
-    canvas.height = 72;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = 140 * dpr;
+    canvas.height = 72  * dpr;
     canvasRow.appendChild(canvas);
 
     // Shape buttons — 2 col × 4 row side panel (7 shapes + bipolar toggle = 8 slots)

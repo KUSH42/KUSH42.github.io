@@ -46,6 +46,7 @@
       color: #ccc;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      min-width: 0;
     }
 
     header p {
@@ -66,7 +67,7 @@
     /* ── Two-column main layout ───────────────────────── */
     .main-grid {
       display: grid;
-      grid-template-columns: 1fr 340px;
+      grid-template-columns: 1fr 360px;
       gap: 28px;
       align-items: start;
     }
@@ -170,7 +171,8 @@
       color: #aaa;
       font-family: var(--font);
       font-size: 12px;
-      padding: 4px 8px;
+      padding: 0 8px;
+      height: 20px;
       outline: none;
     }
 
@@ -188,6 +190,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      position: relative;
     }
 
     #demo-box {
