@@ -747,7 +747,11 @@ export class LFOWidget {
     const params = document.createElement('div');
     params.className = 'lfo-params';
 
-    this._rateInput   = this._addParam(params, 'Rate',   0.01, 20, 1,   0.01, 'baseRate',  v => `${v.toFixed(2)}Hz`);
+    this._rateInput   = this._addParam(params, 'Rate',   0.01, 10_000_000, 1, 0.01, 'baseRate',
+      v => v >= 1e6 ? `${(v/1e6).toFixed(2)}MHz`
+         : v >= 1e3 ? `${(v/1e3).toFixed(2)}kHz`
+         :            `${v.toFixed(2)}Hz`,
+      'log');
     this._depthInput  = this._addParam(params, 'Depth',  0,    1,  1,   0.01, 'baseDepth', v => `${Math.round(v * 100)}%`);
     this._phaseInput  = this._addParam(params, 'Phase',  0,    1,  0,   0.01, 'phase',     v => `${Math.round(v * 360)}°`);
     this._offsetInput = this._addParam(params, 'Offs.',  -1,   1,  0,   0.01, 'offset',    v => v.toFixed(2));
@@ -768,7 +772,7 @@ export class LFOWidget {
     this._refreshShapeButtons();
   }
 
-  _addParam(container, labelText, min, max, defaultVal, step, param, fmt) {
+  _addParam(container, labelText, min, max, defaultVal, step, param, fmt, scale = 'linear') {
     const group = document.createElement('div');
     group.className = 'lfo-param-group';
 
@@ -779,12 +783,19 @@ export class LFOWidget {
     const row = document.createElement('div');
     row.className = 'lfo-param-row';
 
+    // Log scale: slider position 0–1000; actual = min × (max/min)^(pos/1000)
+    const logScale  = scale === 'log';
+    const toActual  = logScale ? pos => min * Math.pow(max / min, pos / 1000) : v => v;
+    const toPos     = logScale ? v   => Math.log(v / min) / Math.log(max / min) * 1000 : v => v;
+
     const input = document.createElement('input');
     input.type  = 'range';
-    input.min   = min;
-    input.max   = max;
-    input.step  = step;
-    input.value = defaultVal;
+    input.min   = logScale ? 0    : min;
+    input.max   = logScale ? 1000 : max;
+    input.step  = logScale ? 1    : step;
+    input.value = toPos(defaultVal);
+    // Store converter so _syncChainedSliders can map actual → slider position
+    input._toPos = toPos;
     // Mark as LFO param so drag-to-assign auto-promotes to chain route
     input.dataset.lfoId    = this._lfoId;
     input.dataset.lfoParam = param;
@@ -799,7 +810,7 @@ export class LFOWidget {
       const editEl = document.createElement('input');
       editEl.type      = 'text';
       editEl.className = 'lfo-param-edit';
-      editEl.value     = parseFloat(input.value).toFixed(precision);
+      editEl.value     = toActual(parseFloat(input.value)).toFixed(precision);
       valEl.replaceWith(editEl);
       editEl.select();
 
@@ -807,7 +818,7 @@ export class LFOWidget {
         const raw = parseFloat(editEl.value);
         if (!isNaN(raw)) {
           const clamped = Math.min(max, Math.max(min, raw));
-          input.value = clamped;
+          input.value = toPos(clamped);
           engine.setParam(this._lfoId, param, clamped);
           valEl.textContent = fmt(clamped);
         }
@@ -822,14 +833,14 @@ export class LFOWidget {
     });
 
     input.addEventListener('input', () => {
-      const v = parseFloat(input.value);
+      const v = toActual(parseFloat(input.value));
       engine.setParam(this._lfoId, param, v);
       valEl.textContent = fmt(v);
     });
 
     // Also update display when LFO engine writes to this slider (chain modulation)
     input.addEventListener('lfo-update', () => {
-      valEl.textContent = fmt(parseFloat(input.value));
+      valEl.textContent = fmt(toActual(parseFloat(input.value)));
     });
 
     row.appendChild(input);
@@ -869,8 +880,9 @@ export class LFOWidget {
       [this._depthInput, lfo.depth],
     ];
     for (const [input, eff] of pairs) {
-      if (Math.abs(parseFloat(input.value) - eff) > 1e-6) {
-        input.value = eff;
+      const pos = input._toPos ? input._toPos(eff) : eff;
+      if (Math.abs(parseFloat(input.value) - pos) > 1e-6) {
+        input.value = pos;
         input.dispatchEvent(new Event('lfo-update'));
       }
     }
