@@ -747,11 +747,7 @@ export class LFOWidget {
     const params = document.createElement('div');
     params.className = 'lfo-params';
 
-    this._rateInput   = this._addParam(params, 'Rate',   0.01, 10_000_000, 1, 0.01, 'baseRate',
-      v => v >= 1e6 ? `${(v/1e6).toFixed(2)}MHz`
-         : v >= 1e3 ? `${(v/1e3).toFixed(2)}kHz`
-         :            `${v.toFixed(2)}Hz`,
-      'log');
+    this._rateInput   = this._addParam(params, 'Rate',   0.01, 10, 1, 0.01, 'baseRate',  v => `${v.toFixed(2)}Hz`);
     this._depthInput  = this._addParam(params, 'Depth',  0,    1,  1,   0.01, 'baseDepth', v => `${Math.round(v * 100)}%`);
     this._phaseInput  = this._addParam(params, 'Phase',  0,    1,  0,   0.01, 'phase',     v => `${Math.round(v * 360)}°`);
     this._offsetInput = this._addParam(params, 'Offs.',  -1,   1,  0,   0.01, 'offset',    v => v.toFixed(2));
