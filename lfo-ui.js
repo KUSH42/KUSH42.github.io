@@ -137,6 +137,11 @@ const CSS = `
   background: #08080f;
 }
 
+.lfo-bipolar-btn {
+  border-top: 1px solid #2a2a3e;
+}
+}
+
 /* ── Param rows ─────────────────────────────────────────────────── */
 .lfo-params {
   display: grid;
@@ -720,26 +725,33 @@ export class LFOWidget {
     canvas.height = 72;
     canvasRow.appendChild(canvas);
 
-    // Shape buttons — 2 col × 4 row side panel (7 shapes + 1 filler = 8 slots)
+    // Shape buttons — 2 col × 4 row side panel (7 shapes + bipolar toggle = 8 slots)
     const shapesEl = this._shapesEl = document.createElement('div');
     shapesEl.className = 'lfo-shapes';
-    const shapeList = [...SHAPES, null]; // null = filler to complete the 4×2 grid
-    for (const shape of shapeList) {
+    for (const shape of SHAPES) {
       const btn = document.createElement('button');
-      btn.className = 'lfo-shape-btn';
-      if (!shape) {
-        btn.style.visibility = 'hidden';
-      } else {
-        btn.textContent   = SHAPE_LABELS[shape] ?? shape.toUpperCase().slice(0, 3);
-        btn.title         = shape;
-        btn.dataset.shape = shape;
-        btn.addEventListener('click', () => {
-          engine.setParam(this._lfoId, 'shape', shape);
-          this._refreshShapeButtons();
-        });
-      }
+      btn.className     = 'lfo-shape-btn';
+      btn.textContent   = SHAPE_LABELS[shape] ?? shape.toUpperCase().slice(0, 3);
+      btn.title         = shape;
+      btn.dataset.shape = shape;
+      btn.addEventListener('click', () => {
+        engine.setParam(this._lfoId, 'shape', shape);
+        this._refreshShapeButtons();
+      });
       shapesEl.appendChild(btn);
     }
+
+    // Bipolar toggle occupies the 8th (filler) slot
+    const bipolarBtn = this._bipolarBtn = document.createElement('button');
+    bipolarBtn.className = 'lfo-shape-btn lfo-bipolar-btn';
+    bipolarBtn.title     = 'Toggle bipolar (±1) / unipolar (0–1) output';
+    bipolarBtn.addEventListener('click', () => {
+      const current = engine.getParam(this._lfoId, 'bipolar') ?? true;
+      engine.setParam(this._lfoId, 'bipolar', !current);
+      this._refreshBipolarBtn();
+    });
+    shapesEl.appendChild(bipolarBtn);
+
     canvasRow.appendChild(shapesEl);
     root.appendChild(canvasRow);
 
@@ -766,6 +778,7 @@ export class LFOWidget {
 
     container.appendChild(root);
     this._refreshShapeButtons();
+    this._refreshBipolarBtn();
   }
 
   _addParam(container, labelText, min, max, defaultVal, step, param, fmt, scale = 'linear') {
@@ -851,6 +864,15 @@ export class LFOWidget {
     for (const btn of this._shapesEl.querySelectorAll('.lfo-shape-btn')) {
       btn.classList.toggle('active', btn.dataset.shape === current);
     }
+  }
+
+  _refreshBipolarBtn() {
+    const bipolar = engine.getParam(this._lfoId, 'bipolar') ?? true;
+    this._bipolarBtn.textContent = bipolar ? 'BI' : 'UNI';
+    this._bipolarBtn.classList.toggle('active', !bipolar);
+    this._bipolarBtn.title = bipolar
+      ? 'Bipolar output (±1) — click for unipolar (0–1)'
+      : 'Unipolar output (0–1) — click for bipolar (±1)';
   }
 
   // ── Waveform drawing ─────────────────────────────────────────────────────
