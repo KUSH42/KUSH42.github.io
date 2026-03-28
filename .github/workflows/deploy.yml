@@ -51,6 +51,8 @@ jobs:
           # Matrix rain WebGPU — zero-build, CDN importmap, copy source directly
           mkdir -p _site/matrix-rain
           cp -r _matrix-rain/. _site/matrix-rain/
+          # LFO modulation component demo
+          cp lfo.html lfo-engine.js lfo-ui.js lfo-comp.js _site/
 
       - uses: actions/upload-pages-artifact@v3
         with:
