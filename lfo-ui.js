@@ -201,6 +201,22 @@ const CSS = `
   min-width: 28px;
   text-align: right;
   flex-shrink: 0;
+  cursor: text;
+}
+
+.lfo-param-edit {
+  font-size: 9px;
+  font-family: inherit;
+  color: var(--lfo-color, #00d4ff);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--lfo-color, #00d4ff);
+  width: 36px;
+  min-width: 0;
+  text-align: right;
+  outline: none;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 /* ── Connect handle ─────────────────────────────────────────────── */
@@ -776,6 +792,34 @@ export class LFOWidget {
     const valEl = document.createElement('span');
     valEl.className = 'lfo-param-val';
     valEl.textContent = fmt(defaultVal);
+
+    const precision = (step.toString().split('.')[1] ?? '').length;
+
+    valEl.addEventListener('click', () => {
+      const editEl = document.createElement('input');
+      editEl.type      = 'text';
+      editEl.className = 'lfo-param-edit';
+      editEl.value     = parseFloat(input.value).toFixed(precision);
+      valEl.replaceWith(editEl);
+      editEl.select();
+
+      const commit = () => {
+        const raw = parseFloat(editEl.value);
+        if (!isNaN(raw)) {
+          const clamped = Math.min(max, Math.max(min, raw));
+          input.value = clamped;
+          engine.setParam(this._lfoId, param, clamped);
+          valEl.textContent = fmt(clamped);
+        }
+        editEl.replaceWith(valEl);
+      };
+
+      editEl.addEventListener('blur', commit);
+      editEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter')  { e.preventDefault(); editEl.blur(); }
+        if (e.key === 'Escape') { editEl.replaceWith(valEl); }
+      });
+    });
 
     input.addEventListener('input', () => {
       const v = parseFloat(input.value);
