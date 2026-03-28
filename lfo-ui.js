@@ -141,7 +141,6 @@ const CSS = `
 .lfo-bipolar-btn {
   border-top: 1px solid #2a2a3e;
 }
-}
 
 /* ── Param rows ─────────────────────────────────────────────────── */
 .lfo-params {
@@ -263,7 +262,7 @@ const CSS = `
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 99999;
+  z-index: calc(var(--lfo-z-base, 9000) + 2);
   overflow: visible;
 }
 
@@ -287,7 +286,7 @@ const CSS = `
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 10px;
   color: #888;
-  z-index: 10000;
+  z-index: calc(var(--lfo-z-base, 9000) + 1);
   pointer-events: auto;
   cursor: default;
   white-space: nowrap;
@@ -341,7 +340,7 @@ const CSS = `
 .lfo-range-arc {
   position: fixed;
   pointer-events: none;
-  z-index: 9999;
+  z-index: var(--lfo-z-base, 9000);
 }
 `;
 
@@ -541,9 +540,14 @@ export class ModIndicator {
   _reposition() {
     const r = this._element.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return;
-    const badge = this._badge;
-    const bw = badge.offsetWidth;
-    const bh = badge.offsetHeight;
+    // Badge dimensions rarely change after first paint — read once and cache.
+    if (!this._badgeSize) {
+      const bw = this._badge.offsetWidth;
+      const bh = this._badge.offsetHeight;
+      if (bw && bh) this._badgeSize = { bw, bh };
+      else return;
+    }
+    const { bw, bh } = this._badgeSize;
 
     let bx = r.right - bw;
     let by = r.top - bh - 4;
@@ -728,6 +732,7 @@ export class LFOWidget {
     const dpr = window.devicePixelRatio || 1;
     canvas.width  = 140 * dpr;
     canvas.height = 72  * dpr;
+    this._ctx = canvas.getContext('2d');
     canvasRow.appendChild(canvas);
 
     // Shape buttons — 2 col × 4 row side panel (7 shapes + bipolar toggle = 8 slots)
@@ -764,7 +769,7 @@ export class LFOWidget {
     const params = document.createElement('div');
     params.className = 'lfo-params';
 
-    this._rateInput   = this._addParam(params, 'Rate',   0.01, 10, 1, 0.01, 'baseRate',  v => `${v.toFixed(2)}Hz`);
+    this._rateInput   = this._addParam(params, 'Rate',   0.01, 10, 1, 0.01, 'baseRate',  v => `${v.toFixed(2)}Hz`, 'log');
     this._depthInput  = this._addParam(params, 'Depth',  0,    1,  1,   0.01, 'baseDepth', v => `${Math.round(v * 100)}%`);
     this._phaseInput  = this._addParam(params, 'Phase',  0,    1,  0,   0.01, 'phase',     v => `${Math.round(v * 360)}°`);
     this._offsetInput = this._addParam(params, 'Offs.',  -1,   1,  0,   0.01, 'offset',    v => v.toFixed(2));
@@ -973,7 +978,7 @@ export class LFOWidget {
     const H = canvas.height;
     const currentValue = this._latestValue;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = this._ctx;
     ctx.drawImage(this._wfBuf, 0, 0);
 
     const cursorX = W - 1;
@@ -1164,14 +1169,33 @@ export class LFOWidget {
    * @param {HTMLElement} element
    * @param {object}      [opts]
    * @param {number}      [opts.depth=0.5]
-   * @returns {string} routeId
+   * @returns {string|null} routeId, or null if rejected (duplicate, self-mod).
    */
   connect(element, opts = {}) {
+    // Avoid duplicate element routes to the same target
+    for (const ind of this._indicators.values()) {
+      if (engine.getRoute(ind.routeId)?.target === element) return null;
+    }
+    // Avoid duplicate chain routes (element carries data-lfo-id)
+    if (element instanceof Element && element.dataset.lfoId) {
+      const linkedId   = element.dataset.lfoId;
+      const rawParam   = element.dataset.lfoParam ?? '';
+      const mappedParam = rawParam === 'baseRate'  ? 'rate'  :
+                          rawParam === 'baseDepth' ? 'depth' : rawParam;
+      for (const route of engine.getAllRoutes()) {
+        if (route.sourceId === this._lfoId &&
+            route.targetType === 'lfo' &&
+            route.target === linkedId &&
+            route.targetParam === mappedParam) return null;
+      }
+    }
+
     const routeId = engine.addRoute(this._lfoId, 'element', element, null, opts);
     if (!routeId) return null;
     const route = engine.getRoute(routeId);
-    if (!route || route.targetType === 'lfo') return routeId;
+    if (!route) return null;
 
+    // Create indicator for both element and auto-promoted chain routes
     const indicator = new ModIndicator(
       element, routeId, this._lfoId, this._color, this._label,
       (rid) => this.disconnectRoute(rid)

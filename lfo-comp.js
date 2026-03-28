@@ -75,11 +75,13 @@ export function createLFO(containerOrOpts = {}, opts = {}) {
   // Wrap caller callbacks to maintain _widgetByRoute registry.
   const callerOnConnect    = uiOpts.onConnect;
   const callerOnDisconnect = uiOpts.onDisconnect;
+  // Forward-declare so the onConnect closure can reference it without a lint warning.
+  let widget;
 
   uiOpts = {
     ...uiOpts,
     onConnect: (lfoId, el, routeId) => {
-      _widgetByRoute.set(routeId, widget); // eslint-disable-line no-use-before-define
+      _widgetByRoute.set(routeId, widget);
       callerOnConnect?.(lfoId, el, routeId);
     },
     onDisconnect: (routeId) => {
@@ -90,7 +92,7 @@ export function createLFO(containerOrOpts = {}, opts = {}) {
 
   const lfoId = engine.createLFO(engineOpts);
   const div   = container ?? document.createElement('div');
-  const widget = new LFOWidget(div, lfoId, uiOpts);
+  widget = new LFOWidget(div, lfoId, uiOpts);
 
   return { lfoId, widget };
 }

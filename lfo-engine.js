@@ -147,6 +147,7 @@ export class LFOEngine {
     }
     for (const routeId of toRemove) this.removeRoute(routeId);
     this._lfos.delete(id);
+    if (this._lfos.size === 0) this.stop();
   }
 
   // ── Route management ──────────────────────────────────────────────────────
@@ -260,9 +261,11 @@ export class LFOEngine {
     const lfo = this._lfos.get(lfoId);
     if (!lfo) return;
     lfo[param] = value;
-    // Keep base params in sync when set directly
-    if (param === 'rate')  lfo.baseRate  = value;
-    if (param === 'depth') lfo.baseDepth = value;
+    // Keep base and effective params in sync when either side is set directly
+    if (param === 'rate')      lfo.baseRate  = value;
+    if (param === 'depth')     lfo.baseDepth = value;
+    if (param === 'baseRate')  lfo.rate      = value;
+    if (param === 'baseDepth') lfo.depth     = value;
   }
 
   /**
@@ -353,7 +356,7 @@ export class LFOEngine {
       const evalCycle = Math.floor(((lfo.currentPhase + lfo.phase) % 1e7 + 1e7) % 1e7) & 0xFFFF;
       if (evalCycle !== lfo.jitterLastCycle) {
         lfo.jitterLastCycle = evalCycle;
-        lfo.jitterRateMult = Math.max(0.2, 1 + (Math.random() * 2 - 1) * lfo.jitter * 0.8);
+        lfo.jitterRateMult = Math.max(0.2, 1 + seededRand(lfo.seed + evalCycle) * lfo.jitter * 0.8);
       }
     }
     const jitterMult = lfo.jitter > 0 ? lfo.jitterRateMult : 1;
