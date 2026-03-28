@@ -149,6 +149,12 @@ const CSS = `
   gap: 5px;
 }
 
+.lfo-params-secondary {
+  border-top: 1px solid #2a2a3e;
+  padding-top: 5px;
+  margin-top: 4px;
+}
+
 .lfo-param-group {
   display: flex;
   flex-direction: column;
@@ -770,18 +776,21 @@ export class LFOWidget {
     canvasRow.appendChild(shapesEl);
     root.appendChild(canvasRow);
 
-    // Param sliders — 3-row × 2-col grid (rate, depth, phase, offset, jitter, skew)
-    const params = document.createElement('div');
-    params.className = 'lfo-params';
+    // Param sliders — two groups: primary (rate, depth) and secondary (phase, offset, jitter, skew)
+    const params1 = document.createElement('div');
+    params1.className = 'lfo-params';
+    this._rateInput  = this._addParam(params1, 'Rate',  0.01, 10, 1,   0.01, 'baseRate',  v => `${v.toFixed(2)}Hz`, 'log');
+    this._depthInput = this._addParam(params1, 'Depth', 0,    1,  1,   0.01, 'baseDepth', v => `${Math.round(v * 100)}%`);
 
-    this._rateInput   = this._addParam(params, 'Rate',   0.01, 10, 1, 0.01, 'baseRate',  v => `${v.toFixed(2)}Hz`, 'log');
-    this._depthInput  = this._addParam(params, 'Depth',  0,    1,  1,   0.01, 'baseDepth', v => `${Math.round(v * 100)}%`);
-    this._phaseInput  = this._addParam(params, 'Phase',  0,    1,  0,   0.01, 'phase',     v => `${Math.round(v * 360)}°`);
-    this._offsetInput = this._addParam(params, 'Offs.',  -1,   1,  0,   0.01, 'offset',    v => v.toFixed(2));
-    this._jitterInput = this._addParam(params, 'Jitter', 0,    1,  0,   0.01, 'jitter',    v => `${Math.round(v * 100)}%`);
-    this._skewInput   = this._addParam(params, 'Skew',   0,    1,  0.5, 0.01, 'skew',      v => `${Math.round((v - 0.5) * 200)}%`);
+    const params2 = document.createElement('div');
+    params2.className = 'lfo-params lfo-params-secondary';
+    this._phaseInput  = this._addParam(params2, 'Phase',  0,  1,   0,   0.01, 'phase',  v => `${Math.round(v * 360)}°`);
+    this._offsetInput = this._addParam(params2, 'Offs.',  -1, 1,   0,   0.01, 'offset', v => v.toFixed(2));
+    this._jitterInput = this._addParam(params2, 'Jitter', 0,  1,   0,   0.01, 'jitter', v => `${Math.round(v * 100)}%`);
+    this._skewInput   = this._addParam(params2, 'Skew',   0,  1,   0.5, 0.01, 'skew',   v => `${Math.round((v - 0.5) * 200)}%`);
 
-    root.appendChild(params);
+    root.appendChild(params1);
+    root.appendChild(params2);
 
     // Connect handle
     const handle = this._handle = document.createElement('div');
