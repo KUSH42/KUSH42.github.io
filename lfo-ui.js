@@ -198,9 +198,10 @@ const CSS = `
 .lfo-param-val {
   font-size: 9px;
   color: var(--lfo-color, #00d4ff);
-  min-width: 28px;
+  width: 44px;
   text-align: right;
   flex-shrink: 0;
+  overflow: hidden;
   cursor: text;
 }
 
@@ -211,12 +212,11 @@ const CSS = `
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--lfo-color, #00d4ff);
-  width: 36px;
-  min-width: 0;
+  width: 44px;
+  flex-shrink: 0;
   text-align: right;
   outline: none;
   padding: 0;
-  flex-shrink: 0;
 }
 
 /* ── Connect handle ─────────────────────────────────────────────── */
