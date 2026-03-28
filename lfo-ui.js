@@ -159,6 +159,7 @@ const CSS = `
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
 }
 
 .lfo-param-group label {
