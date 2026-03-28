@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LFO Modulation Component</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07070e;
+      --surface:  #0d0d18;
+      --border:   #1e1e30;
+      --text:     #999;
+      --text-dim: #444;
+      --font:     'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Layout ───────────────────────────────────────── */
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+
+    header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ccc;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    header p {
+      margin-top: 6px;
+      color: var(--text-dim);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    /* ── Two-column main layout ───────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 28px;
+      align-items: start;
+    }
+
+    @media (max-width: 720px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── LFO panels ───────────────────────────────────── */
+    .lfo-panel-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    /* ── Visualizer ───────────────────────────────────── */
+    .visualizer-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    #viz-canvas {
+      display: block;
+      border-radius: 4px;
+      background: #050509;
+      width: 100%;
+      aspect-ratio: 16/5;
+    }
+
+    /* ── Target controls ──────────────────────────────── */
+    .targets-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .target-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .target-card {
+      background: #0a0a14;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .target-card-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .target-card-label .val {
+      color: #666;
+    }
+
+    .target-card input[type=range] {
+      width: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: #1a1a28;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .target-card input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #444;
+      cursor: pointer;
+      border: 2px solid #666;
+      transition: background 0.1s, border-color 0.1s;
+    }
+
+    .target-card input[type=range]::-webkit-slider-thumb:hover {
+      background: #888;
+      border-color: #aaa;
+    }
+
+    .target-card input[type=number] {
+      width: 100%;
+      background: #0a0a14;
+      border: 1px solid #1e1e30;
+      border-radius: 3px;
+      color: #aaa;
+      font-family: var(--font);
+      font-size: 12px;
+      padding: 4px 8px;
+      outline: none;
+    }
+
+    .target-card input[type=number]:focus {
+      border-color: #444;
+    }
+
+    /* ── Visual demo box ──────────────────────────────── */
+    .demo-box-area {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #demo-box {
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      background: #00d4ff;
+      box-shadow: 0 0 24px #00d4ff50;
+      transition: none;
+      will-change: transform, opacity, filter;
+    }
+
+    /* ── Matrix table ─────────────────────────────────── */
+    .matrix-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    #route-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    #route-table colgroup col:nth-child(1) { width: 80px; }
+    #route-table colgroup col:nth-child(2) { width: auto; }
+    #route-table colgroup col:nth-child(3) { width: 100px; }
+    #route-table colgroup col:nth-child(4) { width: 26px; }
+
+    #route-table th {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      text-align: left;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #route-table th:last-child {
+      text-align: center;
+      padding: 4px 0;
+    }
+
+    #route-table td {
+      padding: 5px 8px;
+      font-size: 11px;
+      border-bottom: 1px solid #11111c;
+      vertical-align: middle;
+      overflow: hidden;
+    }
+
+    #route-table td:last-child {
+      padding: 5px 0;
+      text-align: center;
+    }
+
+    #route-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .route-src-cell {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .route-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .route-src-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .route-tgt-cell {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #777;
+    }
+
+    .route-none {
+      color: var(--text-dim);
+      font-size: 10px;
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    /* depth cell */
+    .route-depth-cell {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .route-depth-slider {
+      flex: 1;
+      appearance: none;
+      -webkit-appearance: none;
+      height: 3px;
+      border-radius: 2px;
+      background: #1a1a28;
+      outline: none;
+      cursor: pointer;
+      min-width: 0;
+    }
+
+    .route-depth-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #555;
+      cursor: pointer;
+      border: 1px solid #888;
+    }
+
+    .route-depth-val {
+      width: 30px;
+      text-align: right;
+      color: #777;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .route-del-btn {
+      background: none;
+      border: none;
+      color: #ff4466;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      opacity: 0.5;
+      transition: opacity 0.1s;
+      width: 100%;
+    }
+
+    .route-del-btn:hover { opacity: 1; }
+
+    /* ── Instructions ─────────────────────────────────── */
+    .instructions {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .instructions ol {
+      list-style: decimal;
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .instructions li {
+      color: var(--text-dim);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .instructions li b {
+      color: #888;
+    }
+
+    kbd {
+      background: #1a1a28;
+      border: 1px solid #2a2a3e;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: var(--font);
+      font-size: 10px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;">
+      <h1>LFO Modulation Component</h1>
+      <a href="https://github.com/KUSH42/lfocomp" target="_blank" rel="noopener"
+         style="font-size:10px;color:var(--text-dim);text-decoration:none;letter-spacing:0.06em;white-space:nowrap;flex-shrink:0;"
+         onmouseover="this.style.color='#666'" onmouseout="this.style.color='var(--text-dim)'">
+        KUSH42/lfocomp ↗
+      </a>
+    </div>
+    <p>
+      Ableton/Bitwig/Serum-style LFO modulator for HTML inputs.
+      Drag the <kbd>⊕ drag to assign</kbd> handle from any LFO onto a slider or number input to wire up modulation.
+      Drag onto another LFO's Rate or Depth slider to chain LFOs.
+    </p>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- LEFT COLUMN -->
+    <div style="display:flex;flex-direction:column;gap:24px;">
+
+      <!-- LFO panels -->
+      <div>
+        <div class="section-label">LFOs</div>
+        <div class="lfo-panel-row" id="lfo-container"></div>
+      </div>
+
+      <!-- Visual demo -->
+      <div class="demo-box-area">
+        <div class="section-label" style="position:absolute;top:16px;left:16px;">Live Preview</div>
+        <div id="demo-box"></div>
+      </div>
+
+      <!-- Target controls -->
+      <div class="targets-section">
+        <div class="section-label">Modulation Targets — drag an LFO handle onto any slider</div>
+        <div class="target-grid">
+
+          <div class="target-card">
+            <div class="target-card-label">
+              <span>Size</span>
+              <span class="val" id="val-size">50</span>
+            </div>
+            <input type="range" id="ctrl-size" min="10" max="200" value="50" step="1">
+          </div>
+
+          <div class="target-card">
+            <div class="target-card-label">
+              <span>Opacity</span>
+              <span class="val" id="val-opacity">1.00</span>
+            </div>
+            <input type="range" id="ctrl-opacity" min="0" max="1" value="1" step="0.01">
+          </div>
+
+          <div class="target-card">
+            <div class="target-card-label">
+              <span>Rotation</span>
+              <span class="val" id="val-rotation">0°</span>
+            </div>
+            <input type="range" id="ctrl-rotation" min="-180" max="180" value="0" step="1">
+          </div>
+
+          <div class="target-card">
+            <div class="target-card-label">
+              <span>Blur (px)</span>
+              <span class="val" id="val-blur">0</span>
+            </div>
+            <input type="range" id="ctrl-blur" min="0" max="30" value="0" step="0.5">
+          </div>
+
+          <div class="target-card">
+            <div class="target-card-label">
+              <span>Hue Shift</span>
+              <span class="val" id="val-hue">0°</span>
+            </div>
+            <input type="range" id="ctrl-hue" min="0" max="360" value="0" step="1">
+          </div>
+
+          <div class="target-card">
+            <div class="target-card-label">
+              <span>Frequency (Hz)</span>
+              <span class="val" id="val-freq">440</span>
+            </div>
+            <input type="number" id="ctrl-freq" min="20" max="20000" value="440" step="1"
+                   data-lfo-target>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /LEFT COLUMN -->
+
+    <!-- RIGHT COLUMN -->
+    <div style="display:flex;flex-direction:column;gap:24px;">
+
+      <!-- Modulation matrix -->
+      <div class="matrix-section">
+        <div class="section-label">Modulation Matrix</div>
+        <table id="route-table">
+          <colgroup>
+            <col><col><col><col>
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Target</th>
+              <th>Depth</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="route-tbody">
+            <tr><td colspan="4" class="route-none">No connections yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Instructions -->
+      <div class="instructions">
+        <div class="section-label">How to use</div>
+        <ol>
+          <li><b>Wire up:</b> Grab the <kbd>⊕ drag to assign</kbd> handle from an LFO and drag it onto any slider below. Release to connect.</li>
+          <li><b>Adjust depth:</b> Drag the <b style="color:#888">depth %</b> label on the floating badge left/right to change modulation intensity.</li>
+          <li><b>Chain LFOs:</b> Drag LFO 2 or LFO 3's handle onto LFO 1's <b style="color:#888">Rate</b> or <b style="color:#888">Depth</b> slider. The chain LFO will modulate the target LFO's parameter.</li>
+          <li><b>Remove:</b> Click the <b style="color:#ff4466">×</b> on any mod badge to disconnect.</li>
+          <li><b>Shape:</b> Click a shape button (SIN / TRI / SAW / SQR…) on any LFO to change its waveform.</li>
+          <li><b>Programmatic:</b> <code>widget.connect(element, { depth: 0.7 })</code> or use the engine API directly.</li>
+        </ol>
+      </div>
+
+    </div><!-- /RIGHT COLUMN -->
+
+  </div><!-- /main-grid -->
+
+</div><!-- /page -->
+
+<script type="importmap">
+{
+  "imports": {
+    "./lfo-engine.js": "./lfo-engine.js",
+    "./lfo-ui.js":     "./lfo-ui.js",
+    "./lfo-comp.js":   "./lfo-comp.js"
+  }
+}
+</script>
+
+<script type="module">
+import { createLFO, engine, disconnect } from './lfo-comp.js';
+
+// ── Create 3 LFOs ──────────────────────────────────────────────────────────
+const container = document.getElementById('lfo-container');
+
+const { lfoId: id1, widget: w1 } = createLFO(container, {
+  shape: 'sine',  rate: 0.8, depth: 0.8,
+  label: 'LFO 1', color: '#00d4ff',
+});
+
+const { lfoId: id2, widget: w2 } = createLFO(container, {
+  shape: 'triangle', rate: 1.5, depth: 0.7,
+  label: 'LFO 2', color: '#ff3aaa',
+});
+
+const { lfoId: id3, widget: w3 } = createLFO(container, {
+  shape: 'saw', rate: 0.3, depth: 0.9,
+  label: 'LFO 3', color: '#39ff14',
+});
+
+// ── Live preview box — driven by all active routes to the demo controls ──
+const box = document.getElementById('demo-box');
+
+// Map control IDs to CSS properties on the box
+const ctrl = {
+  size:     document.getElementById('ctrl-size'),
+  opacity:  document.getElementById('ctrl-opacity'),
+  rotation: document.getElementById('ctrl-rotation'),
+  blur:     document.getElementById('ctrl-blur'),
+  hue:      document.getElementById('ctrl-hue'),
+  freq:     document.getElementById('ctrl-freq'),
+};
+
+const valEl = {
+  size:     document.getElementById('val-size'),
+  opacity:  document.getElementById('val-opacity'),
+  rotation: document.getElementById('val-rotation'),
+  blur:     document.getElementById('val-blur'),
+  hue:      document.getElementById('val-hue'),
+  freq:     document.getElementById('val-freq'),
+};
+
+// Value update display labels
+for (const [key, el] of Object.entries(ctrl)) {
+  const update = () => {
+    const v = parseFloat(el.value);
+    const formats = {
+      size:     `${Math.round(v)}`,
+      opacity:  v.toFixed(2),
+      rotation: `${Math.round(v)}°`,
+      blur:     `${Math.round(v * 2) / 2}`,
+      hue:      `${Math.round(v)}°`,
+      freq:     `${Math.round(v)}`,
+    };
+    valEl[key].textContent = formats[key] ?? v;
+  };
+  el.addEventListener('input', update);
+  el.addEventListener('lfo-update', update);
+  update();
+}
+
+// Box visual update loop
+function updateBox() {
+  requestAnimationFrame(updateBox);
+  const size     = parseFloat(ctrl.size.value)     || 80;
+  const opacity  = parseFloat(ctrl.opacity.value)  ?? 1;
+  const rotation = parseFloat(ctrl.rotation.value) || 0;
+  const blur     = parseFloat(ctrl.blur.value)     || 0;
+  const hue      = parseFloat(ctrl.hue.value)      || 0;
+  box.style.width   = `${size}px`;
+  box.style.height  = `${size}px`;
+  box.style.opacity = opacity;
+  box.style.transform = `rotate(${rotation}deg)`;
+  box.style.filter  = `blur(${blur}px) hue-rotate(${hue}deg)`;
+}
+updateBox();
+
+// ── Modulation matrix table ───────────────────────────────────────────────
+const tbody = document.getElementById('route-tbody');
+
+// Maps populated as LFOs are created
+const colorMap = {};
+const labelMap = {};
+
+function registerLFO(id, label, color) {
+  colorMap[id] = color;
+  labelMap[id] = label;
+}
+registerLFO(id1, 'LFO 1', '#00d4ff');
+registerLFO(id2, 'LFO 2', '#ff3aaa');
+registerLFO(id3, 'LFO 3', '#39ff14');
+
+function getTargetName(route) {
+  if (route.targetType === 'lfo') {
+    const tgtLabel = labelMap[route.target] ?? route.target;
+    const param    = route.targetParam.replace('base', '').toLowerCase();
+    return `${tgtLabel} <span style="color:#555">→ ${param}</span>`;
+  }
+  const el = route.target;
+  if (!el) return '?';
+  // Try to find a human-readable label from nearby DOM
+  const card  = el.closest('.target-card');
+  const label = card?.querySelector('.target-card-label span:first-child')?.textContent?.trim();
+  return label || el.id || el.getAttribute('aria-label') || el.tagName.toLowerCase();
+}
+
+function buildMatrixRow(r) {
+  const color   = colorMap[r.sourceId] ?? '#555';
+  const srcName = labelMap[r.sourceId] ?? r.sourceId;
+  const pct     = Math.round(r.depth * 100);
+
+  const tr = document.createElement('tr');
+  tr.dataset.routeId = r.id;
+
+  // Source
+  const tdSrc = document.createElement('td');
+  const srcCell = document.createElement('div');
+  srcCell.className = 'route-src-cell';
+  const dot = document.createElement('span');
+  dot.className = 'route-dot';
+  dot.style.background = color;
+  const srcName_ = document.createElement('span');
+  srcName_.className = 'route-src-name';
+  srcName_.textContent = srcName;
+  srcCell.appendChild(dot);
+  srcCell.appendChild(srcName_);
+  tdSrc.appendChild(srcCell);
+
+  // Target
+  const tdTgt = document.createElement('td');
+  tdTgt.className = 'route-tgt-cell';
+  tdTgt.innerHTML = getTargetName(r);
+
+  // Depth slider + value
+  const tdDepth = document.createElement('td');
+  const depthCell = document.createElement('div');
+  depthCell.className = 'route-depth-cell';
+
+  const slider = document.createElement('input');
+  slider.type  = 'range';
+  slider.min   = '0';
+  slider.max   = '1';
+  slider.step  = '0.01';
+  slider.value = r.depth;
+  slider.className = 'route-depth-slider';
+  slider.style.setProperty('--thumb-color', color);
+  // Tint the thumb to match LFO color
+  slider.style.accentColor = color;
+
+  const valSpan = document.createElement('span');
+  valSpan.className = 'route-depth-val';
+  valSpan.textContent = `${pct}%`;
+
+  slider.addEventListener('input', () => {
+    const v = parseFloat(slider.value);
+    engine.setRouteDepth(r.id, v);
+    valSpan.textContent = `${Math.round(v * 100)}%`;
+  });
+
+  depthCell.appendChild(slider);
+  depthCell.appendChild(valSpan);
+  tdDepth.appendChild(depthCell);
+
+  // Delete button
+  const tdDel = document.createElement('td');
+  const btn = document.createElement('button');
+  btn.className   = 'route-del-btn';
+  btn.textContent = '×';
+  btn.title       = 'Remove connection';
+  btn.addEventListener('click', () => {
+    disconnect(r.id);
+    refreshMatrix();
+  });
+  tdDel.appendChild(btn);
+
+  tr.appendChild(tdSrc);
+  tr.appendChild(tdTgt);
+  tr.appendChild(tdDepth);
+  tr.appendChild(tdDel);
+  return tr;
+}
+
+function refreshMatrix() {
+  const routes = engine.getAllRoutes();
+  tbody.innerHTML = '';
+  if (routes.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="4" class="route-none">No connections yet</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+  for (const r of routes) tbody.appendChild(buildMatrixRow(r));
+}
+
+// Refresh matrix on connect/disconnect by patching the widget callbacks.
+// _onConnect/_onDisconnect are already set to lfo-comp.js wrappers that
+// maintain _widgetByRoute — preserve that by chaining.
+for (const w of [w1, w2, w3]) {
+  const prevConnect    = w._onConnect;
+  const prevDisconnect = w._onDisconnect;
+  w._onConnect    = (...a) => { prevConnect?.(...a);    refreshMatrix(); };
+  w._onDisconnect = (...a) => { prevDisconnect?.(...a); refreshMatrix(); };
+}
+
+refreshMatrix();
+
+// ── Pre-wire one connection as an example ────────────────────────────────
+w1.connect(ctrl.size, { depth: 0.6 });
+</script>
+</body>
+</html>
