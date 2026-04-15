@@ -1,0 +1,3307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Matrix Rain — WebGPU + TSL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Courier New', monospace;
+      color: #00ff70;
+    }
+
+    #rain-host {
+      position: fixed;
+      inset: 0;
+      background: #000;
+    }
+
+    /* ── Controls panel ──────────────────────────────────────────── */
+    #controls {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.75);
+      border: 1px solid #00ff70;
+      padding: 14px 16px;
+      min-width: 220px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      font-size: 11px;
+      letter-spacing: 0.07em;
+      line-height: 1.9;
+    }
+
+    #controls summary {
+      cursor: pointer;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: #00ff70;
+      list-style: none;
+      user-select: none;
+    }
+    #controls summary::before { content: '▶ '; }
+    details[open] summary::before { content: '▼ '; }
+
+    #controls label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      white-space: nowrap;
+      color: #7fffaa;
+    }
+
+    #controls input[type="range"] {
+      width: 90px;
+      accent-color: #00ff70;
+    }
+    #controls input[type="color"] {
+      width: 32px;
+      height: 18px;
+      padding: 0;
+      border: 1px solid #00ff70;
+      background: transparent;
+      cursor: pointer;
+    }
+    #controls input[type="checkbox"] {
+      accent-color: #00ff70;
+    }
+    #controls select {
+      background: #111;
+      color: #00ff70;
+      border: 1px solid #00ff70;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      padding: 1px 4px;
+      cursor: pointer;
+      max-width: 90px;
+    }
+    #controls input[type="number"] {
+      width: 46px;
+      background: #111;
+      color: #00ff70;
+      border: 1px solid #00ff7055;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      padding: 1px 3px;
+      -moz-appearance: textfield;
+    }
+    #controls input[type="number"]::-webkit-outer-spin-button,
+    #controls input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+    }
+    #controls input[type="file"] {
+      max-width: 140px;
+      color: #00ff70;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+    }
+    #controls button {
+      background: #111;
+      color: #00ff70;
+      border: 1px solid #00ff70;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      cursor: pointer;
+      padding: 2px 6px;
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Mobile ─────────────────────────────────────────────────────── */
+  @media (max-width: 600px) {
+    #controls {
+      top: auto;
+      bottom: 0;
+      right: 0;
+      left: 0;
+      max-height: 60vh;
+      min-width: unset;
+      border-top: 1px solid #00ff70;
+      border-left: none;
+      border-right: none;
+      border-bottom: none;
+      font-size: 13px;
+      line-height: 2.0;
+      padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    #controls summary {
+      font-size: 12px;
+      padding: 4px 0;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+    }
+    #controls label {
+      min-height: 36px;
+    }
+    #controls input[type="range"] {
+      width: 130px;
+      height: 22px;
+    }
+    #controls input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+    }
+    #controls input[type="color"] {
+      width: 44px;
+      height: 28px;
+    }
+    #controls select {
+      font-size: 12px;
+      max-width: 120px;
+      padding: 4px 6px;
+      min-height: 28px;
+    }
+    #controls input[type="number"] {
+      font-size: 12px;
+      width: 54px;
+      padding: 2px 4px;
+      min-height: 28px;
+    }
+    #controls input[type="file"] {
+      max-width: 160px;
+      font-size: 12px;
+    }
+    #hint { display: none; }
+  }
+
+  #no-webgpu {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #f00;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 16px;
+      font-family: monospace;
+      z-index: 9999;
+    }
+    #no-webgpu.hidden { display: none; }
+
+    #hint {
+      position: fixed;
+      bottom: 8px;
+      left: 10px;
+      font-size: 10px;
+      color: rgba(0, 255, 112, 0.35);
+      letter-spacing: 0.08em;
+      pointer-events: none;
+    }
+
+    /* ── CCP easter egg DOM elements ─────────────────────────────── */
+    #ccp-hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.82);
+      border-bottom: 1px solid #DE2910;
+      color: #ff4040;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      padding: 4px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    #ccp-tint {
+      position: fixed;
+      inset: 0;
+      background: rgba(222, 41, 16, 0.06);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .ccp-sweep {
+      position: fixed;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(to right,
+        transparent 0%, rgba(222,41,16,0.7) 15%, rgba(222,41,16,0.7) 85%, transparent 100%);
+      pointer-events: none;
+      z-index: 15;
+      top: -4px;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.webgpu.js",
+      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.webgpu.js",
+      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.tsl.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/",
+      "spessasynth_lib": "https://cdn.jsdelivr.net/npm/spessasynth_lib@4.1.0/dist/index.js",
+      "spessasynth_core": "https://cdn.jsdelivr.net/npm/spessasynth_core@4.2.8/dist/index.js"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<div id="no-webgpu" class="hidden">
+  <strong>WebGPU and WebGL2 unavailable</strong>
+  <small>Try Chrome 113+, Edge 113+, or Firefox 120+ with a compatible GPU</small>
+</div>
+
+<!-- CCP easter egg DOM overlay elements (hidden until activated) -->
+<div id="ccp-hud" style="display:none">
+  <span id="ccp-hud-left">&#x2682; CAM-01 &middot; <span id="ccp-rec">&#x25CF;REC</span></span>
+  <span id="ccp-hud-center">SOCIAL CREDIT: <span id="ccp-score">---</span></span>
+  <span id="ccp-coords">(X:0000 Y:0000) &middot; <span id="ccp-time">--:--:--</span></span>
+  <span style="margin-left:8px;">&#x2682;</span>
+</div>
+<div id="ccp-tint" style="display:none"></div>
+<div class="ccp-sweep" id="ccp-sweep-0" style="display:none"></div>
+<div class="ccp-sweep" id="ccp-sweep-1" style="display:none"></div>
+
+<div id="rain-host"></div>
+
+<details id="controls">
+  <summary>Matrix Rain</summary>
+  <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+
+    <label>Post-processing
+      <select id="ctl-ppmode">
+        <option value="rain" selected>rain</option>
+        <option value="crt">crt</option>
+        <option value="none">none (diagnostic)</option>
+      </select>
+    </label>
+
+    <label>Preset
+      <select id="ctl-preset">
+        <option value="">— custom —</option>
+        <option value="matrix1999">matrix1999</option>
+        <option value="ghost">ghost</option>
+        <option value="overdrive">overdrive</option>
+        <option value="default">default</option>
+      </select>
+    </label>
+
+    <label>Save preset
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-preset-save-name" type="text" placeholder="name" style="width:90px;font:inherit;background:#111;color:#0f0;border:1px solid #333;padding:2px 4px;">
+        <button id="ctl-preset-save-btn" style="font:inherit;background:#111;color:#0f0;border:1px solid #333;padding:2px 6px;cursor:pointer;">Save</button>
+      </span>
+    </label>
+    <label>Load / delete saved
+      <span style="display:flex;align-items:center;gap:4px;">
+        <select id="ctl-preset-load" style="font:inherit;background:#111;color:#0f0;border:1px solid #333;padding:2px 4px;min-width:90px;">
+          <option value="">— none —</option>
+        </select>
+        <button id="ctl-preset-load-btn"   style="font:inherit;background:#111;color:#0f0;border:1px solid #333;padding:2px 6px;cursor:pointer;">Load</button>
+        <button id="ctl-preset-delete-btn" style="font:inherit;background:#111;color:#800;border:1px solid #333;padding:2px 6px;cursor:pointer;">Del</button>
+      </span>
+    </label>
+
+    <label>Color 1
+      <input id="ctl-color" type="color" value="#00ff70">
+    </label>
+
+    <label>Color 2
+      <input id="ctl-color2" type="color" value="#00ff70">
+    </label>
+
+    <label>Opacity
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-opacity"     type="range"  min="0" max="1"    step="0.01"   value="0.82">
+        <input id="ctl-opacity-num" type="number" min="0" max="1"    step="0.01"   value="0.82">
+      </span>
+    </label>
+
+    <label>Depth (POM)
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-depth"     type="range"  min="0" max="0.15"  step="0.005"  value="0.04">
+        <input id="ctl-depth-num" type="number" min="0" max="0.15"  step="0.005"  value="0.04">
+      </span>
+    </label>
+
+    <label>Normal Str
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-normal"     type="range"  min="0" max="12"   step="0.5"    value="6">
+        <input id="ctl-normal-num" type="number" min="0" max="12"   step="0.5"    value="6">
+      </span>
+    </label>
+
+    <label>Sway
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-sway"     type="range"  min="-0.30" max="0.30"  step="0.005"  value="0.04">
+        <input id="ctl-sway-num" type="number" min="-0.30" max="0.30"  step="0.005"  value="0.04">
+      </span>
+    </label>
+
+    <label>Soften
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-soften"     type="range"  min="0" max="0.01"  step="0.0005" value="0.002">
+        <input id="ctl-soften-num" type="number" min="0" max="0.01"  step="0.0005" value="0.002">
+      </span>
+    </label>
+
+    <label>Heat shimmer
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-heat"     type="range"  min="0" max="0.012" step="0.0005" value="0.004">
+        <input id="ctl-heat-num" type="number" min="0" max="0.012" step="0.0005" value="0.004">
+      </span>
+    </label>
+
+    <label>Lens streaks
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-streaks"     type="range"  min="0" max="0.2"   step="0.005"  value="0.055">
+        <input id="ctl-streaks-num" type="number" min="0" max="0.2"   step="0.005"  value="0.055">
+      </span>
+    </label>
+
+    <label>Speed
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-speed"     type="range"  min="0.1" max="2.0" step="0.05"   value="1">
+        <input id="ctl-speed-num" type="number" min="0.1" max="2.0" step="0.05"   value="1">
+      </span>
+    </label>
+
+    <label>Bloom strength
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-bloom"     type="range"  min="0" max="3"     step="0.05"   value="1.15">
+        <input id="ctl-bloom-num" type="number" min="0" max="3"     step="0.05"   value="1.15">
+      </span>
+    </label>
+
+    <label>Bloom threshold
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-bloom-thr"     type="range"  min="0" max="0.5"  step="0.005"  value="0.2">
+        <input id="ctl-bloom-thr-num" type="number" min="0" max="0.5"  step="0.005"  value="0.2">
+      </span>
+    </label>
+
+    <label>Phosphor decay
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-phosphor"     type="range"  min="0" max="0.99"  step="0.01"   value="0.88">
+        <input id="ctl-phosphor-num" type="number" min="0" max="0.99"  step="0.01"   value="0.88">
+      </span>
+    </label>
+
+    <label>God rays
+      <input id="ctl-godrays" type="checkbox" checked>
+    </label>
+
+    <label>GR light X
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-gr-lx"     type="range"  min="0" max="1" step="0.01" value="0.5">
+        <input id="ctl-gr-lx-num" type="number" min="0" max="1" step="0.01" value="0.5">
+      </span>
+    </label>
+
+    <label>GR light Y
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-gr-ly"     type="range"  min="0" max="1" step="0.01" value="0.75">
+        <input id="ctl-gr-ly-num" type="number" min="0" max="1" step="0.01" value="0.75">
+      </span>
+    </label>
+
+    <label>GR density
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-gr-density"     type="range"  min="0" max="1" step="0.01" value="0.93">
+        <input id="ctl-gr-density-num" type="number" min="0" max="1" step="0.01" value="0.93">
+      </span>
+    </label>
+
+    <label>GR decay
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-gr-decay"     type="range"  min="0" max="1" step="0.01" value="0.33">
+        <input id="ctl-gr-decay-num" type="number" min="0" max="1" step="0.01" value="0.33">
+      </span>
+    </label>
+
+    <label>GR weight
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-gr-weight"     type="range"  min="0" max="1" step="0.01" value="0.35">
+        <input id="ctl-gr-weight-num" type="number" min="0" max="1" step="0.01" value="0.35">
+      </span>
+    </label>
+
+    <label>GR exposure
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-gr-exposure"     type="range"  min="0" max="2" step="0.01" value="0.45">
+        <input id="ctl-gr-exposure-num" type="number" min="0" max="2" step="0.01" value="0.45">
+      </span>
+    </label>
+
+    <label>Burst bloom
+      <input id="ctl-burst" type="checkbox" checked>
+    </label>
+
+    <label>Flat Z (2D plane)
+      <input id="ctl-flatz" type="checkbox">
+    </label>
+
+    <label>Max yaw (°)
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-yaw"     type="range"  min="0" max="180"    step="1"    value="180">
+        <input id="ctl-yaw-num" type="number" min="0" max="180"    step="1"    value="180">
+      </span>
+    </label>
+
+    <label>Facing jitter
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-jitter"     type="range"  min="0" max="1.5708" step="0.01" value="0.1745">
+        <input id="ctl-jitter-num" type="number" min="0" max="1.5708" step="0.01" value="0.1745">
+      </span>
+    </label>
+
+    <label>Glyph chroma
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-chroma-scale"     type="range"  min="0" max="3" step="0.05" value="1">
+        <input id="ctl-chroma-scale-num" type="number" min="0" max="3" step="0.05" value="1">
+      </span>
+    </label>
+
+    <label>Vignette
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-vignette"     type="range"  min="0" max="1"    step="0.01"  value="0.42">
+        <input id="ctl-vignette-num" type="number" min="0" max="1"    step="0.01"  value="0.42">
+      </span>
+    </label>
+
+    <label>Scanlines
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-scanlines"     type="range"  min="0" max="0.2"  step="0.005" value="0.045">
+        <input id="ctl-scanlines-num" type="number" min="0" max="0.2"  step="0.005" value="0.045">
+      </span>
+    </label>
+
+    <label>Holo aberration
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="ctl-holo-aber"     type="range"  min="0" max="0.015" step="0.0005" value="0.0025">
+        <input id="ctl-holo-aber-num" type="number" min="0" max="0.015" step="0.0005" value="0.0025">
+      </span>
+    </label>
+
+    <label>Interlace
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="interlace"    type="range"  min="0" max="1" step="0.01" value="0">
+        <input id="interlaceNum" type="number" min="0" max="1" step="0.01" value="0" style="width:60px">
+      </span>
+    </label>
+
+    <label>Radial Chroma
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="radialChroma"    type="range"  min="0" max="0.02" step="0.0005" value="0">
+        <input id="radialChromaNum" type="number" min="0" max="0.02" step="0.0005" value="0" style="width:60px">
+      </span>
+    </label>
+
+    <label>Fog Amount
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="fogAmt"    type="range"  min="0" max="1" step="0.01" value="0">
+        <input id="fogAmtNum" type="number" min="0" max="1" step="0.01" value="0" style="width:60px">
+      </span>
+    </label>
+    <label>Fog Colour <input type="color" id="fogColor" value="#00100a"></label>
+
+    <label>Dust
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="dust"    type="range"  min="0" max="1" step="0.01" value="0">
+        <input id="dustNum" type="number" min="0" max="1" step="0.01" value="0" style="width:60px">
+      </span>
+    </label>
+
+    <label><input type="checkbox" id="bloomBreath"> Bloom Breath</label>
+    <label>Breath Rate (Hz)
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="bloomBreathRate"    type="range"  min="0.05" max="2.0" step="0.05" value="0.25">
+        <input id="bloomBreathRateNum" type="number" min="0.05" max="2.0" step="0.05" value="0.25" style="width:60px">
+      </span>
+    </label>
+    <label>Breath Amp
+      <span style="display:flex;align-items:center;gap:4px;">
+        <input id="bloomBreathAmp"    type="range"  min="0" max="0.3" step="0.005" value="0.08">
+        <input id="bloomBreathAmpNum" type="number" min="0" max="0.3" step="0.005" value="0.08" style="width:60px">
+      </span>
+    </label>
+
+    <label>Char set
+      <select id="ctl-charset">
+        <option value="matrixcode" selected>matrixcode</option>
+        <option value="matrix1999">matrix1999</option>
+        <option value="latin">latin</option>
+        <option value="ascii">ascii</option>
+        <option value="cyber">cyber</option>
+        <option value="cyrillic">cyrillic</option>
+        <option value="japanese">japanese</option>
+        <option value="chinese">chinese</option>
+        <option value="arabic">arabic</option>
+        <option value="orbitron">orbitron</option>
+        <option value="iosevka">iosevka</option>
+        <option value="datatype">datatype</option>
+        <option value="gsanscode">gsanscode</option>
+        <option value="hebrew">hebrew</option>
+      </select>
+    </label>
+
+    <!-- Message reveal sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Message —
+      </label>
+      <label>Text
+        <input id="ctl-msg-text" type="text" value="WAKE UP"
+               style="background:#111;color:#00ff70;border:1px solid #00ff70;
+                      font-family:'Courier New',monospace;font-size:10px;width:90px;padding:1px 4px;">
+      </label>
+      <label>Band suppress
+        <input id="ctl-msg-band-suppress" type="checkbox">
+      </label>
+      <label>Boost
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-boost"     type="range"  min="1" max="6"  step="0.1" value="2">
+          <input id="ctl-msg-boost-num" type="number" min="1" max="6"  step="0.1" value="2">
+        </span>
+      </label>
+      <label>Settle speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-settle"     type="range"  min="0.5" max="20" step="0.5" value="4">
+          <input id="ctl-msg-settle-num" type="number" min="0.5" max="20" step="0.5" value="4">
+        </span>
+      </label>
+      <label>Spawn %
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-spawn"     type="range"  min="0" max="1" step="0.05" value="0.85">
+          <input id="ctl-msg-spawn-num" type="number" min="0" max="1" step="0.05" value="0.85">
+        </span>
+      </label>
+      <label>Hitbox min
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-tolmult-min"     type="range"  min="1" max="60" step="1" value="4">
+          <input id="ctl-msg-tolmult-min-num" type="number" min="1" max="60" step="1" value="4">
+        </span>
+      </label>
+      <label>Hitbox max
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-tolmult-max"     type="range"  min="1" max="100" step="1" value="18">
+          <input id="ctl-msg-tolmult-max-num" type="number" min="1" max="100" step="1" value="18">
+        </span>
+      </label>
+      <label>Min depth
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-tolscale"     type="range"  min="0.5" max="3.0" step="0.1" value="1.3">
+          <input id="ctl-msg-tolscale-num" type="number" min="0.5" max="3.0" step="0.1" value="1.3">
+        </span>
+      </label>
+      <label>Reveal s
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-reveal"     type="range"  min="0.3" max="6" step="0.1" value="2">
+          <input id="ctl-msg-reveal-num" type="number" min="0.3" max="6" step="0.1" value="2">
+        </span>
+      </label>
+      <label>Hold s
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-hold"     type="range"  min="0" max="10" step="0.5" value="3">
+          <input id="ctl-msg-hold-num" type="number" min="0" max="10" step="0.5" value="3">
+        </span>
+      </label>
+      <label>Fade s
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-msg-fade"     type="range"  min="0.2" max="3" step="0.1" value="1">
+          <input id="ctl-msg-fade-num" type="number" min="0.2" max="3" step="0.1" value="1">
+        </span>
+      </label>
+      <label style="justify-content:center;gap:4px;">
+        <button id="ctl-msg-show"
+                style="background:#111;color:#00ff70;border:1px solid #00ff70;
+                       font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                       padding:2px 8px;">
+          SHOW
+        </button>
+        <button id="ctl-msg-clear"
+                style="background:#111;color:#00ff70;border:1px solid #00ff70;
+                       font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                       padding:2px 8px;">
+          CLEAR
+        </button>
+      </label>
+    </div>
+
+    <!-- Animation sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Animation —
+      </label>
+      <label>Freeze
+        <input id="ctl-frozen" type="checkbox">
+      </label>
+      <label>Reduced motion
+        <input id="ctl-reduced-motion" type="checkbox">
+      </label>
+      <label>Glitch intensity
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-glitch-int"     type="range"  min="0.05" max="1" step="0.05" value="0.6">
+          <input id="ctl-glitch-int-num" type="number" min="0.05" max="1" step="0.05" value="0.6">
+        </span>
+      </label>
+      <label>Glitch duration s
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-glitch-dur"     type="range"  min="0.1" max="2" step="0.1" value="0.4">
+          <input id="ctl-glitch-dur-num" type="number" min="0.1" max="2" step="0.1" value="0.4">
+        </span>
+      </label>
+      <label>Ramp target ×
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-ramp-mult"     type="range"  min="1" max="8" step="0.5" value="4">
+          <input id="ctl-ramp-mult-num" type="number" min="1" max="8" step="0.5" value="4">
+        </span>
+      </label>
+      <label>Ramp duration s
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-ramp-dur"     type="range"  min="0.5" max="6" step="0.5" value="2">
+          <input id="ctl-ramp-dur-num" type="number" min="0.5" max="6" step="0.5" value="2">
+        </span>
+      </label>
+      <label style="justify-content:center;gap:4px;">
+        <button id="ctl-glitch-btn"
+                style="background:#111;color:#00ff70;border:1px solid #00ff70;
+                       font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                       padding:2px 8px;">
+          GLITCH
+        </button>
+        <button id="ctl-ramp-btn"
+                style="background:#111;color:#00ff70;border:1px solid #00ff70;
+                       font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                       padding:2px 8px;">
+          RAMP
+        </button>
+      </label>
+    </div>
+
+    <!-- Organic sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Organic —
+      </label>
+
+      <label>Brightness
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-brightness"     type="range"  min="0.2" max="2.0" step="0.05" value="1.0">
+          <input id="ctl-brightness-num" type="number" min="0.2" max="2.0" step="0.05" value="1.0">
+        </span>
+      </label>
+
+      <label>Cell W
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cellw"     type="range"  min="0.04" max="0.30" step="0.005" value="0.12">
+          <input id="ctl-cellw-num" type="number" min="0.04" max="0.30" step="0.005" value="0.12">
+        </span>
+      </label>
+
+      <label>Cell H
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cellh"     type="range"  min="0.02" max="0.20" step="0.005" value="0.08">
+          <input id="ctl-cellh-num" type="number" min="0.02" max="0.20" step="0.005" value="0.08">
+        </span>
+      </label>
+
+      <label>Breath amount
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-breath-amt"     type="range"  min="0" max="3" step="0.05" value="1.0">
+          <input id="ctl-breath-amt-num" type="number" min="0" max="3" step="0.05" value="1.0">
+        </span>
+      </label>
+
+      <label style="flex-direction:row;gap:6px;align-items:center;" title="Adds a spatial head-position offset. Does not change speed.">Head wave
+        <input id="ctl-wave-enabled" type="checkbox" checked>
+      </label>
+
+      <label title="Adds a spatial head-position offset. Does not change speed.">Head wave speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-wave-speed"     type="range"  min="0" max="0.5" step="0.01" value="0.15">
+          <input id="ctl-wave-speed-num" type="number" min="0" max="0.5" step="0.01" value="0.15">
+        </span>
+      </label>
+
+      <label title="Adds a spatial head-position offset. Does not change speed.">Head wave amount
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-wave-amt"     type="range"  min="0" max="3" step="0.05" value="1.0">
+          <input id="ctl-wave-amt-num" type="number" min="0" max="3" step="0.05" value="1.0">
+        </span>
+      </label>
+
+      <label title="Adds a spatial head-position offset. Does not change speed.">Head wave crests
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-wave-crests"     type="range"  min="1" max="12" step="1" value="3">
+          <input id="ctl-wave-crests-num" type="number" min="1" max="12" step="1" value="3">
+        </span>
+      </label>
+
+      <label>Weighted glyphs
+        <input id="ctl-weighted" type="checkbox" checked>
+      </label>
+
+      <label>Reverse chance
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-reverse"     type="range"  min="0" max="1" step="0.05" value="0">
+          <input id="ctl-reverse-num" type="number" min="0" max="1" step="0.05" value="0">
+        </span>
+      </label>
+    </div>
+
+    <!-- Glyph FX sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Glyph FX —
+      </label>
+
+      <label>Drip stretch
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-drip"     type="range"  min="0" max="3"  step="0.05"  value="0.35">
+          <input id="ctl-drip-num" type="number" min="0" max="3"  step="0.05"  value="0.35">
+        </span>
+      </label>
+      <label>Edge glow
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-edge-glow"     type="range"  min="0" max="3"  step="0.05"  value="0.4">
+          <input id="ctl-edge-glow-num" type="number" min="0" max="3"  step="0.05"  value="0.4">
+        </span>
+      </label>
+      <label>Z-rotation °
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-zrot"     type="range"  min="0" max="30"   step="1"     value="10">
+          <input id="ctl-zrot-num" type="number" min="0" max="30"   step="1"     value="10">
+        </span>
+      </label>
+      <label>Film grain
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-grain"     type="range"  min="0" max="0.25" step="0.005" value="0.07">
+          <input id="ctl-grain-num" type="number" min="0" max="0.25" step="0.005" value="0.07">
+        </span>
+      </label>
+      <label>Depth tint
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-depth-tint"     type="range"  min="0" max="1"   step="0.02"  value="0.4">
+          <input id="ctl-depth-tint-num" type="number" min="0" max="1"   step="0.02"  value="0.4">
+        </span>
+      </label>
+      <label>Startup cascade
+        <input id="ctl-boot" type="checkbox" checked>
+      </label>
+      <label>Stability
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-stability"     type="range"  min="0"   max="1"  step="0.02"  value="0.30">
+          <input id="ctl-stability-num" type="number" min="0"   max="1"  step="0.02"  value="0.30">
+        </span>
+      </label>
+      <label>Deep trail dark
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-deep-trail-dark"     type="range"  min="0"   max="0.6"  step="0.01"  value="0.18">
+          <input id="ctl-deep-trail-dark-num" type="number" min="0"   max="0.6"  step="0.01"  value="0.18">
+        </span>
+      </label>
+      <label>Hold mult
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-hold-mult"     type="range"  min="0.1" max="5"  step="0.1"   value="1.0">
+          <input id="ctl-hold-mult-num" type="number" min="0.1" max="5"  step="0.1"   value="1.0">
+        </span>
+      </label>
+      <label>Burst glyph rate
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-burst-rate"     type="range"  min="1" max="30"  step="1"     value="12">
+          <input id="ctl-burst-rate-num" type="number" min="1" max="30"  step="1"     value="12">
+        </span>
+      </label>
+      <label>POM steps
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-pom-steps"     type="range"  min="3" max="12"  step="1"     value="6">
+          <input id="ctl-pom-steps-num" type="number" min="3" max="12"  step="1"     value="6">
+        </span>
+      </label>
+      <label>EOL flash
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-eol-flash"     type="range"  min="0" max="2"   step="0.05"  value="0.6">
+          <input id="ctl-eol-flash-num" type="number" min="0" max="2"   step="0.05"  value="0.6">
+        </span>
+      </label>
+      <label>EOL freeze start
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-eol-freeze"     type="range"  min="0" max="1"  step="0.01"  value="0.80">
+          <input id="ctl-eol-freeze-num" type="number" min="0" max="1"  step="0.01"  value="0.80">
+        </span>
+      </label>
+      <label>EOL fade start
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-eol-fade"     type="range"  min="0.5" max="1" step="0.01"  value="0.88">
+          <input id="ctl-eol-fade-num" type="number" min="0.5" max="1" step="0.01"  value="0.88">
+        </span>
+      </label>
+
+      <!-- Debug controls (collapsed by default) -->
+      <details>
+        <summary style="color:#5f9a6f;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;list-style:none;user-select:none;">
+          — Debug —
+        </summary>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">
+          <label>Color blend
+            <span style="display:flex;align-items:center;gap:4px;">
+              <input id="ctl-hue-range"     type="range"  min="0" max="1" step="0.01" value="0.5">
+              <input id="ctl-hue-range-num" type="number" min="0" max="1" step="0.01" value="0.5">
+            </span>
+          </label>
+          <label>Burst prob
+            <span style="display:flex;align-items:center;gap:4px;">
+              <input id="ctl-burst-prob"     type="range"  min="0" max="1" step="0.005" value="0.005">
+              <input id="ctl-burst-prob-num" type="number" min="0" max="1" step="0.005" value="0.005">
+            </span>
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <!-- Glyph FX B sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Glyph FX B —
+      </label>
+
+      <label>Shimmer Amt
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-shimmer-amt"     type="range"  min="0"   max="0.15" step="0.005" value="0">
+          <input id="sl-shimmer-amt-num" type="number" min="0"   max="0.15" step="0.005" value="0">
+        </span>
+      </label>
+      <label>Shimmer Freq
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-shimmer-freq"     type="range"  min="0.5" max="8.0" step="0.1" value="2.0">
+          <input id="sl-shimmer-freq-num" type="number" min="0.5" max="8.0" step="0.1" value="2.0">
+        </span>
+      </label>
+      <label>Inversion Chance
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-inversion-chance"     type="range"  min="0" max="1" step="0.01" value="0">
+          <input id="sl-inversion-chance-num" type="number" min="0" max="1" step="0.01" value="0">
+        </span>
+      </label>
+      <label>Glyph Spin Amt
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-glyph-spin-amt"     type="range"  min="0" max="1" step="0.01" value="0">
+          <input id="sl-glyph-spin-amt-num" type="number" min="0" max="1" step="0.01" value="0">
+        </span>
+      </label>
+      <label>Glyph Spin Speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-glyph-spin-speed"     type="range"  min="0" max="2" step="0.05" value="1">
+          <input id="sl-glyph-spin-speed-num" type="number" min="0" max="2" step="0.05" value="1">
+        </span>
+      </label>
+      <label>Hue Drift Rate
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-hue-drift-rate"     type="range"  min="0" max="0.5" step="0.01" value="0">
+          <input id="sl-hue-drift-rate-num" type="number" min="0" max="0.5" step="0.01" value="0">
+        </span>
+      </label>
+      <label>Hue Drift Amt
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-hue-drift-amt"     type="range"  min="0" max="45" step="1" value="0">
+          <input id="sl-hue-drift-amt-num" type="number" min="0" max="45" step="1" value="0">
+        </span>
+      </label>
+      <label>Head Overshoot
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-head-overshoot"     type="range"  min="0" max="3" step="0.05" value="0">
+          <input id="sl-head-overshoot-num" type="number" min="0" max="3" step="0.05" value="0">
+        </span>
+      </label>
+
+      <label>Gravity strength
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-gravity-strength"     type="range"  min="0"   max="1.5"  step="0.01" value="0">
+          <input id="sl-gravity-strength-num" type="number" min="0"   max="1.5"  step="0.01" value="0" style="width:54px">
+        </span>
+      </label>
+      <label>Gravity rate (Hz)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-gravity-rate"     type="range"  min="0.1" max="0.5"  step="0.01" value="0.2">
+          <input id="sl-gravity-rate-num" type="number" min="0.1" max="0.5"  step="0.01" value="0.2" style="width:54px">
+        </span>
+      </label>
+
+      <label>Perspective strength
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-persp-strength"     type="range"  min="0"   max="1"    step="0.01" value="0">
+          <input id="sl-persp-strength-num" type="number" min="0"   max="1"    step="0.01" value="0" style="width:54px">
+        </span>
+      </label>
+      <label>Perspective center X (0–1)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-persp-cx"     type="range"  min="0"   max="1"    step="0.01" value="0.5">
+          <input id="sl-persp-cx-num" type="number" min="0"   max="1"    step="0.01" value="0.5" style="width:54px">
+        </span>
+      </label>
+
+      <label>Morse flicker amount
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-morse-amt"     type="range"  min="0"   max="1"    step="0.01" value="0">
+          <input id="sl-morse-amt-num" type="number" min="0"   max="1"    step="0.01" value="0" style="width:54px">
+        </span>
+      </label>
+      <label>Morse rate (Hz)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-morse-rate"     type="range"  min="0.5" max="4"    step="0.1"  value="2">
+          <input id="sl-morse-rate-num" type="number" min="0.5" max="4"    step="0.1"  value="2" style="width:54px">
+        </span>
+      </label>
+
+      <label>Spiral amount
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-spiral-amt"     type="range"  min="0"   max="1"      step="0.01" value="0">
+          <input id="sl-spiral-amt-num" type="number" min="0"   max="1"      step="0.01" value="0" style="width:54px">
+        </span>
+      </label>
+      <label>Spiral rate (rad/s)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-spiral-rate"     type="range"  min="0"   max="0.5"    step="0.01" value="0.1">
+          <input id="sl-spiral-rate-num" type="number" min="0"   max="0.5"    step="0.01" value="0.1" style="width:54px">
+        </span>
+      </label>
+      <label>Spiral pitch (rad)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="sl-spiral-pitch"     type="range"  min="0"   max="6.283"  step="0.01" value="3.14">
+          <input id="sl-spiral-pitch-num" type="number" min="0"   max="6.283"  step="0.01" value="3.14" style="width:54px">
+        </span>
+      </label>
+    </div>
+
+    <!-- Columns sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Columns —
+      </label>
+
+      <label title="Rebuilds geometry">Speed min ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-spd-min"     type="range"  min="0.2" max="2.5"  step="0.1"  value="0.8">
+          <input id="ctl-spd-min-num" type="number" min="0.2" max="2.5"  step="0.1"  value="0.8">
+        </span>
+      </label>
+      <label title="Rebuilds geometry">Speed max ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-spd-max"     type="range"  min="1.0" max="6.0"  step="0.25" value="4.0">
+          <input id="ctl-spd-max-num" type="number" min="1.0" max="6.0"  step="0.25" value="4.0">
+        </span>
+      </label>
+
+      <label title="Rebuilds geometry">Trail min ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-trl-min"     type="range"  min="0.005" max="0.060" step="0.001" value="0.015">
+          <input id="ctl-trl-min-num" type="number" min="0.005" max="0.060" step="0.001" value="0.015">
+        </span>
+      </label>
+      <label title="Rebuilds geometry">Trail max ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-trl-max"     type="range"  min="0.020" max="0.080" step="0.002" value="0.050">
+          <input id="ctl-trl-max-num" type="number" min="0.020" max="0.080" step="0.002" value="0.050">
+        </span>
+      </label>
+
+      <label>Density
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-density-3d"     type="range"  min="0.1" max="1.0" step="0.05" value="1.0">
+          <input id="ctl-density-3d-num" type="number" min="0.1" max="1.0" step="0.05" value="1.0">
+        </span>
+      </label>
+    </div>
+
+    <!-- Radial zones sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Radial zones —
+      </label>
+      <span style="color:#5f9a6f;font-size:9px;line-height:1.3;">
+        Inner = close (fast/bright) · Outer = far (slow/dim)
+      </span>
+
+      <label>Inner speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-zone-spd-in"     type="range"  min="0.3" max="2.0" step="0.05" value="1.0">
+          <input id="ctl-zone-spd-in-num" type="number" min="0.3" max="2.0" step="0.05" value="1.0">
+        </span>
+      </label>
+      <label>Outer speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-zone-spd-out"     type="range"  min="0.3" max="2.0" step="0.05" value="1.0">
+          <input id="ctl-zone-spd-out-num" type="number" min="0.3" max="2.0" step="0.05" value="1.0">
+        </span>
+      </label>
+
+      <label>Inner bright
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-zone-br-in"     type="range"  min="0.1" max="2.5" step="0.05" value="1.0">
+          <input id="ctl-zone-br-in-num" type="number" min="0.1" max="2.5" step="0.05" value="1.0">
+        </span>
+      </label>
+      <label>Outer bright
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-zone-br-out"     type="range"  min="0.1" max="2.5" step="0.05" value="1.0">
+          <input id="ctl-zone-br-out-num" type="number" min="0.1" max="2.5" step="0.05" value="1.0">
+        </span>
+      </label>
+    </div>
+
+    <!-- Distribution sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;
+                display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+        — Distribution ⟳ —
+      </label>
+      <span style="color:#5f9a6f;font-size:9px;line-height:1.3;">
+        ⟳ = rebuilds geometry
+      </span>
+
+      <label>Topology ⟳
+        <select id="ctl-topology">
+          <option value="shell" selected>shell</option>
+          <option value="ring">ring</option>
+          <option value="curtain">curtain</option>
+          <option value="rectangle">rectangle</option>
+        </select>
+      </label>
+
+      <label title="Force all columns to face +Z — use with curtain topology">Forward facing
+        <input id="ctl-forward-facing" type="checkbox">
+      </label>
+
+      <label title="Rebuilds geometry">Columns ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-ncols"     type="range"  min="50" max="1200" step="50" value="600">
+          <input id="ctl-ncols-num" type="number" min="50" max="1200" step="50" value="600">
+        </span>
+      </label>
+
+      <label id="lbl-shell-in" title="Rebuilds geometry"><span id="txt-shell-in">Shell inner</span> ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-shell-in"     type="range"  min="1.0" max="6.0"  step="0.5" value="3.5">
+          <input id="ctl-shell-in-num" type="number" min="1.0" max="6.0"  step="0.5" value="3.5">
+        </span>
+      </label>
+
+      <label id="lbl-shell-out" title="Rebuilds geometry"><span id="txt-shell-out">Shell outer</span> ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-shell-out"     type="range"  min="4.0" max="12.0" step="0.5" value="8.0">
+          <input id="ctl-shell-out-num" type="number" min="4.0" max="12.0" step="0.5" value="8.0">
+        </span>
+      </label>
+
+      <label id="lbl-clusters" title="Rebuilds geometry">Cluster count ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-clusters"     type="range"  min="1" max="36"  step="1"     value="12">
+          <input id="ctl-clusters-num" type="number" min="1" max="36"  step="1"     value="12">
+        </span>
+      </label>
+
+      <label id="lbl-cluster-spread" title="Angular spread only. Does not change Y spread or shell-depth spread.">Cluster angular spread ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-spread"     type="range"  min="0.003" max="0.5" step="0.001" value="0.017">
+          <input id="ctl-cluster-spread-num" type="number" min="0.003" max="0.5" step="0.001" value="0.017">
+        </span>
+      </label>
+
+      <label id="lbl-radial-bias" title="Rebuilds geometry">Radial bias ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-radial-bias"     type="range"  min="-1.0" max="1.0" step="0.05" value="0.0">
+          <input id="ctl-radial-bias-num" type="number" min="-1.0" max="1.0" step="0.05" value="0.0">
+        </span>
+      </label>
+
+      <label id="lbl-cluster-uniform" title="Rebuilds geometry">Cluster uniform ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-uniform"     type="range"  min="0" max="1" step="0.01" value="0">
+          <input id="ctl-cluster-uniform-num" type="number" min="0" max="1" step="0.01" value="0">
+        </span>
+      </label>
+
+      <label id="lbl-cluster-hue">Cluster hue range (°)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-hue"     type="range"  min="0" max="45" step="1" value="18">
+          <input id="ctl-cluster-hue-num" type="number" min="0" max="45" step="1" value="18">
+        </span>
+      </label>
+      <label id="lbl-cluster-bright">Cluster brightness range
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-bright"     type="range"  min="0" max="1" step="0.01" value="0.35">
+          <input id="ctl-cluster-bright-num" type="number" min="0" max="1" step="0.01" value="0.35">
+        </span>
+      </label>
+      <label id="lbl-cluster-speed">Cluster speed range
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-speed"     type="range"  min="0" max="1" step="0.01" value="0.30">
+          <input id="ctl-cluster-speed-num" type="number" min="0" max="1" step="0.01" value="0.30">
+        </span>
+      </label>
+      <label id="lbl-cluster-speed-jitter">Cluster speed jitter
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-speed-jitter"     type="range"  min="0" max="0.5" step="0.01" value="0.18">
+          <input id="ctl-cluster-speed-jitter-num" type="number" min="0" max="0.5" step="0.01" value="0.18">
+        </span>
+      </label>
+      <label id="lbl-cluster-y-spread">Cluster Y spread
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-y-spread"     type="range"  min="0" max="8" step="0.1" value="3.0">
+          <input id="ctl-cluster-y-spread-num" type="number" min="0" max="8" step="0.1" value="3.0">
+        </span>
+      </label>
+      <label id="lbl-cluster-r-jitter">Cluster depth jitter
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-cluster-r-jitter"     type="range"  min="0" max="0.5" step="0.01" value="0.20">
+          <input id="ctl-cluster-r-jitter-num" type="number" min="0" max="0.5" step="0.01" value="0.20">
+        </span>
+      </label>
+
+      <label title="Probability a column joins its cluster's shared burst window.">Cluster burst participation
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-contagion"     type="range"  min="0" max="1" step="0.01" value="0.35">
+          <input id="ctl-contagion-num" type="number" min="0" max="1" step="0.01" value="0.35">
+        </span>
+      </label>
+
+      <label title="0 = shared squad phase, 1 = individual per-column phase.">Squad independence
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-squad-coherence"     type="range"  min="0" max="1" step="0.01" value="0.3">
+          <input id="ctl-squad-coherence-num" type="number" min="0" max="1" step="0.01" value="0.3">
+        </span>
+      </label>
+
+      <label title="Rebuilds geometry">Squad size ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-squad-size"     type="range"  min="2" max="20" step="1" value="5">
+          <input id="ctl-squad-size-num" type="number" min="2" max="20" step="1" value="5">
+        </span>
+      </label>
+
+      <label title="How strongly squad trail bias affects trail length.">Squad trail cohesion ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-trail-cohesion"     type="range"  min="0" max="1" step="0.01" value="0.5">
+          <input id="ctl-trail-cohesion-num" type="number" min="0" max="1" step="0.01" value="0.5">
+        </span>
+      </label>
+
+      <label id="lbl-rect-w" title="Rebuilds geometry">Rect width X ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-rect-w"     type="range"  min="0.5" max="16.0" step="0.5" value="8.0">
+          <input id="ctl-rect-w-num" type="number" min="0.5" max="16.0" step="0.5" value="8.0">
+        </span>
+      </label>
+
+      <label id="lbl-rect-h" title="Rebuilds geometry">Rect depth Z ⟳
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-rect-h"     type="range"  min="0.5" max="16.0" step="0.5" value="8.0">
+          <input id="ctl-rect-h-num" type="number" min="0.5" max="16.0" step="0.5" value="8.0">
+        </span>
+      </label>
+
+      <label style="color:#7fffaa;font-size:9px;letter-spacing:0.08em;margin-top:2px;">
+        — Runtime (no rebuild) —
+      </label>
+      <label style="color:#5f9a6f;font-size:9px;letter-spacing:0.08em;">
+        Ordinary motion
+      </label>
+
+      <label id="lbl-density-in">Density inner
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-density-in"     type="range"  min="0" max="2" step="0.05" value="1.0">
+          <input id="ctl-density-in-num" type="number" min="0" max="2" step="0.05" value="1.0">
+        </span>
+      </label>
+
+      <label id="lbl-density-out">Density outer
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-density-out"     type="range"  min="0" max="2" step="0.05" value="1.0">
+          <input id="ctl-density-out-num" type="number" min="0" max="2" step="0.05" value="1.0">
+        </span>
+      </label>
+
+      <label>Height fade
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-height-fade"     type="range"  min="0" max="1" step="0.01" value="0">
+          <input id="ctl-height-fade-num" type="number" min="0" max="1" step="0.01" value="0">
+        </span>
+      </label>
+
+      <label title="Speed-only macro motion. Supports head wave instead of competing with it.">Speed entrainment
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-entrain-amt"     type="range"  min="0" max="0.8" step="0.01" value="0.15">
+          <input id="ctl-entrain-amt-num" type="number" min="0" max="0.8" step="0.01" value="0.15">
+        </span>
+      </label>
+
+      <label title="Speed-only macro motion. Supports head wave instead of competing with it.">Speed entrain rate
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-entrain-speed"     type="range"  min="0" max="2" step="0.01" value="0.25">
+          <input id="ctl-entrain-speed-num" type="number" min="0" max="2" step="0.01" value="0.25">
+        </span>
+      </label>
+
+      <label title="Speed-only macro motion. Supports head wave instead of competing with it.">Speed entrain crests
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-entrain-crests"     type="range"  min="1" max="12" step="1" value="3">
+          <input id="ctl-entrain-crests-num" type="number" min="1" max="12" step="1" value="3">
+        </span>
+      </label>
+
+      <label style="color:#5f9a6f;font-size:9px;letter-spacing:0.08em;margin-top:4px;">
+        Special modes
+      </label>
+
+      <label title="Activation gate only. Does not redefine the underlying motion stack.">Spawn wave front
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-spawn-front"     type="range"  min="-0.1" max="1.1" step="0.01" value="2">
+          <input id="ctl-spawn-front-num" type="number" min="-0.1" max="1.1" step="0.01" value="2">
+        </span>
+      </label>
+
+      <label style="flex-direction:row;gap:6px;align-items:center;">Spawn wave
+        <button id="ctl-spawn-in"  style="padding:2px 8px;cursor:pointer;">In</button>
+        <button id="ctl-spawn-out" style="padding:2px 8px;cursor:pointer;">Out</button>
+      </label>
+
+      <label title="Boot-sweep trigger speed for the temporary scanline override.">Scan speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-scan-speed"     type="range"  min="1" max="12" step="0.5" value="4">
+          <input id="ctl-scan-speed-num" type="number" min="1" max="12" step="0.5" value="4">
+        </span>
+      </label>
+      <label title="How long the temporary scanline override takes to dissolve back to natural motion.">Scan dissolve (s)
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-scan-dissolve"     type="range"  min="0.5" max="4" step="0.1" value="1.5">
+          <input id="ctl-scan-dissolve-num" type="number" min="0.5" max="4" step="0.1" value="1.5">
+        </span>
+      </label>
+      <label style="flex-direction:row;gap:6px;align-items:center;">Scanline boot
+        <button id="ctl-scan-trigger" style="padding:2px 8px;cursor:pointer;">Trigger</button>
+      </label>
+      <label title="Temporary global cycle override. While active, shared cycle position owns the visible alignment.">Scan phase lock
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-scan-sync"     type="range"  min="0" max="1" step="0.01" value="0">
+          <input id="ctl-scan-sync-num" type="number" min="0" max="1" step="0.01" value="0">
+        </span>
+      </label>
+      <label title="The shared cycle position used by scan phase lock while the override is active.">Shared cycle position
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-scan-phase"     type="range"  min="0" max="40" step="0.1" value="0">
+          <input id="ctl-scan-phase-num" type="number" min="0" max="40" step="0.1" value="0">
+        </span>
+      </label>
+    </div>
+
+    <!-- CRT sub-panel — shown only in 'crt' mode -->
+    <div id="crt-controls" style="display:none;border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">— CRT —</label>
+      <label>CRT shader
+        <select id="ctl-crt-shader">
+          <option value="default" selected>default</option>
+          <option value="phosphor">phosphor</option>
+          <option value="sharp">sharp</option>
+          <option value="lcd">lcd</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Camera sub-panel -->
+    <div style="border-top:1px solid #00ff7044;margin-top:4px;padding-top:4px;display:flex;flex-direction:column;gap:4px;">
+      <label style="color:#7fffaa;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">— Camera —</label>
+
+      <label>FOV
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-fov"     type="range"  min="15" max="120" step="1" value="45">
+          <input id="ctl-fov-num" type="number" min="15" max="120" step="1" value="45">
+        </span>
+      </label>
+
+      <label><input id="ctl-orbit" type="checkbox"> Auto-orbit
+      </label>
+
+      <label>Orbit speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-orbit-speed"     type="range"  min="0.001" max="0.1" step="0.001" value="0.015">
+          <input id="ctl-orbit-speed-num" type="number" min="0.001" max="0.1" step="0.001" value="0.015">
+        </span>
+      </label>
+
+      <label>Orbit elevation
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-orbit-elev"     type="range"  min="-60" max="60" step="1" value="0">
+          <input id="ctl-orbit-elev-num" type="number" min="-60" max="60" step="1" value="0">
+        </span>
+      </label>
+
+      <label><input id="ctl-flythrough" type="checkbox"> Flythrough
+      </label>
+
+      <label>Fly speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ctl-fly-speed"     type="range"  min="0.001" max="0.05" step="0.001" value="0.008">
+          <input id="ctl-fly-speed-num" type="number" min="0.001" max="0.05" step="0.001" value="0.008">
+        </span>
+      </label>
+
+      <label><input id="ctl-column-follow" type="checkbox"> Column follow
+      </label>
+
+      <button id="ctl-reset-camera"
+              style="background:#111;color:#00ff70;border:1px solid #00ff70;
+                     font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                     padding:2px 0;letter-spacing:0.1em;">
+        RESET CAMERA
+      </button>
+    </div>
+
+    <!-- Import / Export -->
+    <div style="border-top:1px solid #00ff7044;margin-top:6px;padding-top:6px;
+                display:flex;gap:6px;">
+      <button id="ctl-export"
+              style="flex:1;">
+        EXPORT
+      </button>
+      <button id="ctl-import"
+              style="flex:1;">
+        IMPORT
+      </button>
+      <input id="ctl-import-file" type="file" accept=".json" style="display:none">
+    </div>
+
+    <div id="midi-player-panel" style="border-top:1px solid #00ff7044;margin-top:6px;padding-top:6px;display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">MIDI player</label>
+
+      <label>SoundFont file
+        <input id="midi-soundfont-file" type="file" accept=".sf2,.sf3,.dls">
+      </label>
+
+      <label>MIDI file
+        <input id="midi-file" type="file" accept=".mid,.midi,.kar,.rmi">
+      </label>
+
+      <div style="display:flex;gap:6px;">
+        <button id="midi-play" type="button" style="flex:1;">PLAY</button>
+        <button id="midi-pause" type="button" style="flex:1;">PAUSE</button>
+        <button id="midi-stop" type="button" style="flex:1;">STOP</button>
+      </div>
+
+      <label>Seek
+        <span style="display:flex;align-items:center;gap:6px;">
+          <input id="midi-seek" type="range" min="0" max="1" step="0.01" value="0" disabled>
+          <span id="midi-time" style="min-width:82px;text-align:right;color:#7fffaa;">00:00 / 00:00</span>
+        </span>
+      </label>
+
+      <label>Volume
+        <input id="midi-volume" type="range" min="0" max="1" step="0.01" value="1">
+      </label>
+
+      <label><input id="midi-loop" type="checkbox"> Loop</label>
+
+      <div id="midi-status" style="color:#7fffaa;white-space:normal;line-height:1.5;">No SoundFont loaded</div>
+    </div>
+
+    <!-- CCP Mode easter egg sub-panel (hidden until xijinping sequence typed) -->
+    <div id="ccp-panel" style="display:none;border-top:1px solid #ff202044;margin-top:6px;padding-top:6px;flex-direction:column;gap:4px;">
+      <label style="color:#ff6060;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">&#x2604; CCP MODE &#x2604;</label>
+
+      <!-- Billboard controls -->
+      <label style="color:#ff9090;">Flash rate
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ccp-flash-rate" type="range" min="0.1" max="4" step="0.1" value="1.2" style="accent-color:#ff2020;">
+          <input id="ccp-flash-rate-num" type="number" min="0.1" max="4" step="0.1" value="1.2" style="background:#200;color:#ff4040;border:1px solid #ff202055;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+      <label style="color:#ff9090;">Peak opacity
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ccp-opacity" type="range" min="0" max="1" step="0.01" value="0.72" style="accent-color:#ff2020;">
+          <input id="ccp-opacity-num" type="number" min="0" max="1" step="0.01" value="0.72" style="background:#200;color:#ff4040;border:1px solid #ff202055;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+      <label style="color:#ff9090;">Scale
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ccp-scale" type="range" min="0.5" max="3" step="0.1" value="1" style="accent-color:#ff2020;">
+          <input id="ccp-scale-num" type="number" min="0.5" max="3" step="0.1" value="1" style="background:#200;color:#ff4040;border:1px solid #ff202055;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+      <label style="color:#ff9090;">Panel count
+        <select id="ccp-panel-count" style="background:#200;color:#ff4040;border:1px solid #ff202055;font-family:'Courier New',monospace;font-size:10px;padding:1px 4px;">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+        </select>
+      </label>
+      <label style="color:#ff9090;">Orbit speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ccp-orbit-speed" type="range" min="0" max="0.5" step="0.01" value="0" style="accent-color:#ff2020;">
+          <input id="ccp-orbit-speed-num" type="number" min="0" max="0.5" step="0.01" value="0" style="background:#200;color:#ff4040;border:1px solid #ff202055;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+
+      <!-- Rain override -->
+      <label style="color:#ff9090;"><input id="ccp-rain-override" type="checkbox" checked style="accent-color:#ff2020;"> Rain override</label>
+
+      <!-- Ambiance -->
+      <label style="color:#ff9090;">Tint opacity
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="ccp-tint-opacity" type="range" min="0" max="0.20" step="0.005" value="0.06" style="accent-color:#ff2020;">
+          <input id="ccp-tint-opacity-num" type="number" min="0" max="0.20" step="0.005" value="0.06" style="background:#200;color:#ff4040;border:1px solid #ff202055;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+
+      <!-- Content -->
+      <label style="color:#ff9090;"><input id="ccp-slogans" type="checkbox" checked style="accent-color:#ff2020;"> Slogans</label>
+      <label style="color:#ff9090;"><input id="ccp-audio" type="checkbox" style="accent-color:#ff2020;"> Anthem &#x1F508;</label>
+
+      <!-- Score -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:2px;">
+        <span style="color:#ff9090;">Score: <span id="ccp-score-display" style="color:#ff4040;">---</span></span>
+        <button id="ccp-deduct"
+                style="background:#200;color:#ff4040;border:1px solid #ff202055;
+                       font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                       padding:2px 6px;letter-spacing:0.08em;">
+          DEDUCT 50
+        </button>
+      </div>
+
+      <!-- Disable button -->
+      <button id="ccp-disable"
+              style="margin-top:4px;background:#200;color:#ff4040;border:1px solid #ff2020;
+                     font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                     padding:2px 0;letter-spacing:0.1em;">
+        [DISABLE]
+      </button>
+    </div>
+
+    <!-- Mossad Mode easter egg sub-panel (hidden until bibinetanyahu sequence typed) -->
+    <div id="mossad-panel" style="display:none;border-top:1px solid #0038B844;margin-top:6px;padding-top:6px;flex-direction:column;gap:4px;">
+      <label style="color:#7EB3FF;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">&#x2721; MOSSAD MODE &#x2721;</label>
+
+      <label style="color:#7EB3FF;">Flash rate
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="mossad-flash-rate" type="range" min="0.1" max="4" step="0.1" value="0.9" style="accent-color:#0038B8;">
+          <input id="mossad-flash-rate-num" type="number" min="0.1" max="4" step="0.1" value="0.9" style="background:#001830;color:#7EB3FF;border:1px solid #0038B855;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+      <label style="color:#7EB3FF;">Peak opacity
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="mossad-opacity" type="range" min="0" max="1" step="0.01" value="0.68" style="accent-color:#0038B8;">
+          <input id="mossad-opacity-num" type="number" min="0" max="1" step="0.01" value="0.68" style="background:#001830;color:#7EB3FF;border:1px solid #0038B855;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+      <label style="color:#7EB3FF;">Scale
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="mossad-scale" type="range" min="0.5" max="3" step="0.1" value="1" style="accent-color:#0038B8;">
+          <input id="mossad-scale-num" type="number" min="0.5" max="3" step="0.1" value="1" style="background:#001830;color:#7EB3FF;border:1px solid #0038B855;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+      <label style="color:#7EB3FF;">Panel count
+        <select id="mossad-panel-count" style="background:#001830;color:#7EB3FF;border:1px solid #0038B855;font-family:'Courier New',monospace;font-size:10px;padding:1px 4px;">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+        </select>
+      </label>
+      <label style="color:#7EB3FF;">Orbit speed
+        <span style="display:flex;align-items:center;gap:4px;">
+          <input id="mossad-orbit-speed" type="range" min="0" max="0.5" step="0.01" value="0" style="accent-color:#0038B8;">
+          <input id="mossad-orbit-speed-num" type="number" min="0" max="0.5" step="0.01" value="0" style="background:#001830;color:#7EB3FF;border:1px solid #0038B855;font-family:'Courier New',monospace;font-size:10px;padding:1px 3px;width:46px;">
+        </span>
+      </label>
+
+      <label style="color:#7EB3FF;"><input id="mossad-rain-override" type="checkbox" checked style="accent-color:#0038B8;"> Rain override</label>
+      <label style="color:#7EB3FF;"><input id="mossad-audio" type="checkbox" style="accent-color:#0038B8;"> Hava Nagila &#x1F508;</label>
+
+      <button id="mossad-disable"
+              style="margin-top:4px;background:#001830;color:#7EB3FF;border:1px solid #0038B8;
+                     font-family:'Courier New',monospace;font-size:10px;cursor:pointer;
+                     padding:2px 0;letter-spacing:0.1em;">
+        [DEACTIVATE]
+      </button>
+    </div>
+
+  </div>
+</details>
+
+<div id="hint">MATRIX RAIN / WEBGPU + TSL</div>
+
+<script type="module">
+  import { initMatrixRain }  from './matrix-rain-webgpu.js';
+  import { PRESETS }         from './matrix-rain-presets.js';
+  import { createSpessaMidiPlayer } from './spessasynth-player.js';
+  import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
+  import { Vector3 }         from 'three/webgpu';
+
+  const DEFAULT_MIDI_PATH = './data/clubbed-to-death.mid';
+  const DEFAULT_SOUNDFONT_PATH = './data/generalusergs.sf3';
+
+  // ── Load defaults from def.json ───────────────────────────────────────
+  const defaults = await fetch('./def.json').then(r => r.json()).catch(() => ({}));
+
+  // WebGL2 fallback is automatic — only show the overlay if init truly fails.
+  const noWebGpu = document.getElementById('no-webgpu');
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  const host = document.getElementById('rain-host');
+
+  // Register a one-shot 'matrixrain:ready' listener that shows the backend badge.
+  // Called before each initMatrixRain so re-inits also refresh the badge.
+  function registerBadge() {
+    const failTimer = setTimeout(() => noWebGpu.classList.remove('hidden'), 10000);
+    host.addEventListener('matrixrain:ready', ({ detail }) => {
+      clearTimeout(failTimer);
+      let badge = document.getElementById('backend-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'backend-badge';
+        badge.style.cssText =
+          'position:fixed;bottom:8px;right:12px;font:11px/1 monospace;' +
+          'color:rgba(0,255,112,0.4);pointer-events:none;z-index:9999;';
+        document.body.appendChild(badge);
+      }
+      badge.textContent = detail.backend === 'webgpu' ? 'WebGPU' : 'WebGL2';
+    }, { once: true });
+  }
+
+  registerBadge();
+  let rain = initMatrixRain(host, {
+    charSet:        defaults.charSet        ?? 'matrixcode',
+    postProcessing: defaults.ppmode         ?? 'rain',
+  });
+
+  const midiUi = {
+    soundFontInput: document.getElementById('midi-soundfont-file'),
+    midiInput: document.getElementById('midi-file'),
+    playButton: document.getElementById('midi-play'),
+    pauseButton: document.getElementById('midi-pause'),
+    stopButton: document.getElementById('midi-stop'),
+    seek: document.getElementById('midi-seek'),
+    volume: document.getElementById('midi-volume'),
+    loop: document.getElementById('midi-loop'),
+    status: document.getElementById('midi-status'),
+    time: document.getElementById('midi-time'),
+  };
+
+  let midiState = {
+    state: 'idle',
+    soundFontLoaded: false,
+    midiLoaded: false,
+    currentTime: 0,
+    duration: 0,
+  };
+  let midiSeekDragging = false;
+  let midiInitErrorText = '';
+
+  function formatPlayerTime(seconds) {
+    const whole = Math.max(0, Math.floor(seconds || 0));
+    const mins = Math.floor(whole / 60);
+    const secs = whole % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  function midiStatusText(playerState) {
+    if (midiInitErrorText) return midiInitErrorText;
+    if (!playerState.soundFontLoaded && !playerState.midiLoaded) return 'Loading default SoundFont and MIDI...';
+    if (!playerState.soundFontLoaded && playerState.midiLoaded) return 'Default MIDI loaded; loading default SoundFont...';
+    if (playerState.soundFontLoaded && !playerState.midiLoaded) return 'No MIDI loaded';
+    switch (playerState.state) {
+      case 'playing': return 'Playing';
+      case 'paused': return 'Paused';
+      case 'stopped': return 'Stopped';
+      case 'ready': return 'Ready';
+      case 'error': return midiUi.status.textContent || 'Error';
+      default: return 'Ready';
+    }
+  }
+
+  function syncMidiUI() {
+    midiUi.status.textContent = midiStatusText(midiState);
+    midiUi.time.textContent =
+      `${formatPlayerTime(midiState.currentTime)} / ${formatPlayerTime(midiState.duration)}`;
+    midiUi.seek.max = String(Math.max(1, midiState.duration || 1));
+    midiUi.seek.disabled = !midiState.midiLoaded;
+    if (!midiSeekDragging) {
+      midiUi.seek.value = String(Math.min(midiState.currentTime || 0, midiState.duration || 0));
+    }
+
+    const canPlay = midiState.soundFontLoaded && midiState.midiLoaded && midiState.state !== 'playing';
+    midiUi.playButton.disabled = !canPlay;
+    midiUi.pauseButton.disabled = midiState.state !== 'playing';
+    midiUi.stopButton.disabled = !(midiState.soundFontLoaded && midiState.midiLoaded);
+  }
+
+  let midiPlayer = null;
+  try {
+    midiPlayer = await createSpessaMidiPlayer({
+      onStateChange(nextState) {
+        midiState = { ...midiState, ...nextState };
+        syncMidiUI();
+      },
+      onTimeChange({ currentTime, duration }) {
+        midiState = { ...midiState, currentTime, duration };
+        syncMidiUI();
+      },
+      onError(error) {
+        midiInitErrorText = `Error: ${error.message}`;
+        midiState = { ...midiState, state: 'error' };
+        syncMidiUI();
+        console.error(error);
+      },
+    });
+    midiPlayer.setVolume(parseFloat(midiUi.volume.value));
+    midiPlayer.setLoop(midiUi.loop.checked);
+  } catch (error) {
+    midiInitErrorText = `Error: ${error.message}`;
+    midiState = { ...midiState, state: 'error' };
+    midiUi.playButton.disabled = true;
+    midiUi.pauseButton.disabled = true;
+    midiUi.stopButton.disabled = true;
+    midiUi.seek.disabled = true;
+    midiUi.volume.disabled = true;
+    midiUi.loop.disabled = true;
+    console.error(error);
+  }
+  syncMidiUI();
+
+  if (midiPlayer) {
+    (async () => {
+      try {
+        const soundFontResponse = await fetch(DEFAULT_SOUNDFONT_PATH);
+        if (!soundFontResponse.ok) {
+          throw new Error(`Failed to load default SoundFont: ${soundFontResponse.status}`);
+        }
+        await midiPlayer.loadSoundFont(await soundFontResponse.arrayBuffer());
+
+        const midiResponse = await fetch(DEFAULT_MIDI_PATH);
+        if (!midiResponse.ok) {
+          throw new Error(`Failed to load default MIDI: ${midiResponse.status}`);
+        }
+        await midiPlayer.loadMidi(await midiResponse.arrayBuffer());
+
+        midiInitErrorText = '';
+        syncMidiUI();
+      } catch (error) {
+        midiInitErrorText = `Error: ${error.message}`;
+        midiState = { ...midiState, state: 'error' };
+        syncMidiUI();
+        console.error(error);
+      }
+    })();
+  }
+
+  // ── Orbit controls ────────────────────────────────────────────────────
+  let controls = null;
+  function makeControls(rainHandle) {
+    if (controls) controls.dispose();
+    // Canvas has pointer-events:none so the controls panel stays interactive.
+    // Attach OrbitControls to the host div instead; it receives all pointer events.
+    controls = new OrbitControls(rainHandle.camera, host);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance   = 0.5;
+    controls.maxDistance   = 20;
+  }
+  host.addEventListener('contextmenu', e => e.preventDefault());
+  makeControls(rain);
+  window._rain = rain;   // console: _rain.camera.position, _rain.camera.rotation
+  window.campos = () => {
+    const p = rain.camera.position;
+    console.log(`camera: x=${p.x.toFixed(3)}  y=${p.y.toFixed(3)}  z=${p.z.toFixed(3)}`);
+  };
+
+  // ── WASD fly ──────────────────────────────────────────────────────────
+  const _keys = {};
+  document.addEventListener('keydown', e => {
+    _keys[e.code] = true;
+    if (e.code === 'KeyH' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const panel = document.getElementById('controls');
+      panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    }
+    if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      document.getElementById('ctl-msg-show').click();
+    }
+  });
+  document.addEventListener('keyup',   e => { _keys[e.code] = false; });
+
+  const _fwd   = new Vector3();
+  const _right = new Vector3();
+  const MOVE_SPEED = 0.06;
+
+  (function controlsLoop() {
+    requestAnimationFrame(controlsLoop);
+    if (!controls) return;
+    const cam = rain.camera;
+    cam.getWorldDirection(_fwd);
+    _right.crossVectors(_fwd, cam.up).normalize();
+    let dx = 0, dz = 0;
+    if (_keys['KeyW'] || _keys['ArrowUp'])    dz =  1;
+    if (_keys['KeyS'] || _keys['ArrowDown'])  dz = -1;
+    if (_keys['KeyA'] || _keys['ArrowLeft'])  dx = -1;
+    if (_keys['KeyD'] || _keys['ArrowRight']) dx =  1;
+    const autoCamActive = document.getElementById('ctl-orbit')?.checked || document.getElementById('ctl-flythrough')?.checked;
+    if (!autoCamActive && (dx || dz)) {
+      const speed = (_keys['ShiftLeft'] || _keys['ShiftRight']) ? MOVE_SPEED * 2 : MOVE_SPEED;
+      const delta = _fwd.clone().multiplyScalar(dz * speed).addScaledVector(_right, dx * speed);
+      cam.position.add(delta);
+      controls.target.add(delta);
+    }
+    controls.update();
+  })();
+
+  // ── PP mode switching ─────────────────────────────────────────────────
+  // On mode change: preserve only charSet; all other params reset to defaults.
+  // 'none' is a diagnostic mode — glyphs render without glow.
+  const crtPanel  = document.getElementById('crt-controls');
+  const ppmodeEl  = document.getElementById('ctl-ppmode');
+
+  function updateCrtPanelVisibility(mode) {
+    crtPanel.style.display = mode === 'crt' ? 'flex' : 'none';
+  }
+
+  ppmodeEl.addEventListener('change', () => {
+    const newMode    = ppmodeEl.value;
+    const currentSet = document.getElementById('ctl-charset').value;
+    rain.destroy();
+    // All existing control handlers close over the 'rain' let-variable and pick up the new value.
+    registerBadge();
+    rain = initMatrixRain(host, {
+      charSet:        currentSet,
+      postProcessing: newMode,
+    });
+    makeControls(rain);
+    updateCrtPanelVisibility(newMode);
+  });
+
+  // ── Controls ──────────────────────────────────────────────────────────
+
+  /**
+   * Link a range slider and its numeric companion so edits to either
+   * propagate to the other and fire the same onChange callback.
+   *
+   * @param {string}   rangeId   id of the <input type="range">
+   * @param {string}   numId     id of the companion <input type="number">
+   * @param {Function} onChange  called with the parsed float value on any change
+   */
+  function linkSlider(rangeId, numId, onChange) {
+    const range = document.getElementById(rangeId);
+    const num   = document.getElementById(numId);
+    range.addEventListener('input', () => {
+      num.value = range.value;
+      onChange(parseFloat(range.value));
+    });
+    num.addEventListener('change', () => {
+      const raw = parseFloat(num.value);
+      if (isNaN(raw)) { num.value = range.value; return; }  // reject empty / non-numeric
+      const v = Math.max(parseFloat(num.min), Math.min(parseFloat(num.max), raw));
+      num.value   = v;
+      range.value = v;
+      onChange(v);
+    });
+  }
+
+  function bind(id, fn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const evName = el.type === 'checkbox' ? 'change' : 'input';
+    el.addEventListener(evName, () => fn(el.type === 'checkbox' ? el.checked : parseFloat(el.value)));
+  }
+
+  midiUi.soundFontInput.addEventListener('change', async e => {
+    if (!midiPlayer) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      midiInitErrorText = '';
+      await midiPlayer.loadSoundFont(file);
+    } catch {}
+  });
+
+  midiUi.midiInput.addEventListener('change', async e => {
+    if (!midiPlayer) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      midiInitErrorText = '';
+      await midiPlayer.loadMidi(file);
+    } catch {}
+  });
+
+  midiUi.playButton.addEventListener('click', async () => {
+    if (!midiPlayer) return;
+    _stopAllCCPAudio();
+    _stopMossadAudio();
+    try {
+      await midiPlayer.play();
+    } catch {}
+  });
+
+  midiUi.pauseButton.addEventListener('click', () => {
+    if (!midiPlayer) return;
+    midiPlayer.pause();
+  });
+
+  midiUi.stopButton.addEventListener('click', () => {
+    if (!midiPlayer) return;
+    midiPlayer.stop();
+  });
+
+  midiUi.seek.addEventListener('pointerdown', () => {
+    midiSeekDragging = true;
+  });
+  midiUi.seek.addEventListener('pointerup', () => {
+    midiSeekDragging = false;
+    syncMidiUI();
+  });
+  midiUi.seek.addEventListener('input', e => {
+    if (!midiPlayer) return;
+    midiPlayer.seek(parseFloat(e.target.value));
+  });
+
+  midiUi.volume.addEventListener('input', e => {
+    if (!midiPlayer) return;
+    midiPlayer.setVolume(parseFloat(e.target.value));
+  });
+
+  midiUi.loop.addEventListener('change', e => {
+    if (!midiPlayer) return;
+    midiPlayer.setLoop(e.target.checked);
+  });
+
+  window.addEventListener('beforeunload', () => {
+    midiPlayer?.destroy();
+  });
+
+  document.getElementById('ctl-color').addEventListener('input', () =>
+    rain.setColor(document.getElementById('ctl-color').value)
+  );
+  document.getElementById('ctl-color2').addEventListener('input', () =>
+    rain.setColor2(document.getElementById('ctl-color2').value)
+  );
+  linkSlider('ctl-speed',     'ctl-speed-num',     v => rain.setSpeed(v));
+  linkSlider('ctl-bloom',     'ctl-bloom-num',     v => rain.setBloomStrength(v));
+  linkSlider('ctl-bloom-thr', 'ctl-bloom-thr-num', v => rain.setBloomThreshold(v));
+  linkSlider('ctl-opacity',   'ctl-opacity-num',   v => rain.setOpacity(v));
+  linkSlider('ctl-depth',     'ctl-depth-num',     v => rain.setDepth(v));
+  linkSlider('ctl-normal',    'ctl-normal-num',    v => rain.setNormalStrength(v));
+  linkSlider('ctl-sway',      'ctl-sway-num',      v => rain.setSway(v));
+  linkSlider('ctl-soften',    'ctl-soften-num',    v => rain.setSoften(true, v));
+  linkSlider('ctl-heat',      'ctl-heat-num',      v => rain.setHeat(v > 0, v));
+  linkSlider('ctl-streaks',   'ctl-streaks-num',   v => rain.setStreaks(v > 0, v));
+  linkSlider('ctl-phosphor',  'ctl-phosphor-num',  v => rain.setPhosphorDecay(v));
+
+  function godRaysFromUI() {
+    const on       = document.getElementById('ctl-godrays').checked;
+    const lightX   = parseFloat(document.getElementById('ctl-gr-lx').value);
+    const lightY   = parseFloat(document.getElementById('ctl-gr-ly').value);
+    const density  = parseFloat(document.getElementById('ctl-gr-density').value);
+    const decay    = parseFloat(document.getElementById('ctl-gr-decay').value);
+    const weight   = parseFloat(document.getElementById('ctl-gr-weight').value);
+    const exposure = parseFloat(document.getElementById('ctl-gr-exposure').value);
+    rain.setGodRays(on, lightX, lightY, density, decay, weight, exposure);
+  }
+  bind('ctl-godrays',    () => godRaysFromUI());
+  linkSlider('ctl-gr-lx',      'ctl-gr-lx-num',      () => godRaysFromUI());
+  linkSlider('ctl-gr-ly',      'ctl-gr-ly-num',      () => godRaysFromUI());
+  linkSlider('ctl-gr-density', 'ctl-gr-density-num', () => godRaysFromUI());
+  linkSlider('ctl-gr-decay',   'ctl-gr-decay-num',   () => godRaysFromUI());
+  linkSlider('ctl-gr-weight',  'ctl-gr-weight-num',  () => godRaysFromUI());
+  linkSlider('ctl-gr-exposure','ctl-gr-exposure-num',() => godRaysFromUI());
+
+  bind('ctl-burst',        on => rain.setBurstBloom(on));
+  bind('ctl-flatz',        on => rain.setFlatZ(on));
+  linkSlider('ctl-yaw',          'ctl-yaw-num',          v  => rain.setMaxYaw(v));
+  linkSlider('ctl-jitter',       'ctl-jitter-num',       v  => rain.setFacingJitter(v));
+  linkSlider('ctl-chroma-scale', 'ctl-chroma-scale-num', v  => rain.setGlyphChroma(v > 0, v));
+  linkSlider('ctl-vignette',   'ctl-vignette-num',   v => rain.setVignette(v));
+  linkSlider('ctl-scanlines',  'ctl-scanlines-num',  v => rain.setScanlines(v));
+  linkSlider('ctl-holo-aber',  'ctl-holo-aber-num',  v => rain.setHoloAberration(v));
+  linkSlider('interlace',     'interlaceNum',     v => rain.setInterlace(v));
+  linkSlider('radialChroma',  'radialChromaNum',  v => rain.setRadialChroma(v));
+  linkSlider('fogAmt',        'fogAmtNum',        v => rain.setAtmosphericFog(v));
+  document.getElementById('fogColor').addEventListener('input', e => {
+    rain.setAtmosphericFog(parseFloat(document.getElementById('fogAmt').value), e.target.value);
+  });
+  linkSlider('dust',          'dustNum',          v => rain.setDust(v));
+  document.getElementById('bloomBreath').addEventListener('change', e => {
+    rain.setBloomBreath(
+      e.target.checked,
+      parseFloat(document.getElementById('bloomBreathRate').value),
+      parseFloat(document.getElementById('bloomBreathAmp').value),
+    );
+  });
+  linkSlider('bloomBreathRate', 'bloomBreathRateNum', v => {
+    if (document.getElementById('bloomBreath').checked)
+      rain.setBloomBreath(true, v, parseFloat(document.getElementById('bloomBreathAmp').value));
+  });
+  linkSlider('bloomBreathAmp', 'bloomBreathAmpNum', v => {
+    if (document.getElementById('bloomBreath').checked)
+      rain.setBloomBreath(true, parseFloat(document.getElementById('bloomBreathRate').value), v);
+  });
+
+  document.getElementById('ctl-charset').addEventListener('change', e => {
+    rain.setCharSet(e.target.value);
+  });
+
+  // Message reveal buttons
+  document.getElementById('ctl-msg-show').addEventListener('click', () => {
+    rain.showMessage(document.getElementById('ctl-msg-text').value, {
+      boost:          parseFloat(document.getElementById('ctl-msg-boost').value),
+      spawnChance:    parseFloat(document.getElementById('ctl-msg-spawn').value),
+      tolMultMin:     parseFloat(document.getElementById('ctl-msg-tolmult-min').value),
+      tolMultMax:     parseFloat(document.getElementById('ctl-msg-tolmult-max').value),
+      tolMinScale:    parseFloat(document.getElementById('ctl-msg-tolscale').value),
+      revealDuration: parseFloat(document.getElementById('ctl-msg-reveal').value),
+      holdDuration:   parseFloat(document.getElementById('ctl-msg-hold').value),
+      fadeDuration:   parseFloat(document.getElementById('ctl-msg-fade').value),
+    });
+  });
+  document.getElementById('ctl-msg-clear').addEventListener('click', () => {
+    rain.clearMessage();
+  });
+  bind('ctl-msg-band-suppress', on => rain.setMsgBandSuppress(on));
+  // Message sliders — sync range↔number, no live callback (values read on button click)
+  linkSlider('ctl-msg-settle',   'ctl-msg-settle-num',   v => rain.setMsgSettleSharpness(v));
+  linkSlider('ctl-msg-boost',    'ctl-msg-boost-num',    () => {});
+  linkSlider('ctl-msg-spawn',    'ctl-msg-spawn-num',    () => {});
+  linkSlider('ctl-msg-tolmult-min', 'ctl-msg-tolmult-min-num', () => {});
+  linkSlider('ctl-msg-tolmult-max', 'ctl-msg-tolmult-max-num', () => {});
+  linkSlider('ctl-msg-tolscale', 'ctl-msg-tolscale-num', () => {});
+  linkSlider('ctl-msg-reveal',   'ctl-msg-reveal-num',   () => {});
+  linkSlider('ctl-msg-hold',     'ctl-msg-hold-num',     () => {});
+  linkSlider('ctl-msg-fade',     'ctl-msg-fade-num',     () => {});
+
+  // CRT shader selector — rain.crt is null until renderer.init() resolves in 'crt' mode;
+  // optional chaining makes these calls safe at any time.
+  document.getElementById('ctl-crt-shader').addEventListener('change', e => {
+    rain.crt?.setShader(e.target.value);
+  });
+
+  // Columns controls
+  function pushSpeedRange() {
+    rain.setSpeedRange(
+      parseFloat(document.getElementById('ctl-spd-min').value),
+      parseFloat(document.getElementById('ctl-spd-max').value),
+    );
+  }
+  function pushTrailRange() {
+    rain.setTrailRange(
+      parseFloat(document.getElementById('ctl-trl-min').value),
+      parseFloat(document.getElementById('ctl-trl-max').value),
+    );
+  }
+  linkSlider('ctl-spd-min', 'ctl-spd-min-num', () => pushSpeedRange());
+  linkSlider('ctl-spd-max', 'ctl-spd-max-num', () => pushSpeedRange());
+  linkSlider('ctl-trl-min', 'ctl-trl-min-num', () => pushTrailRange());
+  linkSlider('ctl-trl-max', 'ctl-trl-max-num', () => pushTrailRange());
+  linkSlider('ctl-density-3d', 'ctl-density-3d-num', v => rain.setDensity(v));
+
+  // Radial zone controls
+  function pushZoneSpeed() {
+    rain.setZoneSpeed(
+      parseFloat(document.getElementById('ctl-zone-spd-in').value),
+      parseFloat(document.getElementById('ctl-zone-spd-out').value),
+    );
+  }
+  function pushZoneBright() {
+    rain.setZoneBrightness(
+      parseFloat(document.getElementById('ctl-zone-br-in').value),
+      parseFloat(document.getElementById('ctl-zone-br-out').value),
+    );
+  }
+  linkSlider('ctl-zone-spd-in',  'ctl-zone-spd-in-num',  () => pushZoneSpeed());
+  linkSlider('ctl-zone-spd-out', 'ctl-zone-spd-out-num', () => pushZoneSpeed());
+  linkSlider('ctl-zone-br-in',   'ctl-zone-br-in-num',   () => pushZoneBright());
+  linkSlider('ctl-zone-br-out',  'ctl-zone-br-out-num',  () => pushZoneBright());
+
+  // Distribution controls — rebuild-triggering ones use a 150 ms debounce
+  let _distTimer = null;
+  function debounceRebuild(fn) {
+    clearTimeout(_distTimer);
+    _distTimer = setTimeout(fn, 150);
+  }
+
+  // Contextual distribution controls — show/hide based on active topology
+  const _distTopoMap = {
+    'lbl-shell-in':       ['shell', 'ring', 'curtain'],
+    'lbl-shell-out':      ['shell', 'ring', 'curtain'],
+    'lbl-clusters':        ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-spread':  ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-uniform': ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-hue':           ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-bright':        ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-speed':         ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-speed-jitter':  ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-y-spread':      ['shell', 'ring', 'curtain', 'rectangle'],
+    'lbl-cluster-r-jitter':      ['shell'],
+    'lbl-radial-bias':    ['shell'],
+    'lbl-density-in':     ['shell', 'ring'],
+    'lbl-density-out':    ['shell', 'ring'],
+    'lbl-rect-w':         ['rectangle'],
+    'lbl-rect-h':         ['rectangle'],
+  };
+  const _shellInLabels  = { shell: 'Shell inner', ring: 'Shell inner', curtain: 'Curtain depth Z' };
+  const _shellOutLabels = { shell: 'Shell outer', ring: 'Shell outer', curtain: 'Spread width X' };
+
+  function updateDistControls(topo) {
+    for (const [id, topos] of Object.entries(_distTopoMap)) {
+      document.getElementById(id).style.display = topos.includes(topo) ? '' : 'none';
+    }
+    document.getElementById('txt-shell-in').textContent = _shellInLabels[topo] ?? 'Shell inner';
+    document.getElementById('txt-shell-out').textContent = _shellOutLabels[topo] ?? 'Shell outer';
+  }
+  updateDistControls('shell');
+
+  document.getElementById('ctl-topology').addEventListener('change', e => {
+    rain.setTopology(e.target.value);
+    updateDistControls(e.target.value);
+  });
+  bind('ctl-forward-facing', on => rain.setForwardFacing(on));
+  linkSlider('ctl-ncols', 'ctl-ncols-num', () => {
+    debounceRebuild(() => rain.setColumnCount(parseFloat(document.getElementById('ctl-ncols').value)));
+  });
+  function pushShellRadii() {
+    debounceRebuild(() => rain.setShellRadii(
+      parseFloat(document.getElementById('ctl-shell-in').value),
+      parseFloat(document.getElementById('ctl-shell-out').value),
+    ));
+  }
+  linkSlider('ctl-shell-in',  'ctl-shell-in-num',  () => pushShellRadii());
+  linkSlider('ctl-shell-out', 'ctl-shell-out-num', () => pushShellRadii());
+  function pushRectExtent() {
+    debounceRebuild(() => rain.setRectExtent(
+      parseFloat(document.getElementById('ctl-rect-w').value),
+      parseFloat(document.getElementById('ctl-rect-h').value),
+    ));
+  }
+  linkSlider('ctl-rect-w', 'ctl-rect-w-num', () => pushRectExtent());
+  linkSlider('ctl-rect-h', 'ctl-rect-h-num', () => pushRectExtent());
+  function pushClusterParams() {
+    debounceRebuild(() => rain.setClusterParams(
+      parseFloat(document.getElementById('ctl-clusters').value),
+      parseFloat(document.getElementById('ctl-cluster-spread').value),
+    ));
+  }
+  linkSlider('ctl-clusters',       'ctl-clusters-num',       () => pushClusterParams());
+  linkSlider('ctl-cluster-spread', 'ctl-cluster-spread-num', () => pushClusterParams());
+  linkSlider('ctl-radial-bias', 'ctl-radial-bias-num', () => {
+    debounceRebuild(() => rain.setRadialBias(parseFloat(document.getElementById('ctl-radial-bias').value)));
+  });
+  linkSlider('ctl-cluster-uniform', 'ctl-cluster-uniform-num', () => {
+    debounceRebuild(() => rain.setClusterUniform(parseFloat(document.getElementById('ctl-cluster-uniform').value)));
+  });
+  linkSlider('ctl-cluster-hue',    'ctl-cluster-hue-num',    v => rain.setClusterHueRange(v));
+  linkSlider('ctl-cluster-bright', 'ctl-cluster-bright-num', v => rain.setClusterBrightRange(v));
+  linkSlider('ctl-cluster-speed',  'ctl-cluster-speed-num',  v => rain.setClusterSpeedRange(v));
+  linkSlider('ctl-cluster-speed-jitter', 'ctl-cluster-speed-jitter-num', () => {
+    debounceRebuild(() => rain.setClusterSpeedJitter(parseFloat(document.getElementById('ctl-cluster-speed-jitter').value)));
+  });
+  linkSlider('ctl-cluster-y-spread', 'ctl-cluster-y-spread-num', () => {
+    debounceRebuild(() => rain.setClusterYSpread(parseFloat(document.getElementById('ctl-cluster-y-spread').value)));
+  });
+  linkSlider('ctl-cluster-r-jitter', 'ctl-cluster-r-jitter-num', () => {
+    debounceRebuild(() => rain.setClusterRJitter(parseFloat(document.getElementById('ctl-cluster-r-jitter').value)));
+  });
+  linkSlider('ctl-height-fade', 'ctl-height-fade-num', () => {
+    rain.setHeightFade(parseFloat(document.getElementById('ctl-height-fade').value));
+  });
+  linkSlider('ctl-entrain-amt',    'ctl-entrain-amt-num',    v => rain.setEntrainment(v));
+  linkSlider('ctl-entrain-speed',  'ctl-entrain-speed-num',  v => rain.setEntrainSpeed(v));
+  linkSlider('ctl-entrain-crests', 'ctl-entrain-crests-num', v => rain.setEntrainCrests(v));
+  linkSlider('ctl-spawn-front', 'ctl-spawn-front-num', v => rain.setSpawnWaveFront(v));
+  document.getElementById('ctl-spawn-in').addEventListener('click', () => rain.spawnWave());
+  document.getElementById('ctl-spawn-out').addEventListener('click', () => rain.despawnWave());
+  linkSlider('ctl-scan-speed',   'ctl-scan-speed-num',   () => {});  // read on trigger
+  linkSlider('ctl-scan-dissolve','ctl-scan-dissolve-num',() => {});  // read on trigger
+  document.getElementById('ctl-scan-trigger').addEventListener('click', () => {
+    const speed       = parseFloat(document.getElementById('ctl-scan-speed').value);
+    const dissolveTime = parseFloat(document.getElementById('ctl-scan-dissolve').value);
+    rain.triggerScanlineSweep({ speed, dissolveTime });
+  });
+  linkSlider('ctl-scan-sync',  'ctl-scan-sync-num',  v => rain.setScanlineSync(v));
+  linkSlider('ctl-scan-phase', 'ctl-scan-phase-num', v => rain.setScanlinePhase(v));
+  function pushDensityTaper() {
+    rain.setRadialDensityTaper(
+      parseFloat(document.getElementById('ctl-density-in').value),
+      parseFloat(document.getElementById('ctl-density-out').value),
+    );
+  }
+  linkSlider('ctl-density-in',  'ctl-density-in-num',  () => pushDensityTaper());
+  linkSlider('ctl-density-out', 'ctl-density-out-num', () => pushDensityTaper());
+
+  // Organic controls
+  linkSlider('ctl-brightness', 'ctl-brightness-num', v => rain.setBrightness(v));
+  linkSlider('ctl-breath-amt', 'ctl-breath-amt-num', v => rain.setBreathAmt(v));
+  linkSlider('ctl-wave-speed', 'ctl-wave-speed-num', v => { if (document.getElementById('ctl-wave-enabled').checked) rain.setWaveSpeed(v); });
+  linkSlider('ctl-wave-amt',     'ctl-wave-amt-num',   v => { if (document.getElementById('ctl-wave-enabled').checked) rain.setWaveAmt(v); });
+  linkSlider('ctl-wave-crests', 'ctl-wave-crests-num', v => { if (document.getElementById('ctl-wave-enabled').checked) rain.setWaveCrests(v); });
+  document.getElementById('ctl-wave-enabled').addEventListener('change', e => {
+    if (e.target.checked) {
+      rain.setWaveSpeed(parseFloat(document.getElementById('ctl-wave-speed').value));
+      rain.setWaveAmt(parseFloat(document.getElementById('ctl-wave-amt').value));
+      rain.setWaveCrests(parseFloat(document.getElementById('ctl-wave-crests').value));
+    } else {
+      rain.setWaveAmt(0);
+    }
+  });
+  bind('ctl-weighted', on => rain.setWeightedGlyphs(on ? 1.0 : 0.0));
+  linkSlider('ctl-reverse', 'ctl-reverse-num', v => rain.setReverseChance(v));
+  function pushCellSize() {
+    rain.setCellSize(
+      parseFloat(document.getElementById('ctl-cellw').value),
+      parseFloat(document.getElementById('ctl-cellh').value),
+    );
+  }
+  linkSlider('ctl-cellw', 'ctl-cellw-num', () => pushCellSize());
+  linkSlider('ctl-cellh', 'ctl-cellh-num', () => pushCellSize());
+
+  // Glyph FX controls
+  linkSlider('ctl-drip',       'ctl-drip-num',       v => rain.setDrip(v));
+  linkSlider('ctl-edge-glow',  'ctl-edge-glow-num',  v => rain.setEdgeGlow(v));
+  linkSlider('ctl-zrot',       'ctl-zrot-num',       v => rain.setZRotation(v));
+  linkSlider('ctl-grain',      'ctl-grain-num',      v => rain.setFilmGrain(v));
+  linkSlider('ctl-depth-tint', 'ctl-depth-tint-num', v => rain.setDepthTint(v));
+  bind('ctl-boot', on => rain.setStartupCascade(on));
+  linkSlider('ctl-stability',      'ctl-stability-num',      v => rain.setStability(v));
+  linkSlider('ctl-deep-trail-dark','ctl-deep-trail-dark-num',v => rain.setDeepTrailDark(v));
+  linkSlider('ctl-hold-mult',  'ctl-hold-mult-num',  v => rain.setHoldMult(v));
+  linkSlider('ctl-burst-rate', 'ctl-burst-rate-num', v => rain.setBurstGlyphRate(v));
+  linkSlider('ctl-pom-steps',  'ctl-pom-steps-num',  v => rain.setPomSteps(v));
+  linkSlider('ctl-eol-flash',  'ctl-eol-flash-num',  v => rain.setEolFlash(v));
+  linkSlider('ctl-eol-freeze', 'ctl-eol-freeze-num', v => rain.setEolFreezeStart(v));
+  linkSlider('ctl-eol-fade',   'ctl-eol-fade-num',   v => rain.setEolFadeStart(v));
+  linkSlider('ctl-hue-range',  'ctl-hue-range-num',  v => rain.setColorBlend(v));
+  linkSlider('ctl-burst-prob', 'ctl-burst-prob-num', v => rain.setBurstProb(v));
+  // Glyph FX B controls
+  linkSlider('sl-shimmer-amt',      'sl-shimmer-amt-num',      v => rain.setShimmerAmt(v));
+  linkSlider('sl-shimmer-freq',     'sl-shimmer-freq-num',     v => rain.setShimmerFreq(v));
+  linkSlider('sl-inversion-chance', 'sl-inversion-chance-num', v => rain.setInversionChance(v));
+  linkSlider('sl-glyph-spin-amt',   'sl-glyph-spin-amt-num',   v => rain.setGlyphSpinAmt(v));
+  linkSlider('sl-glyph-spin-speed', 'sl-glyph-spin-speed-num', v => rain.setGlyphSpinSpeed(v));
+  linkSlider('sl-hue-drift-rate',   'sl-hue-drift-rate-num',   v => rain.setHueDriftRate(v));
+  linkSlider('sl-hue-drift-amt',    'sl-hue-drift-amt-num',    v => rain.setHueDriftAmt(v));
+  linkSlider('sl-head-overshoot',   'sl-head-overshoot-num',   v => rain.setHeadOvershootAmt(v));
+  // Category C column behaviour effects
+  linkSlider('sl-gravity-strength', 'sl-gravity-strength-num', v => rain.setGravityStrength(v));
+  linkSlider('sl-gravity-rate',     'sl-gravity-rate-num',     v => rain.setGravityRate(v));
+  function updatePerspective() {
+    rain.setPerspective(
+      parseFloat(document.getElementById('sl-persp-strength').value),
+      parseFloat(document.getElementById('sl-persp-cx').value),
+    );
+  }
+  linkSlider('sl-persp-strength', 'sl-persp-strength-num', () => updatePerspective());
+  linkSlider('sl-persp-cx',       'sl-persp-cx-num',       () => updatePerspective());
+  linkSlider('sl-morse-amt',  'sl-morse-amt-num',  v => rain.setMorseAmt(v));
+  linkSlider('sl-morse-rate', 'sl-morse-rate-num', v => rain.setMorseRate(v));
+  function updateSpiral() {
+    rain.setSpiral(
+      parseFloat(document.getElementById('sl-spiral-amt').value),
+      parseFloat(document.getElementById('sl-spiral-rate').value),
+      parseFloat(document.getElementById('sl-spiral-pitch').value),
+    );
+  }
+  linkSlider('sl-spiral-amt',   'sl-spiral-amt-num',   () => updateSpiral());
+  linkSlider('sl-spiral-rate',  'sl-spiral-rate-num',  () => updateSpiral());
+  linkSlider('sl-spiral-pitch', 'sl-spiral-pitch-num', () => updateSpiral());
+  linkSlider('ctl-contagion',       'ctl-contagion-num',       v => rain.setContagion(v));
+  linkSlider('ctl-squad-coherence', 'ctl-squad-coherence-num', v => rain.setSquadCoherence(v));
+  linkSlider('ctl-squad-size', 'ctl-squad-size-num', () => {
+    debounceRebuild(() => rain.setSquadSize(parseFloat(document.getElementById('ctl-squad-size').value)));
+  });
+  linkSlider('ctl-trail-cohesion', 'ctl-trail-cohesion-num', () => {
+    debounceRebuild(() => rain.setTrailCohesion(parseFloat(document.getElementById('ctl-trail-cohesion').value)));
+  });
+
+  // Camera controls
+  linkSlider('ctl-fov', 'ctl-fov-num', v => rain.setFov(v));
+  bind('ctl-orbit', on => rain.setAutoOrbit(on,
+    parseFloat(document.getElementById('ctl-orbit-speed').value)));
+  linkSlider('ctl-orbit-speed', 'ctl-orbit-speed-num', v => {
+    if (document.getElementById('ctl-orbit').checked) rain.setAutoOrbit(true, v);
+  });
+  linkSlider('ctl-orbit-elev', 'ctl-orbit-elev-num', v => rain.setOrbitElevation(v));
+  bind('ctl-flythrough', on => {
+    rain.setFlythrough(on, parseFloat(document.getElementById('ctl-fly-speed').value));
+    // Column follow auto-enables with flythrough — keep checkbox in sync
+    document.getElementById('ctl-column-follow').checked = on;
+  });
+  linkSlider('ctl-fly-speed', 'ctl-fly-speed-num', v => {
+    if (document.getElementById('ctl-flythrough').checked) rain.setFlythrough(true, v);
+  });
+  bind('ctl-column-follow', on => rain.setColumnFollow(on));
+  document.getElementById('ctl-reset-camera').addEventListener('click', () => {
+    rain.resetCamera();
+    document.getElementById('ctl-orbit').checked      = false;
+    document.getElementById('ctl-flythrough').checked = false;
+    document.getElementById('ctl-column-follow').checked = false;
+    document.getElementById('ctl-fov').value      = '45';
+    document.getElementById('ctl-fov-num').value  = '45';
+    document.getElementById('ctl-orbit-elev').value     = '0';
+    document.getElementById('ctl-orbit-elev-num').value = '0';
+  });
+
+  // Animation controls
+  bind('ctl-frozen',         on  => rain.setFrozen(on));
+  bind('ctl-reduced-motion', on  => rain.setReducedMotion(on));
+
+  // Auto-sync reduced-motion checkbox to OS preference (runs once + on change)
+  const _motionMQ = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function _applyMotionPref(mq) {
+    const el = document.getElementById('ctl-reduced-motion');
+    if (mq.matches !== el.checked) {
+      el.checked = mq.matches;
+      rain.setReducedMotion(mq.matches);
+    }
+  }
+  _applyMotionPref(_motionMQ);
+  _motionMQ.addEventListener('change', _applyMotionPref);
+
+  // On mobile: tap the rain background to collapse the controls panel
+  host.addEventListener('pointerdown', (e) => {
+    const panel = document.getElementById('controls');
+    if (panel.open && !panel.contains(e.target)) panel.removeAttribute('open');
+  });
+  // Animation sliders — sync range↔number only (values read on button click)
+  linkSlider('ctl-glitch-int', 'ctl-glitch-int-num', () => {});
+  linkSlider('ctl-glitch-dur', 'ctl-glitch-dur-num', () => {});
+  linkSlider('ctl-ramp-mult',  'ctl-ramp-mult-num',  () => {});
+  linkSlider('ctl-ramp-dur',   'ctl-ramp-dur-num',   () => {});
+  document.getElementById('ctl-glitch-btn').addEventListener('click', () => {
+    rain.triggerGlitch(
+      parseFloat(document.getElementById('ctl-glitch-int').value),
+      parseFloat(document.getElementById('ctl-glitch-dur').value),
+    );
+  });
+  document.getElementById('ctl-ramp-btn').addEventListener('click', () => {
+    rain.triggerSpeedRamp(
+      parseFloat(document.getElementById('ctl-ramp-mult').value),
+      parseFloat(document.getElementById('ctl-ramp-dur').value),
+    );
+  });
+
+  // ── Settings import / export ──────────────────────────────────────────
+  function collectSettings() {
+    const fv = id => parseFloat(document.getElementById(id).value);
+    const cb = id => document.getElementById(id).checked;
+    const sv = id => document.getElementById(id).value;
+    const cam = rain.camera;
+    return {
+      ppmode: sv('ctl-ppmode'),
+      charSet: sv('ctl-charset'),
+      crtShader: sv('ctl-crt-shader'),
+      color: sv('ctl-color'),
+      color2: sv('ctl-color2'),
+      opacity: fv('ctl-opacity'),
+      depth: fv('ctl-depth'),
+      normalStrength: fv('ctl-normal'),
+      sway: fv('ctl-sway'),
+      soften: fv('ctl-soften'),
+      heat: fv('ctl-heat'),
+      streaks: fv('ctl-streaks'),
+      speed: fv('ctl-speed'),
+      bloomStrength: fv('ctl-bloom'),
+      bloomThreshold: fv('ctl-bloom-thr'),
+      phosphorDecay: fv('ctl-phosphor'),
+      facingJitter: fv('ctl-jitter'),
+      glyphChromaScale: fv('ctl-chroma-scale'),
+      burstBloom: cb('ctl-burst'),
+      flatZ: cb('ctl-flatz'),
+      maxYaw: fv('ctl-yaw'),
+      vignette: fv('ctl-vignette'),
+      scanlines: fv('ctl-scanlines'),
+      holoAberration: fv('ctl-holo-aber'),
+      interlace: fv('interlace'),
+      radialChroma: fv('radialChroma'),
+      fogAmt: fv('fogAmt'),
+      fogColor: sv('fogColor'),
+      dust: fv('dust'),
+      bloomBreath: cb('bloomBreath'),
+      bloomBreathRate: fv('bloomBreathRate'),
+      bloomBreathAmp: fv('bloomBreathAmp'),
+      godRays: {
+        enabled: cb('ctl-godrays'),
+        lightX: fv('ctl-gr-lx'),
+        lightY: fv('ctl-gr-ly'),
+        density: fv('ctl-gr-density'),
+        decay: fv('ctl-gr-decay'),
+        weight: fv('ctl-gr-weight'),
+        exposure: fv('ctl-gr-exposure'),
+      },
+      msgText: sv('ctl-msg-text'),
+      msgBandSuppress: cb('ctl-msg-band-suppress'),
+      msgSettle: fv('ctl-msg-settle'),
+      msgBoost: fv('ctl-msg-boost'),
+      msgSpawn: fv('ctl-msg-spawn'),
+      msgTolMultMin: fv('ctl-msg-tolmult-min'),
+      msgTolMultMax: fv('ctl-msg-tolmult-max'),
+      msgTolScale: fv('ctl-msg-tolscale'),
+      msgReveal: fv('ctl-msg-reveal'),
+      msgHold: fv('ctl-msg-hold'),
+      msgFade: fv('ctl-msg-fade'),
+      brightness: fv('ctl-brightness'),
+      cellW: fv('ctl-cellw'),
+      cellH: fv('ctl-cellh'),
+      breathAmt: fv('ctl-breath-amt'),
+      waveEnabled: cb('ctl-wave-enabled'),
+      waveSpeed: fv('ctl-wave-speed'),
+      waveAmt: fv('ctl-wave-amt'),
+      waveCrests: fv('ctl-wave-crests'),
+      weightedGlyphs: cb('ctl-weighted'),
+      reverseChance: fv('ctl-reverse'),
+      spdMin: fv('ctl-spd-min'),
+      spdMax: fv('ctl-spd-max'),
+      trlMin: fv('ctl-trl-min'),
+      trlMax: fv('ctl-trl-max'),
+      density3d: fv('ctl-density-3d'),
+      zoneSpeedIn: fv('ctl-zone-spd-in'),
+      zoneSpeedOut: fv('ctl-zone-spd-out'),
+      zoneBrIn: fv('ctl-zone-br-in'),
+      zoneBrOut: fv('ctl-zone-br-out'),
+      topology: sv('ctl-topology'),
+      forwardFacing: cb('ctl-forward-facing'),
+      nCols: fv('ctl-ncols'),
+      shellIn: fv('ctl-shell-in'),
+      shellOut: fv('ctl-shell-out'),
+      rectW: fv('ctl-rect-w'),
+      rectH: fv('ctl-rect-h'),
+      clusters: fv('ctl-clusters'),
+      clusterSpread: fv('ctl-cluster-spread'),
+      radialBias: fv('ctl-radial-bias'),
+      densityIn: fv('ctl-density-in'),
+      densityOut: fv('ctl-density-out'),
+      clusterUniform: fv('ctl-cluster-uniform'),
+      clusterHueRange: fv('ctl-cluster-hue'),
+      clusterBrightRange: fv('ctl-cluster-bright'),
+      clusterSpeedRange: fv('ctl-cluster-speed'),
+      clusterSpeedJitter: fv('ctl-cluster-speed-jitter'),
+      clusterYSpread: fv('ctl-cluster-y-spread'),
+      clusterRJitter: fv('ctl-cluster-r-jitter'),
+      contagion: fv('ctl-contagion'),
+      squadCoherence: fv('ctl-squad-coherence'),
+      squadSize: fv('ctl-squad-size'),
+      trailCohesion: fv('ctl-trail-cohesion'),
+      heightFade: fv('ctl-height-fade'),
+      entrainAmt: fv('ctl-entrain-amt'),
+      entrainSpeed: fv('ctl-entrain-speed'),
+      entrainCrests: fv('ctl-entrain-crests'),
+      spawnFront: fv('ctl-spawn-front'),
+      scanSpeed: fv('ctl-scan-speed'),
+      scanDissolve: fv('ctl-scan-dissolve'),
+      scanSync: fv('ctl-scan-sync'),
+      scanPhase: fv('ctl-scan-phase'),
+      drip: fv('ctl-drip'),
+      edgeGlow: fv('ctl-edge-glow'),
+      zRot: fv('ctl-zrot'),
+      filmGrain: fv('ctl-grain'),
+      depthTint: fv('ctl-depth-tint'),
+      boot: cb('ctl-boot'),
+      stability: fv('ctl-stability'),
+      deepTrailDark: fv('ctl-deep-trail-dark'),
+      holdMult: fv('ctl-hold-mult'),
+      burstGlyphRate: fv('ctl-burst-rate'),
+      pomSteps: fv('ctl-pom-steps'),
+      hueRange: fv('ctl-hue-range'),
+      burstProb: fv('ctl-burst-prob'),
+      eolFlash: fv('ctl-eol-flash'),
+      eolFreezeStart: fv('ctl-eol-freeze'),
+      eolFadeStart: fv('ctl-eol-fade'),
+      shimmerAmt: fv('sl-shimmer-amt'),
+      shimmerFreq: fv('sl-shimmer-freq'),
+      inversionChance: fv('sl-inversion-chance'),
+      glyphSpinAmt: fv('sl-glyph-spin-amt'),
+      glyphSpinSpeed: fv('sl-glyph-spin-speed'),
+      hueDriftRate: fv('sl-hue-drift-rate'),
+      hueDriftAmt: fv('sl-hue-drift-amt'),
+      headOvershoot: fv('sl-head-overshoot'),
+      gravityStrength: fv('sl-gravity-strength'),
+      gravityRate: fv('sl-gravity-rate'),
+      perspectiveStrength: fv('sl-persp-strength'),
+      perspectiveCx: fv('sl-persp-cx'),
+      morseAmt: fv('sl-morse-amt'),
+      morseRate: fv('sl-morse-rate'),
+      spiralAmt: fv('sl-spiral-amt'),
+      spiralRate: fv('sl-spiral-rate'),
+      spiralPitch: fv('sl-spiral-pitch'),
+      fov: fv('ctl-fov'),
+      orbit: cb('ctl-orbit'),
+      orbitSpeed: fv('ctl-orbit-speed'),
+      orbitElev: fv('ctl-orbit-elev'),
+      flythrough: cb('ctl-flythrough'),
+      flySpeed: fv('ctl-fly-speed'),
+      columnFollow: cb('ctl-column-follow'),
+      frozen: cb('ctl-frozen'),
+      reducedMotion: cb('ctl-reduced-motion'),
+      glitchIntensity: fv('ctl-glitch-int'),
+      glitchDuration: fv('ctl-glitch-dur'),
+      rampMult: fv('ctl-ramp-mult'),
+      rampDur: fv('ctl-ramp-dur'),
+      cameraState: {
+        position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+        quaternion: { x: cam.quaternion.x, y: cam.quaternion.y, z: cam.quaternion.z, w: cam.quaternion.w },
+        target: controls ? { x: controls.target.x, y: controls.target.y, z: controls.target.z } : null,
+      },
+    };
+  }
+
+  function applySettings(s) {
+    const el = id => document.getElementById(id);
+    const set = (id, v) => {
+      if (v === undefined) return;
+      const node = el(id);
+      if (!node) return;
+      node.value = v;
+      const numEl = document.getElementById(id + '-num') ?? document.getElementById(id + 'Num');
+      if (numEl) numEl.value = v;
+    };
+    const chk = (id, v) => {
+      const node = el(id);
+      if (v !== undefined && node) node.checked = v;
+    };
+
+    const prevMode = ppmodeEl.value;
+
+    set('ctl-ppmode', s.ppmode);
+    set('ctl-charset', s.charSet);
+    set('ctl-crt-shader', s.crtShader);
+    set('ctl-color', s.color);
+    set('ctl-color2', s.color2);
+    set('ctl-opacity', s.opacity);
+    set('ctl-depth', s.depth);
+    set('ctl-normal', s.normalStrength);
+    set('ctl-sway', s.sway);
+    set('ctl-soften', s.soften);
+    set('ctl-heat', s.heat);
+    set('ctl-streaks', s.streaks);
+    set('ctl-speed', s.speed);
+    set('ctl-bloom', s.bloomStrength);
+    set('ctl-bloom-thr', s.bloomThreshold);
+    set('ctl-phosphor', s.phosphorDecay);
+    set('ctl-jitter', s.facingJitter);
+    set('ctl-chroma-scale', s.glyphChromaScale);
+    chk('ctl-burst', s.burstBloom);
+    chk('ctl-flatz', s.flatZ);
+    set('ctl-yaw', s.maxYaw);
+    set('ctl-vignette', s.vignette);
+    set('ctl-scanlines', s.scanlines);
+    set('ctl-holo-aber', s.holoAberration);
+    set('interlace', s.interlace);
+    set('radialChroma', s.radialChroma);
+    set('fogAmt', s.fogAmt);
+    if (s.fogColor !== undefined) el('fogColor').value = s.fogColor;
+    set('dust', s.dust);
+    chk('bloomBreath', s.bloomBreath);
+    set('bloomBreathRate', s.bloomBreathRate);
+    set('bloomBreathAmp', s.bloomBreathAmp);
+    if (s.godRays) {
+      chk('ctl-godrays', s.godRays.enabled);
+      set('ctl-gr-lx', s.godRays.lightX);
+      set('ctl-gr-ly', s.godRays.lightY);
+      set('ctl-gr-density', s.godRays.density);
+      set('ctl-gr-decay', s.godRays.decay);
+      set('ctl-gr-weight', s.godRays.weight);
+      set('ctl-gr-exposure', s.godRays.exposure);
+    }
+    if (s.msgText !== undefined) el('ctl-msg-text').value = s.msgText;
+    chk('ctl-msg-band-suppress', s.msgBandSuppress);
+    set('ctl-msg-settle', s.msgSettle);
+    set('ctl-msg-boost', s.msgBoost);
+    set('ctl-msg-spawn', s.msgSpawn);
+    set('ctl-msg-tolmult-min', s.msgTolMultMin);
+    set('ctl-msg-tolmult-max', s.msgTolMultMax);
+    set('ctl-msg-tolscale', s.msgTolScale);
+    set('ctl-msg-reveal', s.msgReveal);
+    set('ctl-msg-hold', s.msgHold);
+    set('ctl-msg-fade', s.msgFade);
+    set('ctl-brightness', s.brightness);
+    set('ctl-cellw', s.cellW);
+    set('ctl-cellh', s.cellH);
+    set('ctl-breath-amt', s.breathAmt);
+    chk('ctl-wave-enabled', s.waveEnabled);
+    set('ctl-wave-speed', s.waveSpeed);
+    set('ctl-wave-amt', s.waveAmt);
+    set('ctl-wave-crests', s.waveCrests);
+    chk('ctl-weighted', s.weightedGlyphs);
+    set('ctl-reverse', s.reverseChance);
+    set('ctl-drip', s.drip);
+    set('ctl-edge-glow', s.edgeGlow);
+    set('ctl-zrot', s.zRot);
+    set('ctl-grain', s.filmGrain);
+    set('ctl-depth-tint', s.depthTint);
+    chk('ctl-boot', s.boot);
+    set('ctl-stability', s.stability);
+    set('ctl-deep-trail-dark', s.deepTrailDark);
+    set('ctl-hold-mult', s.holdMult);
+    set('ctl-burst-rate', s.burstGlyphRate);
+    set('ctl-pom-steps', s.pomSteps);
+    set('ctl-hue-range', s.hueRange);
+    set('ctl-burst-prob', s.burstProb);
+    set('ctl-eol-flash', s.eolFlash);
+    set('ctl-eol-freeze', s.eolFreezeStart);
+    set('ctl-eol-fade', s.eolFadeStart);
+    set('ctl-spd-min', s.spdMin);
+    set('ctl-spd-max', s.spdMax);
+    set('ctl-trl-min', s.trlMin);
+    set('ctl-trl-max', s.trlMax);
+    set('ctl-density-3d', s.density3d);
+    set('ctl-zone-spd-in', s.zoneSpeedIn);
+    set('ctl-zone-spd-out', s.zoneSpeedOut);
+    set('ctl-zone-br-in', s.zoneBrIn);
+    set('ctl-zone-br-out', s.zoneBrOut);
+    set('ctl-topology', s.topology);
+    chk('ctl-forward-facing', s.forwardFacing);
+    set('ctl-ncols', s.nCols);
+    set('ctl-shell-in', s.shellIn);
+    set('ctl-shell-out', s.shellOut);
+    set('ctl-rect-w', s.rectW);
+    set('ctl-rect-h', s.rectH);
+    set('ctl-clusters', s.clusters);
+    set('ctl-cluster-spread', s.clusterSpread);
+    set('ctl-radial-bias', s.radialBias);
+    set('ctl-density-in', s.densityIn);
+    set('ctl-density-out', s.densityOut);
+    set('ctl-cluster-uniform', s.clusterUniform);
+    set('ctl-cluster-hue', s.clusterHueRange);
+    set('ctl-cluster-bright', s.clusterBrightRange);
+    set('ctl-cluster-speed', s.clusterSpeedRange);
+    set('ctl-cluster-speed-jitter', s.clusterSpeedJitter);
+    set('ctl-cluster-y-spread', s.clusterYSpread);
+    set('ctl-cluster-r-jitter', s.clusterRJitter);
+    set('ctl-contagion', s.contagion);
+    set('ctl-squad-coherence', s.squadCoherence);
+    set('ctl-squad-size', s.squadSize);
+    set('ctl-trail-cohesion', s.trailCohesion);
+    set('ctl-height-fade', s.heightFade);
+    set('ctl-entrain-amt', s.entrainAmt);
+    set('ctl-entrain-speed', s.entrainSpeed);
+    set('ctl-entrain-crests', s.entrainCrests);
+    set('ctl-spawn-front', s.spawnFront);
+    set('ctl-scan-speed', s.scanSpeed);
+    set('ctl-scan-dissolve', s.scanDissolve);
+    set('ctl-scan-sync', s.scanSync);
+    set('ctl-scan-phase', s.scanPhase);
+    set('sl-shimmer-amt', s.shimmerAmt);
+    set('sl-shimmer-freq', s.shimmerFreq);
+    set('sl-inversion-chance', s.inversionChance);
+    set('sl-glyph-spin-amt', s.glyphSpinAmt);
+    set('sl-glyph-spin-speed', s.glyphSpinSpeed);
+    set('sl-hue-drift-rate', s.hueDriftRate);
+    set('sl-hue-drift-amt', s.hueDriftAmt);
+    set('sl-head-overshoot', s.headOvershoot);
+    set('sl-gravity-strength', s.gravityStrength);
+    set('sl-gravity-rate', s.gravityRate);
+    set('sl-persp-strength', s.perspectiveStrength);
+    set('sl-persp-cx', s.perspectiveCx);
+    set('sl-morse-amt', s.morseAmt);
+    set('sl-morse-rate', s.morseRate);
+    set('sl-spiral-amt', s.spiralAmt);
+    set('sl-spiral-rate', s.spiralRate);
+    set('sl-spiral-pitch', s.spiralPitch);
+    set('ctl-fov', s.fov);
+    chk('ctl-orbit', s.orbit);
+    set('ctl-orbit-speed', s.orbitSpeed);
+    set('ctl-orbit-elev', s.orbitElev);
+    chk('ctl-flythrough', s.flythrough);
+    set('ctl-fly-speed', s.flySpeed);
+    chk('ctl-column-follow', s.columnFollow);
+    chk('ctl-frozen', s.frozen);
+    chk('ctl-reduced-motion', s.reducedMotion);
+    set('ctl-glitch-int', s.glitchIntensity);
+    set('ctl-glitch-dur', s.glitchDuration);
+    set('ctl-ramp-mult', s.rampMult);
+    set('ctl-ramp-dur', s.rampDur);
+
+    if (s.ppmode !== undefined && s.ppmode !== prevMode) {
+      rain.destroy();
+      registerBadge();
+      rain = initMatrixRain(host, {
+        charSet: s.charSet ?? el('ctl-charset').value,
+        postProcessing: s.ppmode,
+      });
+      makeControls(rain);
+      window._rain = rain;
+      updateCrtPanelVisibility(s.ppmode);
+    }
+
+    if (s.color !== undefined) rain.setColor(s.color);
+    if (s.color2 !== undefined) rain.setColor2(s.color2);
+    if (s.opacity !== undefined) rain.setOpacity(s.opacity);
+    if (s.depth !== undefined) rain.setDepth(s.depth);
+    if (s.normalStrength !== undefined) rain.setNormalStrength(s.normalStrength);
+    if (s.sway !== undefined) rain.setSway(s.sway);
+    if (s.soften !== undefined) rain.setSoften(s.soften > 0, s.soften);
+    if (s.heat !== undefined) rain.setHeat(s.heat > 0, s.heat);
+    if (s.streaks !== undefined) rain.setStreaks(s.streaks > 0, s.streaks);
+    if (s.speed !== undefined) rain.setSpeed(s.speed);
+    if (s.bloomStrength !== undefined) rain.setBloomStrength(s.bloomStrength);
+    if (s.bloomThreshold !== undefined) rain.setBloomThreshold(s.bloomThreshold);
+    if (s.phosphorDecay !== undefined) rain.setPhosphorDecay(s.phosphorDecay);
+    if (s.facingJitter !== undefined) rain.setFacingJitter(s.facingJitter);
+    if (s.glyphChromaScale !== undefined) rain.setGlyphChroma(s.glyphChromaScale > 0, s.glyphChromaScale);
+    if (s.burstBloom !== undefined) rain.setBurstBloom(s.burstBloom);
+    if (s.flatZ !== undefined) rain.setFlatZ(s.flatZ);
+    if (s.maxYaw !== undefined) rain.setMaxYaw(s.maxYaw);
+    if (s.vignette !== undefined) rain.setVignette(s.vignette);
+    if (s.scanlines !== undefined) rain.setScanlines(s.scanlines);
+    if (s.holoAberration !== undefined) rain.setHoloAberration(s.holoAberration);
+    if (s.interlace !== undefined) rain.setInterlace(s.interlace);
+    if (s.radialChroma !== undefined) rain.setRadialChroma(s.radialChroma);
+    if (s.fogAmt !== undefined || s.fogColor !== undefined) {
+      rain.setAtmosphericFog(
+        s.fogAmt ?? parseFloat(document.getElementById('fogAmt').value),
+        s.fogColor ?? document.getElementById('fogColor').value,
+      );
+    }
+    if (s.dust !== undefined) rain.setDust(s.dust);
+    if (s.bloomBreath !== undefined || s.bloomBreathRate !== undefined || s.bloomBreathAmp !== undefined) {
+      rain.setBloomBreath(
+        s.bloomBreath ?? document.getElementById('bloomBreath').checked,
+        s.bloomBreathRate ?? parseFloat(document.getElementById('bloomBreathRate').value),
+        s.bloomBreathAmp ?? parseFloat(document.getElementById('bloomBreathAmp').value),
+      );
+    }
+    if (s.charSet !== undefined) rain.setCharSet(s.charSet);
+    if (s.godRays) godRaysFromUI();
+    if (s.crtShader !== undefined) rain.crt?.setShader(s.crtShader);
+    if (s.msgBandSuppress !== undefined) rain.setMsgBandSuppress(s.msgBandSuppress);
+    if (s.msgSettle !== undefined) rain.setMsgSettleSharpness(s.msgSettle);
+    if (s.brightness !== undefined) rain.setBrightness(s.brightness);
+    if (s.cellW !== undefined || s.cellH !== undefined) {
+      rain.setCellSize(
+        s.cellW ?? parseFloat(document.getElementById('ctl-cellw').value),
+        s.cellH ?? parseFloat(document.getElementById('ctl-cellh').value),
+      );
+    }
+    if (s.breathAmt !== undefined) rain.setBreathAmt(s.breathAmt);
+    if (s.waveEnabled === false) {
+      rain.setWaveAmt(0);
+    } else {
+      if (s.waveSpeed !== undefined) rain.setWaveSpeed(s.waveSpeed);
+      if (s.waveAmt !== undefined) rain.setWaveAmt(s.waveAmt);
+      if (s.waveCrests !== undefined) rain.setWaveCrests(s.waveCrests);
+    }
+    if (s.weightedGlyphs !== undefined) rain.setWeightedGlyphs(s.weightedGlyphs ? 1.0 : 0.0);
+    if (s.reverseChance !== undefined) rain.setReverseChance(s.reverseChance);
+    if (s.drip !== undefined) rain.setDrip(s.drip);
+    if (s.edgeGlow !== undefined) rain.setEdgeGlow(s.edgeGlow);
+    if (s.zRot !== undefined) rain.setZRotation(s.zRot);
+    if (s.filmGrain !== undefined) rain.setFilmGrain(s.filmGrain);
+    if (s.depthTint !== undefined) rain.setDepthTint(s.depthTint);
+    if (s.boot !== undefined) rain.setStartupCascade(s.boot);
+    if (s.stability !== undefined) rain.setStability(s.stability);
+    if (s.deepTrailDark !== undefined) rain.setDeepTrailDark(s.deepTrailDark);
+    if (s.holdMult !== undefined) rain.setHoldMult(s.holdMult);
+    if (s.burstGlyphRate !== undefined) rain.setBurstGlyphRate(s.burstGlyphRate);
+    if (s.pomSteps !== undefined) rain.setPomSteps(s.pomSteps);
+    if (s.hueRange !== undefined) rain.setColorBlend(s.hueRange);
+    if (s.burstProb !== undefined) rain.setBurstProb(s.burstProb);
+    if (s.eolFlash !== undefined) rain.setEolFlash(s.eolFlash);
+    if (s.eolFreezeStart !== undefined) rain.setEolFreezeStart(s.eolFreezeStart);
+    if (s.eolFadeStart !== undefined) rain.setEolFadeStart(s.eolFadeStart);
+    if (s.shimmerAmt !== undefined) rain.setShimmerAmt(s.shimmerAmt);
+    if (s.shimmerFreq !== undefined) rain.setShimmerFreq(s.shimmerFreq);
+    if (s.inversionChance !== undefined) rain.setInversionChance(s.inversionChance);
+    if (s.glyphSpinAmt !== undefined) rain.setGlyphSpinAmt(s.glyphSpinAmt);
+    if (s.glyphSpinSpeed !== undefined) rain.setGlyphSpinSpeed(s.glyphSpinSpeed);
+    if (s.hueDriftRate !== undefined) rain.setHueDriftRate(s.hueDriftRate);
+    if (s.hueDriftAmt !== undefined) rain.setHueDriftAmt(s.hueDriftAmt);
+    if (s.headOvershoot !== undefined) rain.setHeadOvershootAmt(s.headOvershoot);
+    if (s.gravityStrength !== undefined) rain.setGravityStrength(s.gravityStrength);
+    if (s.gravityRate !== undefined) rain.setGravityRate(s.gravityRate);
+    if (s.perspectiveStrength !== undefined || s.perspectiveCx !== undefined) {
+      rain.setPerspective(
+        s.perspectiveStrength ?? parseFloat(document.getElementById('sl-persp-strength').value),
+        s.perspectiveCx ?? parseFloat(document.getElementById('sl-persp-cx').value),
+      );
+    }
+    if (s.morseAmt !== undefined) rain.setMorseAmt(s.morseAmt);
+    if (s.morseRate !== undefined) rain.setMorseRate(s.morseRate);
+    if (s.spiralAmt !== undefined || s.spiralRate !== undefined || s.spiralPitch !== undefined) {
+      rain.setSpiral(
+        s.spiralAmt ?? parseFloat(document.getElementById('sl-spiral-amt').value),
+        s.spiralRate ?? parseFloat(document.getElementById('sl-spiral-rate').value),
+        s.spiralPitch ?? parseFloat(document.getElementById('sl-spiral-pitch').value),
+      );
+    }
+    if (s.spdMin !== undefined || s.spdMax !== undefined) pushSpeedRange();
+    if (s.trlMin !== undefined || s.trlMax !== undefined) pushTrailRange();
+    if (s.density3d !== undefined) rain.setDensity(s.density3d);
+    if (s.zoneSpeedIn !== undefined || s.zoneSpeedOut !== undefined) pushZoneSpeed();
+    if (s.zoneBrIn !== undefined || s.zoneBrOut !== undefined) pushZoneBright();
+    if (s.topology !== undefined) { rain.setTopology(s.topology); updateDistControls(s.topology); }
+    if (s.forwardFacing !== undefined) rain.setForwardFacing(s.forwardFacing);
+    if (s.nCols !== undefined) rain.setColumnCount(s.nCols);
+    if (s.shellIn !== undefined || s.shellOut !== undefined) {
+      rain.setShellRadii(
+        s.shellIn ?? parseFloat(document.getElementById('ctl-shell-in').value),
+        s.shellOut ?? parseFloat(document.getElementById('ctl-shell-out').value),
+      );
+    }
+    if (s.rectW !== undefined || s.rectH !== undefined) {
+      rain.setRectExtent(
+        s.rectW ?? parseFloat(document.getElementById('ctl-rect-w').value),
+        s.rectH ?? parseFloat(document.getElementById('ctl-rect-h').value),
+      );
+    }
+    if (s.clusters !== undefined || s.clusterSpread !== undefined) {
+      rain.setClusterParams(
+        s.clusters ?? parseFloat(document.getElementById('ctl-clusters').value),
+        s.clusterSpread ?? parseFloat(document.getElementById('ctl-cluster-spread').value),
+      );
+    }
+    if (s.radialBias !== undefined) rain.setRadialBias(s.radialBias);
+    if (s.clusterUniform !== undefined) rain.setClusterUniform(s.clusterUniform);
+    if (s.clusterHueRange !== undefined) rain.setClusterHueRange(s.clusterHueRange);
+    if (s.clusterBrightRange !== undefined) rain.setClusterBrightRange(s.clusterBrightRange);
+    if (s.clusterSpeedRange !== undefined) rain.setClusterSpeedRange(s.clusterSpeedRange);
+    if (s.clusterSpeedJitter !== undefined) rain.setClusterSpeedJitter(s.clusterSpeedJitter);
+    if (s.clusterYSpread !== undefined) rain.setClusterYSpread(s.clusterYSpread);
+    if (s.clusterRJitter !== undefined) rain.setClusterRJitter(s.clusterRJitter);
+    if (s.contagion !== undefined) rain.setContagion(s.contagion);
+    if (s.squadCoherence !== undefined) rain.setSquadCoherence(s.squadCoherence);
+    if (s.squadSize !== undefined) debounceRebuild(() => rain.setSquadSize(s.squadSize));
+    if (s.trailCohesion !== undefined) debounceRebuild(() => rain.setTrailCohesion(s.trailCohesion));
+    if (s.densityIn !== undefined || s.densityOut !== undefined) {
+      rain.setRadialDensityTaper(
+        s.densityIn ?? parseFloat(document.getElementById('ctl-density-in').value),
+        s.densityOut ?? parseFloat(document.getElementById('ctl-density-out').value),
+      );
+    }
+    if (s.heightFade !== undefined) rain.setHeightFade(s.heightFade);
+    if (s.entrainAmt !== undefined) rain.setEntrainment(s.entrainAmt);
+    if (s.entrainSpeed !== undefined) rain.setEntrainSpeed(s.entrainSpeed);
+    if (s.entrainCrests !== undefined) rain.setEntrainCrests(s.entrainCrests);
+    if (s.spawnFront !== undefined) rain.setSpawnWaveFront(s.spawnFront);
+    if (s.scanSync !== undefined) rain.setScanlineSync(s.scanSync);
+    if (s.scanPhase !== undefined) rain.setScanlinePhase(s.scanPhase);
+    if (s.fov !== undefined) rain.setFov(s.fov);
+    if (s.orbitElev !== undefined) rain.setOrbitElevation(s.orbitElev);
+    if (s.orbit !== undefined) rain.setAutoOrbit(s.orbit, s.orbitSpeed ?? parseFloat(document.getElementById('ctl-orbit-speed').value));
+    if (s.flythrough !== undefined) rain.setFlythrough(s.flythrough, s.flySpeed ?? parseFloat(document.getElementById('ctl-fly-speed').value));
+    if (s.columnFollow !== undefined) rain.setColumnFollow(s.columnFollow);
+    if (s.frozen !== undefined) rain.setFrozen(s.frozen);
+    if (s.reducedMotion !== undefined) rain.setReducedMotion(s.reducedMotion);
+    if (s.cameraState?.position) {
+      rain.camera.position.set(s.cameraState.position.x, s.cameraState.position.y, s.cameraState.position.z);
+      if (s.cameraState.target && controls) {
+        controls.target.set(s.cameraState.target.x, s.cameraState.target.y, s.cameraState.target.z);
+        controls.update();
+      } else if (s.cameraState.quaternion) {
+        rain.camera.quaternion.set(
+          s.cameraState.quaternion.x,
+          s.cameraState.quaternion.y,
+          s.cameraState.quaternion.z,
+          s.cameraState.quaternion.w,
+        );
+      }
+      rain.camera.updateProjectionMatrix();
+      rain.camera.updateMatrixWorld();
+    }
+  }
+
+  document.getElementById('ctl-export').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(collectSettings(), null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;  a.download = 'matrix-rain-settings.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  const importFile = document.getElementById('ctl-import-file');
+  document.getElementById('ctl-import').addEventListener('click', () => importFile.click());
+  importFile.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try { applySettings(JSON.parse(ev.target.result)); } catch { /* malformed JSON */ }
+    };
+    reader.readAsText(file);
+    e.target.value = '';  // allow re-importing the same file
+  });
+
+  // ── Preset selector ───────────────────────────────────────────────────
+  // ── Apply startup defaults ────────────────────────────────────────────
+  if (Object.keys(defaults).length) {
+    applySettings(defaults);
+    updateCrtPanelVisibility(defaults.ppmode ?? 'rain');
+  }
+
+  document.getElementById('ctl-preset').addEventListener('change', e => {
+    const name = e.target.value;
+    if (!name) return;
+    const p = PRESETS[name];
+    if (!p) return;
+    applySettings(p);
+  });
+
+  // ── Saved preset save/load/delete ────────────────────────────────────
+  const SAVED_PRESET_PREFIX = 'matrix-rain-preset-';
+
+  function _listSavedPresetNames() {
+    const names = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(SAVED_PRESET_PREFIX)) names.push(key.slice(SAVED_PRESET_PREFIX.length));
+      }
+    } catch {}
+    return names.sort();
+  }
+
+  function _saveUiPreset(name) {
+    try {
+      localStorage.setItem(`${SAVED_PRESET_PREFIX}${name}`, JSON.stringify(collectSettings()));
+    } catch {}
+  }
+
+  function _loadUiPreset(name) {
+    try {
+      const raw = localStorage.getItem(`${SAVED_PRESET_PREFIX}${name}`);
+      if (!raw) return;
+      applySettings(JSON.parse(raw));
+    } catch {}
+  }
+
+  function _deleteUiPreset(name) {
+    try {
+      localStorage.removeItem(`${SAVED_PRESET_PREFIX}${name}`);
+    } catch {}
+  }
+
+  function _refreshSavedPresetSelect() {
+    const sel = document.getElementById('ctl-preset-load');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— none —</option>';
+    for (const name of _listSavedPresetNames()) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    sel.value = current;
+  }
+
+  document.getElementById('ctl-preset-save-btn').addEventListener('click', () => {
+    const name = document.getElementById('ctl-preset-save-name').value.trim();
+    if (!name) return;
+    _saveUiPreset(name);
+    _refreshSavedPresetSelect();
+    document.getElementById('ctl-preset-load').value = name;
+  });
+
+  document.getElementById('ctl-preset-load-btn').addEventListener('click', () => {
+    const name = document.getElementById('ctl-preset-load').value;
+    if (!name) return;
+    _loadUiPreset(name);
+  });
+
+  document.getElementById('ctl-preset-delete-btn').addEventListener('click', () => {
+    const name = document.getElementById('ctl-preset-load').value;
+    if (!name) return;
+    _deleteUiPreset(name);
+    _refreshSavedPresetSelect();
+  });
+
+  // Populate on load
+  _refreshSavedPresetSelect();
+
+  // ══════════════════════════════════════════════════════════════════════
+  // CCP EASTER EGG — demo-side JS
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Demo-local state ──────────────────────────────────────────────────
+  let _ccpEnabled  = false;  // mirrors library _ccpActive for DOM animation guards
+  let _ccpScore    = 0;
+  let _ccpHudTimer = null;
+  let _sweepRafId  = null;
+  let _mx = 0, _my = 0;
+
+  document.addEventListener('mousemove', e => { _mx = e.clientX; _my = e.clientY; });
+
+  // ── HUD ───────────────────────────────────────────────────────────────
+  function _startHUD() {
+    _ccpScore = 700 + Math.floor(Math.random() * 200);
+    document.getElementById('ccp-score').textContent      = _ccpScore;
+    document.getElementById('ccp-score-display').textContent = _ccpScore;
+    document.getElementById('ccp-hud').style.display = 'flex';
+    _ccpHudTimer = setInterval(() => {
+      _ccpScore++;
+      document.getElementById('ccp-score').textContent      = _ccpScore;
+      document.getElementById('ccp-score-display').textContent = _ccpScore;
+      const now = new Date();
+      document.getElementById('ccp-time').textContent = now.toTimeString().slice(0, 8);
+    }, 2000);
+  }
+
+  function _stopHUD() {
+    clearInterval(_ccpHudTimer);
+    _ccpHudTimer = null;
+    document.getElementById('ccp-hud').style.display = 'none';
+  }
+
+  // HUD coord update
+  setInterval(() => {
+    if (!_ccpEnabled) return;
+    document.getElementById('ccp-coords').textContent =
+      '(X:' + String(_mx).padStart(4,'0') + ' Y:' + String(_my).padStart(4,'0') + ')';
+  }, 100);
+
+  // ── Censorship sweep bars ──────────────────────────────────────────────
+  const _sweepPhase  = [0.0, 0.5];
+  const SWEEP_PERIOD = 11000;
+
+  function _animateSweep(now) {
+    if (!_ccpEnabled) return;
+    for (let i = 0; i < 2; i++) {
+      const t   = ((now % SWEEP_PERIOD) / SWEEP_PERIOD + _sweepPhase[i]) % 1.0;
+      const pct = t * 105 - 2;
+      document.getElementById('ccp-sweep-' + i).style.top = pct + 'vh';
+    }
+    _sweepRafId = requestAnimationFrame(_animateSweep);
+  }
+
+  function _startSweep() {
+    document.querySelectorAll('.ccp-sweep').forEach(el => el.style.display = 'block');
+    _sweepRafId = requestAnimationFrame(_animateSweep);
+  }
+
+  function _stopSweep() {
+    cancelAnimationFrame(_sweepRafId);
+    _sweepRafId = null;
+    document.querySelectorAll('.ccp-sweep').forEach(el => el.style.display = 'none');
+  }
+
+  // ── National anthem audio ──────────────────────────────────────────────
+  const _anthemAudio = new Audio();
+  _anthemAudio.preload = 'none';
+  _anthemAudio.src = 'data/ccp-anthem.mp3';
+  _anthemAudio.loop = true;
+  _anthemAudio.volume = 0.8;
+
+  function _stopAllCCPAudio() {
+    _anthemAudio.pause();
+    _anthemAudio.currentTime = 0;
+    document.getElementById('ccp-audio').checked = false;
+  }
+
+  // ── Hava Nagila audio ─────────────────────────────────────────────────
+  const _havaNagilaAudio = new Audio();
+  _havaNagilaAudio.preload = 'none';
+  _havaNagilaAudio.src = 'data/hava-nagila.mp3';
+  _havaNagilaAudio.loop   = true;
+  _havaNagilaAudio.volume = 0.8;
+
+  function _stopMossadAudio() {
+    _havaNagilaAudio.pause();
+    _havaNagilaAudio.currentTime = 0;
+    document.getElementById('mossad-audio').checked = false;
+  }
+
+  // ── CCP panel control wiring ───────────────────────────────────────────
+  function _linkSliderCCP(rangeId, numId, fn) {
+    const range = document.getElementById(rangeId);
+    const num   = document.getElementById(numId);
+    if (!range || !num) return;
+    range.addEventListener('input', e => { num.value = e.target.value; fn(parseFloat(e.target.value)); });
+    num.addEventListener('input',   e => { range.value = e.target.value; fn(parseFloat(e.target.value)); });
+  }
+
+  _linkSliderCCP('ccp-flash-rate',   'ccp-flash-rate-num',   v => rain.setCCPFlashRate(v));
+  _linkSliderCCP('ccp-opacity',      'ccp-opacity-num',      v => rain.setCCPOpacity(v));
+  _linkSliderCCP('ccp-scale',        'ccp-scale-num',        v => rain.setCCPScale(v));
+  _linkSliderCCP('ccp-orbit-speed',  'ccp-orbit-speed-num',  v => rain.setCCPOrbitSpeed(v));
+  _linkSliderCCP('ccp-tint-opacity', 'ccp-tint-opacity-num', v => {
+    document.getElementById('ccp-tint').style.background = 'rgba(222, 41, 16, ' + v + ')';
+  });
+
+  document.getElementById('ccp-panel-count').addEventListener('change', e =>
+    rain.setCCPPanelCount(parseInt(e.target.value, 10)));
+
+  document.getElementById('ccp-rain-override').addEventListener('change', e =>
+    rain.setCCPRainOverride(e.target.checked));
+
+  document.getElementById('ccp-slogans').addEventListener('change', e =>
+    rain.setCCPSlogans(e.target.checked));
+
+  document.getElementById('ccp-audio').addEventListener('change', e => {
+    if (e.target.checked && _ccpEnabled) {
+      _anthemAudio.play().catch(() => {});
+    } else {
+      _anthemAudio.pause();
+    }
+  });
+
+  document.getElementById('ccp-deduct').addEventListener('click', () => {
+    _ccpScore = Math.max(0, _ccpScore - 50);
+    document.getElementById('ccp-score').textContent      = _ccpScore;
+    document.getElementById('ccp-score-display').textContent = _ccpScore;
+    const hud = document.getElementById('ccp-hud');
+    hud.style.borderColor = '#ff0000';
+    hud.style.color       = '#ff0000';
+    setTimeout(() => {
+      hud.style.borderColor = '#DE2910';
+      hud.style.color       = '#ff4040';
+    }, 800);
+  });
+
+  document.getElementById('ccp-disable').addEventListener('click', () => {
+    _ccpEnabled = false;
+    rain.setCCPMode(false);
+    document.getElementById('ccp-panel').style.display = 'none';
+    _stopHUD();
+    _stopSweep();
+    _stopAllCCPAudio();
+    document.getElementById('ccp-tint').style.display = 'none';
+    // show hint
+    const hint     = document.getElementById('hint');
+    const prevText = hint.textContent;
+    const prevCol  = hint.style.color;
+    hint.textContent = '[ CCP MODE DEACTIVATED ]';
+    hint.style.color   = '#ff2020';
+    hint.style.opacity = '0.9';
+    setTimeout(() => {
+      hint.textContent = prevText;
+      hint.style.color   = prevCol;
+      hint.style.opacity = '0.35';
+    }, 2000);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // MOSSAD EASTER EGG — demo-side JS
+  // ══════════════════════════════════════════════════════════════════════
+
+  let _mossadEnabled         = false;
+  let _mossadCounterVal      = 0;
+  let _mossadCounterInterval = null;
+  let _mossadMoveListener    = null;
+
+  function _linkSliderMossad(rangeId, numId, fn) {
+    const range = document.getElementById(rangeId);
+    const num   = document.getElementById(numId);
+    if (!range || !num) return;
+    range.addEventListener('input', e => { num.value = e.target.value; fn(parseFloat(e.target.value)); });
+    num.addEventListener('input',   e => { range.value = e.target.value; fn(parseFloat(e.target.value)); });
+  }
+
+  _linkSliderMossad('mossad-flash-rate',  'mossad-flash-rate-num',  v => rain.setMossadFlashRate(v));
+  _linkSliderMossad('mossad-opacity',     'mossad-opacity-num',     v => rain.setMossadOpacity(v));
+  _linkSliderMossad('mossad-scale',       'mossad-scale-num',       v => rain.setMossadScale(v));
+  _linkSliderMossad('mossad-orbit-speed', 'mossad-orbit-speed-num', v => rain.setMossadOrbitSpeed(v));
+
+  document.getElementById('mossad-panel-count').addEventListener('change', e =>
+    rain.setMossadPanelCount(parseInt(e.target.value, 10)));
+
+  document.getElementById('mossad-rain-override').addEventListener('change', e =>
+    rain.setMossadRainOverride(e.target.checked));
+
+  document.getElementById('mossad-audio').addEventListener('change', e => {
+    if (e.target.checked) {
+      _havaNagilaAudio.currentTime = 0;
+      _havaNagilaAudio.play().catch(() => {});
+    } else {
+      _stopMossadAudio();
+    }
+  });
+
+  document.getElementById('mossad-disable').addEventListener('click', () => {
+    _mossadEnabled = false;
+    rain.setMossadMode(false);
+    document.getElementById('mossad-panel').style.display = 'none';
+    _stopMossadHUD();
+    const hint      = document.getElementById('hint');
+    const prev      = hint.textContent;
+    const prevColor = hint.style.color;
+    hint.textContent   = '[ MOSSAD MODE DEACTIVATED ]';
+    hint.style.color   = '#3060FF';
+    hint.style.opacity = '0.9';
+    setTimeout(() => {
+      hint.textContent   = prev;
+      hint.style.color   = prevColor;
+      hint.style.opacity = '0.35';
+    }, 2000);
+  });
+
+  function _getMsgOpts() {
+    return {
+      boost:          parseFloat(document.getElementById('ctl-msg-boost').value),
+      spawnChance:    parseFloat(document.getElementById('ctl-msg-spawn').value),
+      tolMultMin:     parseFloat(document.getElementById('ctl-msg-tolmult-min').value),
+      tolMultMax:     parseFloat(document.getElementById('ctl-msg-tolmult-max').value),
+      tolMinScale:    parseFloat(document.getElementById('ctl-msg-tolscale').value),
+      revealDuration: parseFloat(document.getElementById('ctl-msg-reveal').value),
+      holdDuration:   parseFloat(document.getElementById('ctl-msg-hold').value),
+      fadeDuration:   parseFloat(document.getElementById('ctl-msg-fade').value),
+    };
+  }
+
+  function _startMossadHUD() {
+    // Inject HUD if not already present
+    if (!document.getElementById('mossad-hud')) {
+      const hud = document.createElement('div');
+      hud.id = 'mossad-hud';
+      hud.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+        'background:rgba(0,30,100,0.55);color:#7EB3FF;' +
+        'font:11px monospace;padding:4px 12px;display:flex;gap:24px;align-items:center;' +
+        'border-bottom:1px solid #0038B855;pointer-events:none;';
+      hud.innerHTML =
+        '<span id="mossad-callsign">&#x25C8; UNIT 8200 \u2014 OPERATION WRATH OF GOD &#x25C8;</span>' +
+        '<span id="mossad-rec" style="animation:mossadRec 1.2s ease-in-out infinite;">&#x2b24; INTERCEPT</span>' +
+        '<span id="mossad-counter">SIGNALS: <span id="mossad-count">0</span></span>' +
+        '<span id="mossad-coords">POS: <span id="mossad-xy">0,0</span></span>';
+      document.body.insertBefore(hud, document.body.firstChild);
+
+      // Inject rec pulse animation once
+      if (!document.getElementById('mossad-rec-style')) {
+        const s = document.createElement('style');
+        s.id = 'mossad-rec-style';
+        s.textContent = '@keyframes mossadRec { 0%,100%{opacity:1} 50%{opacity:0.3} }';
+        document.head.appendChild(s);
+      }
+    }
+    // Inject tint
+    if (!document.getElementById('mossad-tint')) {
+      const tint = document.createElement('div');
+      tint.id = 'mossad-tint';
+      tint.style.cssText = 'position:fixed;inset:0;z-index:9990;' +
+        'background:rgba(0,56,184,0.03);pointer-events:none;';
+      document.body.appendChild(tint);
+    }
+    // Inject scan bars
+    if (!document.getElementById('mossad-scan-a')) {
+      const sa = document.createElement('div');
+      sa.id = 'mossad-scan-a';
+      document.body.appendChild(sa);
+      const sb = document.createElement('div');
+      sb.id = 'mossad-scan-b';
+      document.body.appendChild(sb);
+    }
+    // Start intercept counter
+    _mossadCounterVal = 0;
+    const countEl = document.getElementById('mossad-count');
+    if (countEl) countEl.textContent = '0';
+    _mossadCounterInterval = setInterval(() => {
+      _mossadCounterVal += Math.ceil(Math.random() * 3);
+      const el = document.getElementById('mossad-count');
+      if (el) el.textContent = _mossadCounterVal;
+    }, 800);
+    // Track mouse coordinates
+    _mossadMoveListener = e => {
+      const el = document.getElementById('mossad-xy');
+      if (el) el.textContent = e.clientX + ',' + e.clientY;
+    };
+    document.addEventListener('mousemove', _mossadMoveListener);
+  }
+
+  function _stopMossadHUD() {
+    clearInterval(_mossadCounterInterval);
+    _mossadCounterInterval = null;
+    if (_mossadMoveListener) {
+      document.removeEventListener('mousemove', _mossadMoveListener);
+      _mossadMoveListener = null;
+    }
+    for (const id of ['mossad-hud', 'mossad-tint', 'mossad-scan-a', 'mossad-scan-b']) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+  }
+
+  // ── Keyloggers (CCP + Mossad share same listener) ─────────────────────
+  let _kbuf   = '';
+  let _kTimer = null;
+  let _mbuf   = '';
+  let _mTimer = null;
+
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+    const ch = e.key.toLowerCase();
+    _kbuf = (_kbuf + ch).slice(-9);
+    _mbuf = (_mbuf + ch).slice(-13);
+    clearTimeout(_kTimer);
+    clearTimeout(_mTimer);
+    _kTimer = setTimeout(() => { _kbuf = ''; }, 3000);
+    _mTimer = setTimeout(() => { _mbuf = ''; }, 3000);
+
+    // Mossad trigger
+    if (_mbuf === 'bibinetanyahu') {
+      _mbuf = '';
+      _mossadEnabled = !_mossadEnabled;
+      rain.setMossadMode(_mossadEnabled, _mossadEnabled ? _getMsgOpts() : {});
+      const mossadPanelEl = document.getElementById('mossad-panel');
+      if (_mossadEnabled) {
+        mossadPanelEl.style.display = 'flex';
+        _startMossadHUD();
+      } else {
+        mossadPanelEl.style.display = 'none';
+        _stopMossadHUD();
+        _stopMossadAudio();
+      }
+      const hint      = document.getElementById('hint');
+      const prev      = hint.textContent;
+      const prevColor = hint.style.color;
+      hint.textContent   = _mossadEnabled ? '[ MOSSAD MODE ACTIVATED ]' : '[ MOSSAD MODE DEACTIVATED ]';
+      hint.style.color   = '#3060FF';
+      hint.style.opacity = '0.9';
+      setTimeout(() => {
+        hint.textContent   = prev;
+        hint.style.color   = prevColor;
+        hint.style.opacity = '0.35';
+      }, 2000);
+    }
+    if (_kbuf === 'xijinping') {
+      _kbuf = '';
+      _ccpEnabled = !_ccpEnabled;
+      rain.setCCPMode(_ccpEnabled, _ccpEnabled ? _getMsgOpts() : {});
+      const ccpPanelEl = document.getElementById('ccp-panel');
+      if (_ccpEnabled) {
+        ccpPanelEl.style.display = 'flex';
+        _startHUD();
+        _startSweep();
+        document.getElementById('ccp-tint').style.display = 'block';
+        document.getElementById('ccp-audio').checked = true;
+        _anthemAudio.currentTime = 0;
+        _anthemAudio.play().catch(() => {});
+        // Sync camera controls UI: enable orbit, disable flythrough
+        document.getElementById('ctl-orbit').checked = true;
+        const ftEl = document.getElementById('ctl-flythrough');
+        if (ftEl) ftEl.checked = false;
+      } else {
+        ccpPanelEl.style.display = 'none';
+        _stopHUD();
+        _stopSweep();
+        _stopAllCCPAudio();
+        document.getElementById('ccp-tint').style.display = 'none';
+      }
+      const hint     = document.getElementById('hint');
+      const prevText = hint.textContent;
+      const prevCol  = hint.style.color;
+      hint.textContent = _ccpEnabled ? '[ CCP MODE ACTIVATED ]' : '[ CCP MODE DEACTIVATED ]';
+      hint.style.color   = '#ff2020';
+      hint.style.opacity = '0.9';
+      setTimeout(() => {
+        hint.textContent = prevText;
+        hint.style.color   = prevCol;
+        hint.style.opacity = '0.35';
+      }, 2000);
+    }
+  });
+
+</script>
+</body>
+</html>

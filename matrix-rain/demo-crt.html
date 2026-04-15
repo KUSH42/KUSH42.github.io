@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Matrix Rain + CRT — WebGPU + TSL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Courier New', monospace;
+      color: #00ff70;
+    }
+
+    #rain-host {
+      position: fixed;
+      inset: 0;
+      background: #000;
+    }
+
+    /* ── Controls panel ──────────────────────────────────────────── */
+    #controls {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.82);
+      border: 1px solid #00ff70;
+      padding: 14px 16px;
+      min-width: 230px;
+      font-size: 11px;
+      letter-spacing: 0.07em;
+      line-height: 1.9;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+    }
+
+    #controls summary {
+      cursor: pointer;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: #00ff70;
+      list-style: none;
+      user-select: none;
+    }
+    #controls summary::before { content: '▶ '; }
+    details[open] summary::before { content: '▼ '; }
+
+    #controls label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      white-space: nowrap;
+      color: #7fffaa;
+    }
+
+    #controls input[type="range"] {
+      width: 90px;
+      accent-color: #00ff70;
+    }
+    #controls input[type="color"] {
+      width: 32px;
+      height: 18px;
+      padding: 0;
+      border: 1px solid #00ff70;
+      background: transparent;
+      cursor: pointer;
+    }
+    #controls input[type="checkbox"] {
+      accent-color: #00ff70;
+    }
+    #controls select {
+      background: #111;
+      color: #00ff70;
+      border: 1px solid #00ff70;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      padding: 1px 4px;
+      cursor: pointer;
+      max-width: 90px;
+    }
+
+    .section-label {
+      color: #00ff70;
+      text-transform: uppercase;
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      border-bottom: 1px solid rgba(0,255,112,0.25);
+      margin: 8px 0 4px;
+      padding-bottom: 2px;
+    }
+
+    #no-webgpu {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #f00;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 16px;
+      font-family: monospace;
+      z-index: 9999;
+    }
+    #no-webgpu.hidden { display: none; }
+
+    #hint {
+      position: fixed;
+      bottom: 8px;
+      left: 10px;
+      font-size: 10px;
+      color: rgba(0, 255, 112, 0.35);
+      letter-spacing: 0.08em;
+      pointer-events: none;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.webgpu.js",
+      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.webgpu.js",
+      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.tsl.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<div id="no-webgpu" class="hidden">
+  <strong>WebGPU and WebGL2 unavailable</strong>
+  <small>Try Chrome 113+, Edge 113+, or Firefox 120+ with a compatible GPU</small>
+</div>
+
+<div id="rain-host"></div>
+
+<details id="controls" open>
+  <summary>Matrix Rain + CRT</summary>
+  <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+
+    <!-- ── Preset row ─────────────────────────────────────────── -->
+    <div class="section-label">Presets</div>
+
+    <label>Rain preset
+      <select id="ctl-rain-preset">
+        <option value="">— custom —</option>
+        <option value="matrix1999">matrix1999</option>
+        <option value="ghost">ghost</option>
+        <option value="overdrive">overdrive</option>
+        <option value="default">default</option>
+      </select>
+    </label>
+
+    <label>CRT preset
+      <select id="ctl-crt-preset">
+        <option value="">— custom —</option>
+        <option value="trinitron">trinitron</option>
+        <option value="commodore1084">commodore1084</option>
+        <option value="pvm14">pvm14</option>
+        <option value="arcade240p">arcade240p</option>
+        <option value="palTv">palTv</option>
+        <option value="rca1975">rca1975</option>
+        <option value="emerson88">emerson88</option>
+        <option value="necMultisync">necMultisync</option>
+      </select>
+    </label>
+
+    <label>Signal preset
+      <select id="ctl-signal-preset">
+        <option value="">— none —</option>
+        <option value="cleanRgb">cleanRgb</option>
+        <option value="compositeNtsc">compositeNtsc</option>
+        <option value="compositeVhs">compositeVhs</option>
+        <option value="offAirNtsc">offAirNtsc</option>
+        <option value="offAirPal">offAirPal</option>
+        <option value="betacam">betacam</option>
+      </select>
+    </label>
+
+    <!-- ── Rain controls ──────────────────────────────────────── -->
+    <div class="section-label">Rain</div>
+
+    <label>Color
+      <input id="ctl-color" type="color" value="#00ff70">
+    </label>
+
+    <label>Opacity
+      <input id="ctl-opacity" type="range" min="0" max="1" step="0.01" value="0.82">
+    </label>
+
+    <label>Depth (POM)
+      <input id="ctl-depth" type="range" min="0" max="0.15" step="0.005" value="0.04">
+    </label>
+
+    <label>Normal Str
+      <input id="ctl-normal" type="range" min="0" max="12" step="0.5" value="6">
+    </label>
+
+    <label>Heat shimmer
+      <input id="ctl-heat" type="range" min="0" max="0.012" step="0.0005" value="0.004">
+    </label>
+
+    <label>Lens streaks
+      <input id="ctl-streaks" type="range" min="0" max="0.2" step="0.005" value="0.055">
+    </label>
+
+    <label>Speed
+      <input id="ctl-speed" type="range" min="0.1" max="4" step="0.05" value="1">
+    </label>
+
+    <label>Bloom strength
+      <input id="ctl-bloom" type="range" min="0" max="3" step="0.05" value="1.15">
+    </label>
+
+    <label>Phosphor decay
+      <input id="ctl-phosphor" type="range" min="0" max="0.99" step="0.01" value="0.88">
+    </label>
+
+    <label>God rays
+      <input id="ctl-godrays" type="checkbox" checked>
+    </label>
+
+    <label>Burst bloom
+      <input id="ctl-burst" type="checkbox" checked>
+    </label>
+
+    <label>Glyph chroma
+      <input id="ctl-chroma" type="checkbox" checked>
+    </label>
+
+    <label>Char set
+      <select id="ctl-charset">
+        <option value="matrixcode" selected>matrixcode</option>
+        <option value="matrix1999">matrix1999</option>
+        <option value="latin">latin</option>
+        <option value="ascii">ascii</option>
+        <option value="cyber">cyber</option>
+        <option value="cyrillic">cyrillic</option>
+        <option value="japanese">japanese</option>
+        <option value="chinese">chinese</option>
+        <option value="arabic">arabic</option>
+        <option value="orbitron">orbitron</option>
+        <option value="iosevka">iosevka</option>
+        <option value="datatype">datatype</option>
+        <option value="gsanscode">gsanscode</option>
+        <option value="hebrew">hebrew</option>
+      </select>
+    </label>
+
+    <!-- ── CRT controls ───────────────────────────────────────── -->
+    <div class="section-label">CRT Display</div>
+
+    <label>Warp
+      <input id="ctl-warp" type="range" min="0" max="1" step="0.01" value="0.2">
+    </label>
+
+    <label>Halation
+      <input id="ctl-halo" type="range" min="0" max="1" step="0.01" value="0.3">
+    </label>
+
+    <label>Scan hardness
+      <input id="ctl-scan-hard" type="range" min="-16" max="-4" step="0.5" value="-8">
+    </label>
+
+    <label>Pix hardness
+      <input id="ctl-pix-hard" type="range" min="-6" max="-0.5" step="0.5" value="-2.5">
+    </label>
+
+    <label>Mask type
+      <select id="ctl-mask-type">
+        <option value="0">Shadow mask</option>
+        <option value="1">Aperture grille</option>
+        <option value="2">Trinitron</option>
+        <option value="3">None</option>
+      </select>
+    </label>
+
+    <label>Mask strength
+      <input id="ctl-mask-str" type="range" min="0" max="1" step="0.01" value="0.85">
+    </label>
+
+    <label>Phosphor persist
+      <input id="ctl-crt-persist" type="range" min="0" max="0.99" step="0.01" value="0">
+    </label>
+
+    <label>Grain
+      <input id="ctl-grain" type="range" min="0" max="0.05" step="0.001" value="0.01">
+    </label>
+
+    <label>Glitch
+      <input id="ctl-glitch" type="checkbox">
+    </label>
+
+    <!-- ── CRT signal controls ────────────────────────────────────── -->
+    <div class="section-label">CRT Signal</div>
+
+    <label>Swim BW (Hz)
+      <input id="ctl-swim-bw" type="range" min="0.5" max="50" step="0.5" value="5">
+    </label>
+
+    <label>Flicker
+      <input id="ctl-flicker" type="range" min="0" max="0.05" step="0.001" value="0">
+    </label>
+
+    <label>Conv aspect
+      <input id="ctl-conv-aspect" type="range" min="0" max="1" step="0.05" value="1">
+    </label>
+
+    <!-- ── Glass scatter + GPU bloom ─────────────────────────────── -->
+    <div class="section-label">Scatter / Bloom</div>
+
+    <label>Glass scatter
+      <input id="ctl-glass-blur" type="range" min="0" max="0.4" step="0.01" value="0">
+    </label>
+
+    <label>Scatter radius
+      <input id="ctl-glass-radius" type="range" min="0.001" max="0.004" step="0.0002" value="0.002">
+    </label>
+
+    <label>GPU bloom
+      <input id="ctl-gpu-bloom" type="checkbox">
+    </label>
+
+    <label>Bloom strength
+      <input id="ctl-gpu-bloom-str" type="range" min="0" max="3" step="0.05" value="0.8">
+    </label>
+
+    <label>Bloom threshold
+      <input id="ctl-gpu-bloom-thr" type="range" min="0" max="1" step="0.01" value="0.75">
+    </label>
+
+  </div>
+</details>
+
+<div id="hint">MATRIX RAIN + CRT / WEBGPU + TSL</div>
+
+<script type="module">
+  import { initMatrixRainCRT } from './matrix-rain-crt-bridge.js';
+  import { PRESETS as RAIN_PRESETS } from './matrix-rain-presets.js';
+  import { PRESETS as CRT_PRESETS, SIGNAL_PRESETS }
+    from '../telescreen-crt-webgpu/crt-presets.js';
+  import { loadBloomDependencies } from '../telescreen-crt-webgpu/telescreen-crt-webgpu.js';
+  import { TextureNode } from 'three/webgpu';
+
+  // ── WebGL2 compat: Three.js r183 bug — TextureNode.generate() appends
+  // '_sampler' suffix for any output type matching /^sampler/, which catches
+  // both the WGSL 'sampler' binding AND GLSL 'sampler2D'/'sampler3D'/etc.
+  // In WGSL (WebGPU) the '_sampler' suffix is correct; the sampler binding is
+  // a separate resource from the texture.  In GLSL (WebGL2) 'sampler2D' is a
+  // combined type: there is no separate '_sampler' declaration, so the plain
+  // property name must be returned.
+  //
+  // Fix: intercept the GLSL-specific types ('sampler2D', 'sampler3D',
+  // 'samplerCube', 'sampler2DArray', etc.) and redirect to 'property'.
+  // WGSL uses the bare string 'sampler' — not 'sampler2D' — so this redirect
+  // never fires on the WebGPU backend.  No backend detection required.
+  {
+    const _origGenerate = TextureNode.prototype.generate;
+    // 'sampler2D', 'sampler3D', 'samplerCube', 'usampler2D', etc. all have word chars after 'sampler'.
+    // The WGSL bare 'sampler' type has none — so /^sampler\w+/ selects only GLSL types.
+    const _GLSL_SAMPLER = /^sampler\w/;
+    TextureNode.prototype.generate = function (builder, output) {
+      if (_GLSL_SAMPLER.test(output)) {
+        return _origGenerate.call(this, builder, 'property');
+      }
+      return _origGenerate.call(this, builder, output);
+    };
+  }
+
+  // WebGL2 fallback is automatic — only show the overlay if init truly fails.
+  const noWebGpu = document.getElementById('no-webgpu');
+
+  // ── Bloom dependencies (GaussianBlurNode) — required for GPU bloom and
+  // glass-faceplate scatter. Call before initMatrixRainCRT so the CRT
+  // allocates its bloom pipeline on first build rather than falling back to
+  // unblurred composite.
+  await loadBloomDependencies();
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  const host = document.getElementById('rain-host');
+  const failTimer = setTimeout(() => noWebGpu.classList.remove('hidden'), 10000);
+  host.addEventListener('matrixrain:ready', () => clearTimeout(failTimer), { once: true });
+  const bridge = initMatrixRainCRT(host, {
+    color:     '#00ff70',
+    opacity:    0.82,
+    atlasPath: './data/matrixcode_msdf.png',
+  }, {
+    // GPU bloom allocated but off by default; toggle with ctl-gpu-bloom.
+    bloom: { enabled: false, strength: 0.8, radius: 1.5, threshold: 0.75 },
+  });
+  const rain = bridge.rain;
+
+  // crt handle is available after renderer.init() resolves; access via bridge.crt
+  function withCrt(fn) {
+    // bridge.crt is a getter; call fn when available
+    const check = () => {
+      if (bridge.crt) { fn(bridge.crt); } else { setTimeout(check, 50); }
+    };
+    check();
+  }
+
+  // ── Utility ───────────────────────────────────────────────────────────
+  function bind(id, fn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const evName = el.type === 'checkbox' ? 'change' : 'input';
+    el.addEventListener(evName, () =>
+      fn(el.type === 'checkbox' ? el.checked : parseFloat(el.value))
+    );
+  }
+
+  // ── Rain controls ─────────────────────────────────────────────────────
+  document.getElementById('ctl-color').addEventListener('input', () =>
+    rain.setColor(document.getElementById('ctl-color').value)
+  );
+  bind('ctl-opacity',  v => rain.setOpacity(v));
+  bind('ctl-depth',    v => rain.setDepth(v));
+  bind('ctl-normal',   v => rain.setNormalStrength(v));
+  bind('ctl-heat',     v => rain.setHeat(v > 0, v));
+  bind('ctl-streaks',  v => rain.setStreaks(v > 0, v));
+  bind('ctl-speed',    v => rain.setSpeed(v));
+  bind('ctl-bloom',    v => rain.setBloomStrength(v));
+  bind('ctl-phosphor', v => rain.setPhosphorDecay(v));
+  bind('ctl-godrays',  on => rain.setGodRays(on));
+  bind('ctl-burst',    on => rain.setBurstBloom(on));
+  bind('ctl-chroma',   on => rain.setGlyphChroma(on, 1.0));
+  document.getElementById('ctl-charset').addEventListener('change', e =>
+    rain.setCharSet(e.target.value)
+  );
+
+  // ── CRT controls ──────────────────────────────────────────────────────
+  bind('ctl-warp',      v => withCrt(c => c.setShader({ warpMult: v })));
+  bind('ctl-halo',      v => withCrt(c => c.setShader({ haloStr: v })));
+  bind('ctl-scan-hard', v => withCrt(c => c.setShader({ hardScan: v })));
+  bind('ctl-pix-hard',  v => withCrt(c => c.setShader({ hardPix: v })));
+  bind('ctl-mask-type', v => withCrt(c => c.setShader({ maskType: Math.round(v) })));
+  bind('ctl-mask-str',  v => withCrt(c => c.setShader({ maskStr: v })));
+  bind('ctl-crt-persist', v => withCrt(c => c.setShader({ persistence: v })));
+  bind('ctl-grain',     v => withCrt(c => c.setShader({ grainAmt: v })));
+  bind('ctl-glitch',    on => withCrt(c => c.setGlitch(on)));
+
+  // ── CRT signal controls ────────────────────────────────────────────────
+  bind('ctl-swim-bw',      v  => withCrt(c => c.setShader({ swimBW: v })));
+  bind('ctl-flicker',      v  => withCrt(c => c.setShader({ flickerAmt: v })));
+  bind('ctl-conv-aspect',  v  => withCrt(c => c.setShader({ convAspect: v })));
+
+  // ── Glass scatter + GPU bloom ──────────────────────────────────────────
+  bind('ctl-glass-blur',   v  => withCrt(c => c.setShader({ glassBlurStr: v })));
+  bind('ctl-glass-radius', v  => withCrt(c => c.setShader({ glassBlurRadius: v })));
+  bind('ctl-gpu-bloom',    on => withCrt(c => c.setBloom({ enabled: on })));
+  bind('ctl-gpu-bloom-str',v  => withCrt(c => c.setBloom({ strength: v })));
+  bind('ctl-gpu-bloom-thr',v  => withCrt(c => c.setBloom({ threshold: v })));
+
+  // ── Rain preset selector ──────────────────────────────────────────────
+  document.getElementById('ctl-rain-preset').addEventListener('change', e => {
+    const name = e.target.value;
+    if (!name) return;
+    rain.applyPreset(name);
+    // Sync UI
+    const p = RAIN_PRESETS[name];
+    if (!p) return;
+    if (p.color           !== undefined) document.getElementById('ctl-color').value     = p.color;
+    if (p.opacity         !== undefined) document.getElementById('ctl-opacity').value   = p.opacity;
+    if (p.depth           !== undefined) document.getElementById('ctl-depth').value     = p.depth;
+    if (p.normalStrength  !== undefined) document.getElementById('ctl-normal').value    = p.normalStrength;
+    if (p.speed           !== undefined) document.getElementById('ctl-speed').value     = p.speed;
+    if (p.bloomStrength   !== undefined) document.getElementById('ctl-bloom').value     = p.bloomStrength;
+    if (p.phosphorDecay   !== undefined) document.getElementById('ctl-phosphor').value  = p.phosphorDecay;
+    if (p.heat            !== undefined) document.getElementById('ctl-heat').value      = p.heat;
+    if (p.streaks         !== undefined) document.getElementById('ctl-streaks').value   = p.streaks;
+    if (p.burstBloom      !== undefined) document.getElementById('ctl-burst').checked   = p.burstBloom;
+    if (p.glyphChroma     !== undefined) document.getElementById('ctl-chroma').checked  = p.glyphChroma;
+    if (p.charSet         !== undefined) document.getElementById('ctl-charset').value   = p.charSet;
+  });
+
+  // ── CRT display preset selector ───────────────────────────────────────
+  document.getElementById('ctl-crt-preset').addEventListener('change', e => {
+    const name = e.target.value;
+    if (!name) return;
+    const p = CRT_PRESETS[name];
+    if (!p) return;
+    withCrt(c => c.setShader(p));
+    // Sync UI (curated subset)
+    if (p.warpMult    !== undefined) document.getElementById('ctl-warp').value        = p.warpMult;
+    if (p.haloStr     !== undefined) document.getElementById('ctl-halo').value        = p.haloStr;
+    if (p.hardScan    !== undefined) document.getElementById('ctl-scan-hard').value   = Math.max(-16, Math.min(-4, p.hardScan));
+    if (p.hardPix     !== undefined) document.getElementById('ctl-pix-hard').value    = p.hardPix;
+    if (p.maskType    !== undefined) document.getElementById('ctl-mask-type').value   = Math.round(p.maskType);
+    if (p.maskStr     !== undefined) document.getElementById('ctl-mask-str').value    = p.maskStr;
+    if (p.grainAmt    !== undefined) document.getElementById('ctl-grain').value       = p.grainAmt;
+    if (p.swimBW      !== undefined) document.getElementById('ctl-swim-bw').value     = p.swimBW;
+    if (p.flickerAmt  !== undefined) document.getElementById('ctl-flicker').value     = p.flickerAmt;
+    if (p.convAspect  !== undefined) document.getElementById('ctl-conv-aspect').value = p.convAspect;
+  });
+
+  // ── CRT signal preset selector ────────────────────────────────────────
+  document.getElementById('ctl-signal-preset').addEventListener('change', e => {
+    const name = e.target.value;
+    if (!name) return;
+    const p = SIGNAL_PRESETS[name];
+    if (!p) return;
+    withCrt(c => c.setShader(p));
+    // Sync signal-related UI controls
+    if (p.swimBW      !== undefined) document.getElementById('ctl-swim-bw').value     = p.swimBW;
+    if (p.flickerAmt  !== undefined) document.getElementById('ctl-flicker').value     = p.flickerAmt;
+    if (p.convAspect  !== undefined) document.getElementById('ctl-conv-aspect').value = p.convAspect;
+  });
+</script>
+</body>
+</html>

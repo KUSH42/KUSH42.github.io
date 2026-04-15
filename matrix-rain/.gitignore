@@ -1,0 +1,6 @@
+node_modules/
+coverage/
+*.lcov
+.DS_Store
+data/fonts/
+data/fonts/noto/

@@ -34,12 +34,6 @@ jobs:
         run: npm run build
         # Produces dist/ with the main site (index.html, assets/, data/, sonar-ping.mp3)
 
-      - name: Checkout matrix-rain
-        uses: actions/checkout@v4
-        with:
-          repository: KUSH42/matrix-rain
-          path: _matrix-rain
-
       - name: Assemble pages artifact
         run: |
           mkdir -p _site
@@ -48,9 +42,9 @@ jobs:
           # CRT demo — zero-build, CDN importmap, copy source directly
           mkdir -p _site/crt-demo
           cp -r crt-demo/. _site/crt-demo/
-          # Matrix rain WebGPU — zero-build, CDN importmap, copy source directly
+          # Matrix rain WebGPU — publish the vendored static snapshot from this repo
           mkdir -p _site/matrix-rain
-          cp -r _matrix-rain/. _site/matrix-rain/
+          cp -r matrix-rain/. _site/matrix-rain/
           # LFO modulation component demo
           cp lfo.html lfo-engine.js lfo-ui.js lfo-comp.js _site/
 

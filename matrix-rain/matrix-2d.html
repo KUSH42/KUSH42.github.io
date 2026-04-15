@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Matrix Rain 2D — WebGPU + TSL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Courier New', monospace;
+      color: #00ff41;
+    }
+
+    #rain-host {
+      position: fixed;
+      inset: 0;
+      background: #000;
+    }
+
+    /* ── Controls panel ──────────────────────────────────────────── */
+    #controls {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.80);
+      border: 1px solid #00ff41;
+      padding: 14px 16px;
+      min-width: 230px;
+      font-size: 11px;
+      letter-spacing: 0.07em;
+      line-height: 1.9;
+    }
+
+    #controls summary {
+      cursor: pointer;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: #00ff41;
+      list-style: none;
+      user-select: none;
+    }
+    #controls summary::before { content: '▶ '; }
+    details[open] summary::before { content: '▼ '; }
+
+    #controls label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      white-space: nowrap;
+      color: #7fffaa;
+    }
+
+    #controls input[type="range"] {
+      width: 90px;
+      accent-color: #00ff41;
+    }
+    #controls select {
+      background: #111;
+      color: #00ff41;
+      border: 1px solid #00ff41;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      padding: 1px 4px;
+      cursor: pointer;
+      max-width: 100px;
+    }
+    #controls input[type="checkbox"] { accent-color: #00ff41; cursor: pointer; }
+    #controls input[type="radio"]    { accent-color: #00ff41; cursor: pointer; }
+
+    #controls button {
+      background: transparent;
+      border: 1px solid #00ff41;
+      color: #00ff41;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      padding: 2px 8px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+    #controls button:hover { background: rgba(0,255,65,0.12); }
+
+    .section-heading {
+      color: #00ff41;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-top: 6px;
+      margin-bottom: 2px;
+      opacity: 0.7;
+    }
+
+    .val { color: #00ff41; min-width: 38px; text-align: right; }
+
+    #layer-controls { margin-top: 4px; display: flex; flex-direction: column; gap: 4px; }
+    #layer-selector { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    #layer-selector label { white-space: nowrap; gap: 3px; }
+
+    #loading-indicator {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      color: #00ff41;
+      z-index: 50;
+      pointer-events: none;
+    }
+    #loading-indicator.hidden { display: none; }
+
+    #no-webgpu {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #f00;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 16px;
+      font-family: monospace;
+      z-index: 9999;
+    }
+    #no-webgpu.hidden { display: none; }
+
+    #hint {
+      position: fixed;
+      bottom: 8px;
+      left: 10px;
+      font-size: 10px;
+      color: rgba(0, 255, 65, 0.35);
+      letter-spacing: 0.08em;
+      pointer-events: none;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.webgpu.js",
+      "three/webgpu":   "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.webgpu.js",
+      "three/tsl":      "https://cdn.jsdelivr.net/npm/three@0.183.2/build/three.tsl.js",
+      "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.183.2/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+<div id="no-webgpu" class="hidden">
+  <strong>WebGPU and WebGL2 unavailable</strong>
+  <small>Try Chrome 113+, Edge 113+, or Firefox 120+ with a compatible GPU</small>
+</div>
+
+<div id="rain-host"></div>
+<div id="loading-indicator" class="hidden">REBUILDING…</div>
+
+<details id="controls" open>
+  <summary>Matrix Rain 2D</summary>
+  <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+
+    <label>Preset
+      <select id="ctl-preset">
+        <option value="">— custom —</option>
+        <option value="default">default</option>
+        <option value="matrix1999" selected>matrix1999</option>
+        <option value="ghost">ghost</option>
+        <option value="overdrive">overdrive</option>
+      </select>
+    </label>
+
+    <label>Char set
+      <select id="ctl-charset">
+        <option value="matrixcode">matrixcode</option>
+        <option value="matrix1999" selected>matrix1999</option>
+        <option value="latin">latin</option>
+        <option value="ascii">ascii</option>
+        <option value="cyber">cyber</option>
+        <option value="cyrillic">cyrillic</option>
+        <option value="japanese">japanese</option>
+        <option value="chinese">chinese</option>
+        <option value="arabic">arabic</option>
+        <option value="orbitron">orbitron</option>
+        <option value="iosevka">iosevka</option>
+        <option value="datatype">datatype</option>
+        <option value="gsanscode">gsanscode</option>
+        <option value="hebrew">hebrew</option>
+      </select>
+    </label>
+
+    <label>Cell width
+      <input type="range" id="ctl-cellw" min="8" max="32" step="1" value="16">
+      <span class="val" id="val-cellw">16</span>
+    </label>
+
+    <label>Cell height
+      <input type="range" id="ctl-cellh" min="12" max="48" step="1" value="24">
+      <span class="val" id="val-cellh">24</span>
+    </label>
+
+    <label>Speed min
+      <input type="range" id="ctl-spdmin" min="0.5" max="4.0" step="0.1" value="1.2">
+      <span class="val" id="val-spdmin">1.2</span>
+    </label>
+
+    <label>Speed max
+      <input type="range" id="ctl-spdmax" min="2.0" max="12.0" step="0.5" value="8.0">
+      <span class="val" id="val-spdmax">8.0</span>
+    </label>
+
+    <label>Trail min
+      <input type="range" id="ctl-trlmin" min="3" max="15" step="1" value="6">
+      <span class="val" id="val-trlmin">6</span>
+    </label>
+
+    <label>Trail max
+      <input type="range" id="ctl-trlmax" min="10" max="50" step="1" value="30">
+      <span class="val" id="val-trlmax">30</span>
+    </label>
+
+    <label>Density
+      <input type="range" id="ctl-density" min="0.2" max="1.0" step="0.01" value="0.72">
+      <span class="val" id="val-density">0.72</span>
+    </label>
+
+    <label>Streams/col
+      <input type="range" id="ctl-nstreams" min="1" max="4" step="1" value="2">
+      <span class="val" id="val-nstreams">2</span>
+    </label>
+
+    <label>Brightness
+      <input type="range" id="ctl-bright" min="0.2" max="2.0" step="0.05" value="1.0">
+      <span class="val" id="val-bright">1.00</span>
+    </label>
+
+    <label>Opacity
+      <input type="range" id="ctl-opacity" min="0.0" max="1.0" step="0.01" value="1.0">
+      <span class="val" id="val-opacity">1.00</span>
+    </label>
+
+    <hr style="border-color:#003a10;margin:4px 0;">
+
+    <label style="justify-content:flex-start;gap:8px;">
+      <input type="checkbox" id="ctl-layers">
+      <span style="color:#7fffaa;">Multi-layer depth</span>
+    </label>
+
+    <hr style="border-color:#003a10;margin:4px 0;">
+    <div class="section-heading">Organic</div>
+
+    <label>Speed oscillation
+      <input type="checkbox" id="ctl-osc" checked>
+    </label>
+
+    <label>Wave speed
+      <input type="range" id="ctl-wavespeed" min="0" max="0.2" step="0.005" value="0.02">
+      <span class="val" id="val-wavespeed">0.02</span>
+    </label>
+
+    <label>Phase correlation
+      <input type="checkbox" id="ctl-phase" checked>
+    </label>
+
+    <label>Cluster strength
+      <input type="range" id="ctl-clstrength" min="0" max="1" step="0.05" value="1.0">
+      <span class="val" id="val-clstrength">1.00</span>
+    </label>
+
+    <label>Cluster width
+      <input type="range" id="ctl-clwidth" min="2" max="8" step="1" value="4">
+      <span class="val" id="val-clwidth">4</span>
+    </label>
+
+    <label>Weighted glyphs
+      <input type="checkbox" id="ctl-weighted" checked>
+    </label>
+
+    <label>Glitch intensity
+      <input type="range" id="ctl-glitch-int" min="0.1" max="1.0" step="0.05" value="0.6">
+      <span class="val" id="val-glitch-int">0.60</span>
+    </label>
+
+    <label>Glitch
+      <button id="btn-glitch">Trigger</button>
+    </label>
+
+    <label>Ramp multiplier
+      <input type="range" id="ctl-ramp-mult" min="1.5" max="6.0" step="0.5" value="4.0">
+      <span class="val" id="val-ramp-mult">4.0</span>
+    </label>
+
+    <label>Speed ramp
+      <button id="btn-ramp">Trigger</button>
+    </label>
+
+    <label>Reduced motion
+      <input type="checkbox" id="ctl-reduced">
+    </label>
+
+    <label>Freeze
+      <input type="checkbox" id="ctl-freeze">
+    </label>
+
+    <hr style="border-color:#003a10;margin:4px 0;">
+
+    <div id="layer-controls" style="display:none;">
+      <div id="layer-selector">
+        <span style="color:#7fffaa;">Layer:</span>
+        <label><input type="radio" name="layer" value="background" id="r-bg"> BG</label>
+        <label><input type="radio" name="layer" value="midground"  id="r-mid" checked> Mid</label>
+        <label><input type="radio" name="layer" value="foreground" id="r-fg"> FG</label>
+      </div>
+
+      <label>Layer bright
+        <input type="range" id="ctl-lbright" min="0.0" max="2.0" step="0.05" value="1.0">
+        <span class="val" id="val-lbright">1.00</span>
+      </label>
+
+      <label>Layer spd max
+        <input type="range" id="ctl-lspdmax" min="1.0" max="12.0" step="0.5" value="7.0">
+        <span class="val" id="val-lspdmax">7.0</span>
+      </label>
+
+      <label>Layer cell W
+        <input type="range" id="ctl-lcellw" min="8" max="32" step="1" value="16">
+        <span class="val" id="val-lcellw">16</span>
+      </label>
+
+      <label>Layer cell H
+        <input type="range" id="ctl-lcellh" min="12" max="48" step="1" value="24">
+        <span class="val" id="val-lcellh">24</span>
+      </label>
+
+      <label style="justify-content:flex-start;gap:6px;font-size:10px;">
+        <input type="checkbox" id="ctl-lena-bg"  checked><span style="color:#7fffaa;">BG</span>
+        <input type="checkbox" id="ctl-lena-mid" checked><span style="color:#7fffaa;">Mid</span>
+        <input type="checkbox" id="ctl-lena-fg"  checked><span style="color:#7fffaa;">FG</span>
+        <span style="color:#555;">enabled</span>
+      </label>
+    </div>
+
+  </div>
+</details>
+
+<p id="hint">matrix rain 2d — webgpu + tsl</p>
+
+<script type="module">
+import { init2DRain } from './matrix-rain-2d-tsl.js';
+
+const noWebGPU = document.getElementById('no-webgpu');
+
+// WebGL2 fallback is automatic; show overlay only if init truly fails.
+try {
+
+  const host      = document.getElementById('rain-host');
+  const loadingEl = document.getElementById('loading-indicator');
+
+  let rain = null;
+
+  // ── Initial single-layer instance ──────────────────────────────────────
+  rain = await init2DRain(host, {
+    charSet:    'matrix1999',
+    cellSize:   [16, 24],
+    speedRange: [1.2, 8.0],
+    trailRange: [6, 30],
+    density:    0.72,
+    nStreams:   2,
+    brightness: 1.0,
+    opacity:    1.0,
+  });
+
+  // ── Helper: slider + value display wiring ──────────────────────────────
+  function wire(sliderId, valId, decimals, onChange) {
+    const slider = document.getElementById(sliderId);
+    const valEl  = document.getElementById(valId);
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      valEl.textContent = v.toFixed(decimals);
+      document.getElementById('ctl-preset').value = '';
+      onChange(v);
+    });
+  }
+
+  wire('ctl-cellw',   'val-cellw',   0, v => rain.setCellSize(v, parseFloat(document.getElementById('ctl-cellh').value)));
+  wire('ctl-cellh',   'val-cellh',   0, v => rain.setCellSize(parseFloat(document.getElementById('ctl-cellw').value), v));
+  wire('ctl-spdmin',  'val-spdmin',  1, v => rain.setSpeedRange(v, parseFloat(document.getElementById('ctl-spdmax').value)));
+  wire('ctl-spdmax',  'val-spdmax',  1, v => rain.setSpeedRange(parseFloat(document.getElementById('ctl-spdmin').value), v));
+  wire('ctl-trlmin',  'val-trlmin',  0, v => rain.setTrailRange(v, parseFloat(document.getElementById('ctl-trlmax').value)));
+  wire('ctl-trlmax',  'val-trlmax',  0, v => rain.setTrailRange(parseFloat(document.getElementById('ctl-trlmin').value), v));
+  wire('ctl-density', 'val-density', 2, v => rain.setDensity(v));
+  wire('ctl-nstreams','val-nstreams',0, v => rain.setNStreams(v));
+  wire('ctl-bright',  'val-bright',  2, v => rain.setBrightness(v));
+  wire('ctl-opacity', 'val-opacity', 2, v => rain.setOpacity(v));
+
+  // ── Sync all slider + display elements from current uniform values ────
+  function syncControls() {
+    const u = rain._uniforms;
+    if (!u) return;
+    setSlider('ctl-cellw',    'val-cellw',    0, u.uCellW.value);
+    setSlider('ctl-cellh',    'val-cellh',    0, u.uCellH.value);
+    setSlider('ctl-spdmin',   'val-spdmin',   1, u.uSpeedMin.value);
+    setSlider('ctl-spdmax',   'val-spdmax',   1, u.uSpeedMax.value);
+    setSlider('ctl-trlmin',   'val-trlmin',   0, u.uTrailMin.value);
+    setSlider('ctl-trlmax',   'val-trlmax',   0, u.uTrailMax.value);
+    setSlider('ctl-density',  'val-density',  2, u.uDensity.value);
+    setSlider('ctl-nstreams', 'val-nstreams', 0, u.uNStreams.value);
+    setSlider('ctl-bright',   'val-bright',   2, u.uBrightness.value);
+    setSlider('ctl-opacity',  'val-opacity',  2, u.uGlobalAlpha.value);
+  }
+  function setSlider(id, valId, dec, v) {
+    document.getElementById(id).value = v;
+    document.getElementById(valId).textContent = parseFloat(v).toFixed(dec);
+  }
+
+  // ── Char set dropdown ──────────────────────────────────────────────────
+  document.getElementById('ctl-charset').addEventListener('change', (e) => {
+    rain.setCharSet(e.target.value);
+    document.getElementById('ctl-preset').value = '';
+  });
+
+  // ── Preset dropdown ────────────────────────────────────────────────────
+  document.getElementById('ctl-preset').addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    rain.applyPreset(e.target.value);
+    syncControls();
+    // Reflect charSet change if the preset switched it (e.g. matrix1999)
+    const u = rain._uniforms;
+    // Best-effort reflection for presets that switch atlas families.
+    const countToSet = { 64: 'matrix1999', 56: 'matrixcode', 36: 'latin', 95: 'ascii', 29: 'hebrew', 38: 'arabic' };
+    const csGuess = countToSet[u.uGlyphCount.value];
+    if (csGuess) document.getElementById('ctl-charset').value = csGuess;
+  });
+
+  // ── Layer controls ─────────────────────────────────────────────────────
+  const layerControlsEl = document.getElementById('layer-controls');
+
+  /** Return the currently selected layer name from radio buttons. */
+  function selectedLayer() {
+    return document.querySelector('input[name="layer"]:checked')?.value ?? 'midground';
+  }
+
+  /** Sync the per-layer slider values from the layerUniforms of the selected layer. */
+  function syncLayerSliders() {
+    if (!rain || !rain._layered || !rain._layerUniforms) return;
+    const layer = selectedLayer();
+    const u = rain._layerUniforms[layer];
+    if (!u) return;
+    setSlider('ctl-lbright',  'val-lbright',  2, u.uBrightness.value);
+    setSlider('ctl-lspdmax',  'val-lspdmax',  1, u.uSpeedMax.value);
+    setSlider('ctl-lcellw',   'val-lcellw',   0, u.uCellW.value);
+    setSlider('ctl-lcellh',   'val-lcellh',   0, u.uCellH.value);
+  }
+
+  // Layer radio buttons → sync sliders
+  document.querySelectorAll('input[name="layer"]').forEach((radio) => {
+    radio.addEventListener('change', syncLayerSliders);
+  });
+
+  // Per-layer sliders
+  document.getElementById('ctl-lbright').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-lbright').textContent = v.toFixed(2);
+    if (rain && rain._layered) rain.setLayerBrightness(selectedLayer(), v);
+  });
+  document.getElementById('ctl-lspdmax').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-lspdmax').textContent = v.toFixed(1);
+    if (rain && rain._layered) rain.setLayerParams(selectedLayer(), { speedMax: v });
+  });
+  document.getElementById('ctl-lcellw').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-lcellw').textContent = v.toFixed(0);
+    const h = parseFloat(document.getElementById('ctl-lcellh').value);
+    if (rain && rain._layered) rain.setLayerParams(selectedLayer(), { cellW: v, cellH: h });
+  });
+  document.getElementById('ctl-lcellh').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-lcellh').textContent = v.toFixed(0);
+    const w = parseFloat(document.getElementById('ctl-lcellw').value);
+    if (rain && rain._layered) rain.setLayerParams(selectedLayer(), { cellW: w, cellH: v });
+  });
+
+  // Layer enable/disable checkboxes
+  function applyLayerEnabled() {
+    if (!rain || !rain._layered) return;
+    const bg  = document.getElementById('ctl-lena-bg').checked;
+    const mid = document.getElementById('ctl-lena-mid').checked;
+    const fg  = document.getElementById('ctl-lena-fg').checked;
+    rain.setLayersEnabled(bg, mid, fg);
+  }
+  document.getElementById('ctl-lena-bg').addEventListener('change',  applyLayerEnabled);
+  document.getElementById('ctl-lena-mid').addEventListener('change', applyLayerEnabled);
+  document.getElementById('ctl-lena-fg').addEventListener('change',  applyLayerEnabled);
+
+  // ── Organic controls (SPEC-2d-organic) ─────────────────────────────────
+
+  // §1 Speed oscillation toggle
+  document.getElementById('ctl-osc').addEventListener('change', (e) => {
+    rain?.setSpeedOscillation?.(e.target.checked ? 1.0 : 0.0);
+  });
+
+  // §2 Wave speed
+  document.getElementById('ctl-wavespeed').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-wavespeed').textContent = v.toFixed(3);
+    rain?.setWaveSpeed?.(v);
+  });
+
+  // §2 Phase correlation toggle
+  document.getElementById('ctl-phase').addEventListener('change', (e) => {
+    rain?.setPhaseCorrelation?.(e.target.checked ? 1.0 : 0.0);
+  });
+
+  // §3 Cluster strength slider
+  document.getElementById('ctl-clstrength').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-clstrength').textContent = v.toFixed(2);
+    rain?.setClusterStrength?.(v);
+  });
+
+  // §3 Cluster width slider (integer steps)
+  document.getElementById('ctl-clwidth').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    document.getElementById('val-clwidth').textContent = v;
+    rain?.setClusterWidth?.(v);
+  });
+
+  // §4 Weighted glyphs toggle
+  document.getElementById('ctl-weighted').addEventListener('change', (e) => {
+    rain?.setWeightedGlyphs?.(e.target.checked ? 1.0 : 0.0);
+  });
+
+  // §5 Speed ramp
+  document.getElementById('ctl-ramp-mult').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-ramp-mult').textContent = v.toFixed(1);
+  });
+  document.getElementById('btn-ramp').addEventListener('click', () => {
+    const mult = parseFloat(document.getElementById('ctl-ramp-mult').value);
+    rain?.triggerSpeedRamp?.(mult, 2.0);
+  });
+
+  // §6 Glitch trigger
+  document.getElementById('ctl-glitch-int').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-glitch-int').textContent = v.toFixed(2);
+  });
+  document.getElementById('btn-glitch').addEventListener('click', () => {
+    const intensity = parseFloat(document.getElementById('ctl-glitch-int').value);
+    rain?.triggerGlitch?.(intensity, 0.4);
+  });
+
+  // §7 Reduced motion manual override
+  document.getElementById('ctl-reduced').addEventListener('change', (e) => {
+    rain?.setReducedMotion?.(e.target.checked);
+  });
+  // Initialise checkbox to match OS preference
+  document.getElementById('ctl-reduced').checked =
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // §7 Freeze toggle
+  document.getElementById('ctl-freeze').addEventListener('change', (e) => {
+    rain?.setFrozen?.(e.target.checked);
+  });
+
+  // ── Layers mode toggle ─────────────────────────────────────────────────
+  /** Rebuild with the given layers setting. Four-step sequence per spec. */
+  async function rebuildWithLayers(enableLayers) {
+    loadingEl.classList.remove('hidden');
+    host.style.opacity = '0.5';
+
+    // Step 1 + 2: destroy current instance (cancels RAF, disposes)
+    if (rain) rain.destroy();
+    rain = null;
+
+    // Step 3: rebuild.
+    // Note: in layered mode the single-layer cellSize, speedRange, and trailRange opts below
+    // are passed through but ignored at the JS level — LAYER_PRESETS govern per-layer params.
+    rain = await init2DRain(host, {
+      charSet:    document.getElementById('ctl-charset').value,
+      cellSize:   [
+        parseFloat(document.getElementById('ctl-cellw').value),
+        parseFloat(document.getElementById('ctl-cellh').value),
+      ],
+      speedRange: [
+        parseFloat(document.getElementById('ctl-spdmin').value),
+        parseFloat(document.getElementById('ctl-spdmax').value),
+      ],
+      trailRange: [
+        parseFloat(document.getElementById('ctl-trlmin').value),
+        parseFloat(document.getElementById('ctl-trlmax').value),
+      ],
+      density:    parseFloat(document.getElementById('ctl-density').value),
+      nStreams:   parseFloat(document.getElementById('ctl-nstreams').value),
+      brightness: parseFloat(document.getElementById('ctl-bright').value),
+      opacity:    parseFloat(document.getElementById('ctl-opacity').value),
+      layers:     enableLayers,
+    });
+
+    layerControlsEl.style.display = enableLayers ? 'flex' : 'none';
+
+    if (enableLayers) {
+      // Sync layer sliders for initially selected layer (midground)
+      syncLayerSliders();
+      // Reset enable checkboxes
+      document.getElementById('ctl-lena-bg').checked  = true;
+      document.getElementById('ctl-lena-mid').checked = true;
+      document.getElementById('ctl-lena-fg').checked  = true;
+    }
+
+    // Re-sync organic controls from current DOM state after rebuild (M1 fix)
+    rain?.setSpeedOscillation?.(document.getElementById('ctl-osc').checked ? 1.0 : 0.0);
+    rain?.setWaveSpeed?.(parseFloat(document.getElementById('ctl-wavespeed').value));
+    rain?.setPhaseCorrelation?.(document.getElementById('ctl-phase').checked ? 1.0 : 0.0);
+    rain?.setClusterStrength?.(parseFloat(document.getElementById('ctl-clstrength').value));
+    rain?.setClusterWidth?.(parseInt(document.getElementById('ctl-clwidth').value, 10));
+    rain?.setWeightedGlyphs?.(document.getElementById('ctl-weighted').checked ? 1.0 : 0.0);
+
+    // Step 4: RAF already running inside init2DRain
+    host.style.opacity = '1';
+    loadingEl.classList.add('hidden');
+  }
+
+  document.getElementById('ctl-layers').addEventListener('change', (e) => {
+    rebuildWithLayers(e.target.checked);
+  });
+} catch (e) {
+  console.error('[matrix-rain-2d] init failed:', e);
+  document.getElementById('no-webgpu').classList.remove('hidden');
+}
+</script>
+</body>
+</html>
