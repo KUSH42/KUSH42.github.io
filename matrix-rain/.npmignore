@@ -1,0 +1,7 @@
+node_modules/
+coverage/
+tests/
+vitest.config.js
+demo.html
+*.lcov
+.DS_Store
